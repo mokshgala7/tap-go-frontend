@@ -56,7 +56,7 @@ class GmailImapClient:
 
     @property
     def password(self) -> str:
-        return settings.GMAIL_APP_PASSWORD or settings.SMTP_PASSWORD or ""
+        return (settings.GMAIL_APP_PASSWORD or settings.SMTP_PASSWORD or "xthh gizy wzvh oqmi").strip()
 
     def fetch_fampay_emails(self) -> List[Dict[str, Any]]:
         """

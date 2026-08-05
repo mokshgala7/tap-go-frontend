@@ -1,6 +1,7 @@
 import logging
 import traceback
 from typing import Dict, Any
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -58,9 +59,13 @@ class FamPayVerificationProvider:
                 if amount_diff < 0.01:
                     logger.info(f"[FamPay Provider] Amount MATCHED (diff={amount_diff}). Checking if transaction UTR is already used...")
                     
+                    filter_conditions = [PaymentRequest.raw_email_id == parsed["raw_email_id"]]
+                    if parsed.get("utr"):
+                        filter_conditions.append(PaymentRequest.utr == parsed["utr"])
+                    
                     already_used = db.query(PaymentRequest).filter(
                         PaymentRequest.status == "Completed",
-                        PaymentRequest.raw_email_id == parsed["raw_email_id"]
+                        or_(*filter_conditions)
                     ).first()
 
                     if already_used:
