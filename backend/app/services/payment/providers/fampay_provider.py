@@ -12,10 +12,11 @@ logger = logging.getLogger("fampay_provider")
 
 import urllib.parse
 
+
 class FamPayVerificationProvider:
     """
     FamPay Verification Provider Implementation.
-    Encapsulates UPI URI generation and payment checking via Gmail IMAP.
+    Encapsulates UPI URI generation and payment checking strictly via Gmail IMAP.
     """
 
     def generate_upi_uri(self, amount: float) -> str:
@@ -26,20 +27,21 @@ class FamPayVerificationProvider:
 
     def check_verification(self, pay_req: PaymentRequest, db: Session, force_check: bool = False) -> Dict[str, Any]:
         """
-        Checks verification status against Gmail IMAP for FamPay emails.
+        Checks verification status against Gmail IMAP strictly for FamPay / FamApp payment emails.
+        STRICT VERIFICATION: Never credits wallet unless a real matching email is verified.
         """
         logger.info(f"[FamPay Provider] Checking verification for request_id={pay_req.id}, amount={pay_req.amount}")
-        
+
         try:
             emails = gmail_imap_client.fetch_fampay_emails()
             logger.info(f"[FamPay Provider] Retrieved {len(emails)} emails from IMAP client.")
-            
+
             req_amount = float(pay_req.amount)
-            
+
             for index, item in enumerate(emails):
                 from app.services.payment.fampay.verifier import parse_fampay_email
                 logger.info(f"[FamPay Provider] Parsing email index={index}, subject='{item.get('subject')}'")
-                
+
                 parsed = parse_fampay_email(item)
                 if not parsed:
                     logger.warning(f"[FamPay Provider] Email index={index} could not be parsed.")
@@ -58,11 +60,11 @@ class FamPayVerificationProvider:
                 amount_diff = abs(parsed["amount"] - req_amount)
                 if amount_diff < 0.01:
                     logger.info(f"[FamPay Provider] Amount MATCHED (diff={amount_diff}). Checking if transaction UTR is already used...")
-                    
+
                     filter_conditions = [PaymentRequest.raw_email_id == parsed["raw_email_id"]]
                     if parsed.get("utr"):
                         filter_conditions.append(PaymentRequest.utr == parsed["utr"])
-                    
+
                     already_used = db.query(PaymentRequest).filter(
                         PaymentRequest.status == "Completed",
                         or_(*filter_conditions)
@@ -87,18 +89,6 @@ class FamPayVerificationProvider:
 
             logger.info("[FamPay Provider] No fresh matching payment email found in IMAP.")
 
-            # In REVIEW_DEMO_MODE, if force_check is requested (e.g. user clicked "I Have Paid"),
-            # approve the payment as a demo transaction so reviewers/testers are never stuck.
-            if settings.REVIEW_DEMO_MODE and force_check:
-                logger.info(f"[FamPay Provider] REVIEW_DEMO_MODE active & force_check=True. Approving demo payment verification for Request ID={pay_req.id}")
-                return {
-                    "verified": True,
-                    "provider_transaction_id": f"FAM-DEMO-{pay_req.id}",
-                    "utr": f"UTR-DEMO-{pay_req.id:08d}",
-                    "payer_name": "FamPay Demo User",
-                    "raw_email_id": f"DEMO-EMAIL-{pay_req.id}",
-                }
-
             return {
                 "verified": False,
                 "message": "Payment notification email not found yet. Please make sure payment was sent via UPI to the QR code above.",
@@ -106,16 +96,6 @@ class FamPayVerificationProvider:
         except Exception as ex:
             logger.error(f"[FamPay Provider] Error in check_verification: {ex}")
             logger.error(traceback.format_exc())
-
-            if settings.REVIEW_DEMO_MODE and force_check:
-                logger.info(f"[FamPay Provider] IMAP error occurred in REVIEW_DEMO_MODE with force_check=True. Approving demo verification for Request ID={pay_req.id}")
-                return {
-                    "verified": True,
-                    "provider_transaction_id": f"FAM-DEMO-{pay_req.id}",
-                    "utr": f"UTR-DEMO-{pay_req.id:08d}",
-                    "payer_name": "FamPay Demo User",
-                    "raw_email_id": f"DEMO-EMAIL-{pay_req.id}",
-                }
 
             return {
                 "verified": False,
