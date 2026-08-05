@@ -15,8 +15,8 @@ The PayU review team can test and evaluate all end-to-end business workflows in 
 - **Production Environment:** Will use a persistent managed database service (e.g., AWS RDS MySQL / GCP Cloud SQL). User registrations, wallet balances, and transactions will remain permanently and never reset after redeployments.
 
 ### 2. OTP Verification
-- **Demo Deployment:** SMS OTP delivery is intentionally simulated in this hosted deployment. A secure 6-digit OTP is automatically generated and auto-filled in the frontend so reviewers can complete the registration and recovery flows seamlessly without requiring external SMS delivery.
-- **Production Environment:** The backend generates the OTP and dispatches it directly to the user's mobile number via an integrated SMS Gateway (Twilio / Fast2SMS). The user manually enters the received SMS code for validation.
+- **Demo Deployment:** Email OTP delivery is sent to the registered email address. In hosted demo mode, a 6-digit OTP is automatically generated and auto-filled in the frontend so reviewers can test seamlessly.
+- **Production Environment:** The backend generates the OTP and dispatches it to the user's registered email address via the backend email service (Gmail SMTP / Mailer). The user enters the received email code for validation.
 
 ### 3. Uploaded Document Storage
 - **Demo Deployment:** Uploaded driver licences, vehicle RC books, Aadhaar/PAN cards, and digital signatures are processed and stored temporarily within the active server container. File previews after container restarts are represented by professional documentation cards.
@@ -33,7 +33,7 @@ The PayU review team can test and evaluate all end-to-end business workflows in 
 | **Frontend** | Vercel Global CDN | Vercel / Custom CDN |
 | **Backend API** | Render Web Service (FastAPI) | AWS ECS / Render Dedicated Instance |
 | **Database** | Temporary Render Container Database | Persistent Managed Database (AWS RDS) |
-| **OTP Delivery** | Auto-Generated & Auto-Filled | Real SMS Gateway Delivery |
+| **OTP Delivery** | Auto-Filled Email OTP | Real Email OTP (Registered Email Address) |
 | **Document Storage** | Temporary Instance Storage | Persistent Object Storage (AWS S3) |
 | **Payment Gateway** | Demo UPI Payment Integration | Official PayU Payment Gateway APIs |
 

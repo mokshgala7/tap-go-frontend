@@ -13,9 +13,6 @@ from app.services.payment.gmail.imap_client import gmail_imap_client
 logger = logging.getLogger("fampay_verifier")
 
 
-import urllib.parse
-
-
 def generate_upi_uri(amount: float) -> str:
     """
     Generates standard UPI URI for FamPay account.
@@ -29,7 +26,7 @@ def generate_upi_uri(amount: float) -> str:
 
 def parse_fampay_email(email_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
-    Parses FamPay payment notification email text/HTML.
+    Parses FamPay / FamApp / FamX payment notification email text/HTML.
     Extracts Amount, Payer Name, Transaction ID, UTR, and Received Timestamp.
     """
     try:
@@ -42,21 +39,28 @@ def parse_fampay_email(email_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         clean_text = re.sub(r"<[^>]+>", " ", body_content)
         full_text = f"{subject} {clean_text}"
 
-        # 1. Extract Amount (e.g. ₹250, Rs. 250, INR 250, 250.00)
-        amt_match = re.search(r"(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d{1,2})?)", full_text, re.IGNORECASE)
+        # 1. Extract Amount (supports ₹, Rs., INR, \u20b9, or text like "received 14.0")
+        amt_match = re.search(r"(?:₹|Rs\.?|INR|\u20b9)\s*([\d,]+(?:\.\d{1,2})?)", full_text, re.IGNORECASE)
         if not amt_match:
-            amt_match = re.search(r"(?:received|credited|paid)\s+(?:₹|Rs\.?|INR)?\s*([\d,]+(?:\.\d{1,2})?)", full_text, re.IGNORECASE)
+            amt_match = re.search(r"(?:received|credited|paid|payment of)\s+(?:₹|Rs\.?|INR|\u20b9)?\s*([\d,]+(?:\.\d{1,2})?)", full_text, re.IGNORECASE)
 
         if not amt_match:
             return None
 
-        amount_val = float(amt_match.group(1).replace(",", ""))
+        val_str = amt_match.group(1).replace(",", "").strip()
+        if not val_str:
+            return None
 
-        # 2. Extract UTR / RRN (12 digits)
+        try:
+            amount_val = float(val_str)
+        except ValueError:
+            return None
+
+        # 2. Extract UTR / RRN (12 digits or alphanumeric reference)
         utr_match = re.search(r"(?:utr|rrn|ref(?:erence)?(?:\s*no)?)\s*[:\-]?\s*([A-Za-z0-9]{10,18})", full_text, re.IGNORECASE)
         utr_val = utr_match.group(1) if utr_match else None
 
-        # 3. Extract FamPay Transaction ID
+        # 3. Extract Transaction ID
         txn_match = re.search(r"(?:txn|transaction)\s*(?:id|no)?\s*[:\-]?\s*([A-Za-z0-9]{8,24})", full_text, re.IGNORECASE)
         txn_id_val = txn_match.group(1) if txn_match else (utr_val or f"FAM-{raw_id[:10] if raw_id else 'TXN'}")
 

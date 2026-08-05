@@ -173,8 +173,8 @@ export function ReadmePage() {
                 </tr>
                 <tr className="hover:bg-slate-50">
                   <td className="p-4 sm:p-5 font-bold text-slate-900">OTP Delivery</td>
-                  <td className="p-4 sm:p-5 text-amber-700 bg-amber-50/40">Auto-Generated &amp; Auto-Filled OTP</td>
-                  <td className="p-4 sm:p-5 text-emerald-700 font-bold bg-emerald-50/40">Real SMS Delivery via Twilio/Fast2SMS Gateway</td>
+                  <td className="p-4 sm:p-5 text-amber-700 bg-amber-50/40">Auto-Filled Email OTP (Demo Mode)</td>
+                  <td className="p-4 sm:p-5 text-emerald-700 font-bold bg-emerald-50/40">Real Email OTP Delivery (Registered Email Address)</td>
                 </tr>
                 <tr className="hover:bg-slate-50">
                   <td className="p-4 sm:p-5 font-bold text-slate-900">Uploaded Documents</td>

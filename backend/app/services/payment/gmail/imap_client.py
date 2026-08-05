@@ -10,12 +10,30 @@ from app.config import settings
 logger = logging.getLogger("gmail_imap")
 
 
+def decode_header_str(header_val: str) -> str:
+    """Decodes MIME encoded email header strings properly into UTF-8 text."""
+    if not header_val:
+        return ""
+    try:
+        parts = decode_header(header_val)
+        res = ""
+        for text, enc in parts:
+            if isinstance(text, bytes):
+                res += text.decode(enc or "utf-8", errors="ignore")
+            else:
+                res += str(text)
+        return res
+    except Exception:
+        return str(header_val)
+
+
 class GmailImapClient:
     """
     Connects directly to Gmail IMAP (imap.gmail.com:993) via SSL using the Gmail account
     credentials configured in .env (GMAIL_USER / SMTP_USER and GMAIL_APP_PASSWORD / SMTP_PASSWORD).
 
-    Fetches payment notification emails sent by FamApp / FamPay (e.g. from no-reply@famapp.in)
+    Fetches payment notification emails sent by FamApp / FamPay (e.g. from no-reply@famapp.in
+    or forwarded emails with subjects like 'You received ₹14.0 in your FamX account')
     to automatically verify payments and credit passenger wallets.
     """
 
@@ -43,7 +61,7 @@ class GmailImapClient:
     def fetch_fampay_emails(self) -> List[Dict[str, Any]]:
         """
         Connects to Gmail IMAP via SSL and retrieves payment notification emails.
-        Searches for emails from 'no-reply@famapp.in' or emails containing FamPay payment details.
+        Searches recent emails for FamApp / FamPay / FamX payment notifications.
         """
         logger.info(f"[Gmail IMAP] Connecting to {self.host}:{self.port} for user={self.user}")
         if not self.user or not self.password:
@@ -73,23 +91,20 @@ class GmailImapClient:
                 mail.logout()
                 return []
 
-            # 1. Search for emails from no-reply@famapp.in or containing FamApp/FamPay in subject/body
-            logger.info("[Gmail IMAP] Searching Gmail INBOX for FamPay / FamApp payment emails...")
-            status, data = mail.search(None, '(OR (FROM "no-reply@famapp.in") (OR (SUBJECT "FamApp") (OR (SUBJECT "FamPay") (BODY "FamApp"))))')
+            # Standard IMAP search for ALL messages to avoid IMAP command parse errors on Gmail
+            logger.info("[Gmail IMAP] Searching Gmail INBOX for recent messages...")
+            status, data = mail.search(None, "ALL")
 
             if status != "OK" or not data or not data[0]:
-                logger.info("[Gmail IMAP] Specific search yielded 0 results. Running fallback search for recent emails...")
-                status, data = mail.search(None, "ALL")
-
-            if status != "OK" or not data or not data[0]:
-                logger.info("[Gmail IMAP] No matching emails found in Gmail INBOX.")
+                logger.info("[Gmail IMAP] No emails found in Gmail INBOX.")
                 mail.logout()
                 return []
 
             email_ids = data[0].split()
-            logger.info(f"[Gmail IMAP] Found {len(email_ids)} total messages in search result.")
+            logger.info(f"[Gmail IMAP] Total messages in inbox: {len(email_ids)}.")
 
-            recent_ids = email_ids[-20:]
+            # Inspect the last 40 recent emails
+            recent_ids = email_ids[-40:]
             logger.info(f"[Gmail IMAP] Inspecting the last {len(recent_ids)} recent emails...")
 
             for msg_id in reversed(recent_ids):
@@ -102,23 +117,17 @@ class GmailImapClient:
                         if isinstance(response_part, tuple):
                             msg = email.message_from_bytes(response_part[1])
                             subject_header = msg.get("Subject", "")
-                            subject = ""
-                            if subject_header:
-                                dh = decode_header(subject_header)
-                                subject = "".join(
-                                    str(t[0], t[1] or "utf-8") if isinstance(t[0], bytes) else str(t[0])
-                                    for t in dh
-                                )
-
+                            subject = decode_header_str(subject_header)
+                            from_addr = decode_header_str(msg.get("From", ""))
                             date_str = msg.get("Date", "")
+
                             body = ""
                             if msg.is_multipart():
                                 for part in msg.walk():
                                     ctype = part.get_content_type()
                                     if ctype in ["text/plain", "text/html"]:
                                         try:
-                                            body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", errors="ignore")
-                                            break
+                                            body += part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", errors="ignore")
                                         except Exception:
                                             pass
                             else:
@@ -127,9 +136,9 @@ class GmailImapClient:
                                 except Exception:
                                     pass
 
-                            full_content = f"{subject} {body}".lower()
-                            # Check if email contains payment attributes
-                            if any(k in full_content for k in ["famapp", "fampay", "received", "credited", "upi", "inr", "rs.", "utr", "rrn"]):
+                            full_content = f"{subject} {from_addr} {body}".lower()
+                            # Match FamApp / FamPay / FamX / payment received notifications
+                            if any(k in full_content for k in ["famapp", "fampay", "famx", "fam", "received", "credited", "upi", "inr", "rs.", "utr", "rrn"]):
                                 messages_list.append({
                                     "id": f"GMAIL-IMAP-{msg_id.decode('utf-8', errors='ignore')}",
                                     "subject": subject,

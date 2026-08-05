@@ -40,29 +40,26 @@ export function DemoInfoCard({ type = 'database', className = '' }) {
       <div className={`rounded-2xl border border-amber-200 bg-amber-50/75 p-4 sm:p-5 text-slate-800 shadow-sm ${className}`}>
         <div className="flex items-start gap-3.5">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-sm">
-            <span className="material-symbols-outlined text-xl" aria-hidden="true">sms</span>
+            <span className="material-symbols-outlined text-xl" aria-hidden="true">mail</span>
           </div>
           <div className="space-y-2 text-xs sm:text-sm leading-relaxed">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-amber-950 text-sm">OTP Delivery &amp; Verification Notice</span>
+              <span className="font-bold text-amber-950 text-sm">Email OTP Verification Notice</span>
               <span className="rounded-full bg-amber-200/60 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900">
-                Demo Mode
+                Email OTP
               </span>
             </div>
             <p className="text-slate-700">
-              <strong>Current Deployment:</strong> SMS OTP delivery has been intentionally disabled in this hosted demonstration. The production OTP workflow was originally developed and tested successfully in the local development environment. Due to Render Free Tier deployment limitations and the absence of production SMS infrastructure in this demonstration environment, actual SMS delivery has been disabled. Instead, a secure six-digit OTP is automatically generated and automatically filled so reviewers can complete the verification flow seamlessly.
+              <strong>Current Deployment:</strong> Verification OTPs are sent to your <strong>registered email address</strong>. In this demonstration environment, to ensure reviewers are never blocked by external email delays or rate limits, a secure six-digit OTP is automatically generated and displayed/filled so you can complete verification seamlessly.
             </p>
             <div className="mt-2.5 rounded-xl border border-amber-200 bg-white/80 p-3">
               <span className="font-bold text-amber-950 text-xs block mb-1">Production Behaviour:</span>
               <ul className="list-disc list-inside text-xs text-slate-600 space-y-0.5 font-medium">
-                <li>Backend generates secure OTP.</li>
-                <li>OTP is sent directly to the registered mobile number through an SMS gateway.</li>
-                <li>User manually enters the received OTP.</li>
-                <li>Backend validates OTP before authentication or verification.</li>
+                <li>Backend generates a secure 6-digit OTP.</li>
+                <li>OTP is sent to the user's registered email address via the backend email service (Gmail SMTP / Production Mailer).</li>
+                <li>User enters the received email OTP.</li>
+                <li>Backend validates the OTP before authentication or verification.</li>
               </ul>
-              <p className="text-[11px] text-amber-800 font-semibold mt-1">
-                Current deployment only simulates the OTP step for demonstration purposes.
-              </p>
             </div>
           </div>
         </div>
@@ -126,7 +123,7 @@ export function DemoInfoCard({ type = 'database', className = '' }) {
                   <span className="text-amber-400 font-bold">•</span> Temporary Database Storage
                 </li>
                 <li className="flex items-center gap-1.5 bg-slate-900/60 px-2.5 py-1.5 rounded-lg border border-slate-700">
-                  <span className="text-amber-400 font-bold">•</span> Simulated SMS OTP Delivery
+                  <span className="text-amber-400 font-bold">•</span> Email OTP Verification
                 </li>
                 <li className="flex items-center gap-1.5 bg-slate-900/60 px-2.5 py-1.5 rounded-lg border border-slate-700">
                   <span className="text-amber-400 font-bold">•</span> Temporary Upload Document Storage
