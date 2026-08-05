@@ -165,10 +165,13 @@ app = FastAPI(title="Tap&Go API", version="1.0.0")
 
 
 # Configure CORS Middleware
+# When ALLOWED_ORIGINS contains "*", browsers require allow_credentials=False
+_origins = settings.ALLOWED_ORIGINS
+_use_wildcard = "*" in _origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"] if _use_wildcard else _origins,
+    allow_credentials=False if _use_wildcard else True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
