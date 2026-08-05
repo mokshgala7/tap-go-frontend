@@ -14,8 +14,6 @@
 .env.development
 # Keep .env.example (it's the safe template)
 !.env.example
-# Allow frontend/.env — only contains non-secret Vercel build config (VITE_ vars)
-!frontend/.env
 
 
 # ──────────────────────────────────────────────────────────
