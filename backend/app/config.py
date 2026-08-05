@@ -78,7 +78,7 @@ class Settings:
     @property
     def RESEND_API_KEY(self) -> str:
         """Optional HTTPS email provider key used by the hosted review demo."""
-        return os.getenv("RESEND_API_KEY", "re_XgNv9UFS_HhHxT422PydbkNKBA6QDBCjM")
+        return os.getenv("RESEND_API_KEY", "")
 
     @property
     def RESEND_FROM_EMAIL(self) -> str:
@@ -126,11 +126,11 @@ class Settings:
 
     @property
     def GMAIL_USER(self) -> str:
-        return os.getenv("GMAIL_USER") or os.getenv("GMAIL_EMAIL") or os.getenv("SMTP_USER") or os.getenv("OUTLOOK_EMAIL") or os.getenv("IMAP_USER") or "mokshgala070@gmail.com"
+        return (os.getenv("GMAIL_USER") or os.getenv("GMAIL_EMAIL") or os.getenv("SMTP_USER") or os.getenv("OUTLOOK_EMAIL") or os.getenv("IMAP_USER") or "").strip()
 
     @property
     def GMAIL_APP_PASSWORD(self) -> str:
-        return os.getenv("GMAIL_APP_PASSWORD") or os.getenv("GMAIL_PASSWORD") or os.getenv("SMTP_PASSWORD") or os.getenv("OUTLOOK_APP_PASSWORD") or os.getenv("IMAP_PASSWORD") or ""
+        return (os.getenv("GMAIL_APP_PASSWORD") or os.getenv("GMAIL_PASSWORD") or os.getenv("SMTP_PASSWORD") or os.getenv("OUTLOOK_APP_PASSWORD") or os.getenv("IMAP_PASSWORD") or "").strip()
 
     @property
     def OUTLOOK_IMAP_SERVER(self) -> str:

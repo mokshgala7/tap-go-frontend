@@ -69,6 +69,15 @@ def parse_fampay_email(email_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         payer_name = payer_match.group(1).strip() if payer_match else "FamPay User"
 
         received_dt = datetime.now()
+        if received_str:
+            try:
+                import email.utils
+                from datetime import timezone
+                dt_parsed = email.utils.parsedate_to_datetime(received_str)
+                if dt_parsed:
+                    received_dt = dt_parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            except Exception:
+                pass
 
         return {
             "raw_email_id": raw_id,

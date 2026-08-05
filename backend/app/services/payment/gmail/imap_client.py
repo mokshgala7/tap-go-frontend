@@ -30,7 +30,7 @@ def decode_header_str(header_val: str) -> str:
 class GmailImapClient:
     """
     Connects directly to Gmail IMAP (imap.gmail.com:993) via SSL using the Gmail account
-    credentials configured in .env (GMAIL_USER / SMTP_USER and GMAIL_APP_PASSWORD / SMTP_PASSWORD).
+    credentials configured strictly via environment variables (GMAIL_USER / GMAIL_EMAIL and GMAIL_APP_PASSWORD / SMTP_PASSWORD).
 
     Fetches payment notification emails sent by FamApp / FamPay (e.g. from no-reply@famapp.in
     or forwarded emails with subjects like 'You received ₹14.0 in your FamX account')
@@ -52,20 +52,25 @@ class GmailImapClient:
 
     @property
     def user(self) -> str:
-        return settings.GMAIL_USER or settings.SMTP_USER or "mokshgala070@gmail.com"
+        return settings.GMAIL_USER
 
     @property
     def password(self) -> str:
-        return (settings.GMAIL_APP_PASSWORD or settings.SMTP_PASSWORD or "xthh gizy wzvh oqmi").strip()
+        return settings.GMAIL_APP_PASSWORD
 
     def fetch_fampay_emails(self) -> List[Dict[str, Any]]:
         """
         Connects to Gmail IMAP via SSL and retrieves payment notification emails.
         Searches recent emails for FamApp / FamPay / FamX payment notifications.
+        Requires GMAIL_USER / GMAIL_EMAIL and GMAIL_APP_PASSWORD / SMTP_PASSWORD in environment variables.
         """
         logger.info(f"[Gmail IMAP] Connecting to {self.host}:{self.port} for user={self.user}")
         if not self.user or not self.password:
-            logger.warning("[Gmail IMAP] Gmail credentials (GMAIL_USER / SMTP_USER & GMAIL_APP_PASSWORD / SMTP_PASSWORD) not configured in .env.")
+            err = "[Gmail IMAP Error] Missing Gmail credentials (GMAIL_USER/GMAIL_EMAIL and GMAIL_APP_PASSWORD/SMTP_PASSWORD) in environment variables."
+            logger.error(err)
+            self.last_error = err
+            self.last_login_success = False
+            self.last_inbox_success = False
             return []
 
         messages_list = []

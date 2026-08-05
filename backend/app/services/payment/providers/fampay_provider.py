@@ -56,36 +56,60 @@ class FamPayVerificationProvider:
                     f"received_at={parsed.get('received_at')}"
                 )
 
-                # Check amount match
+                # 1. Check amount match
                 amount_diff = abs(parsed["amount"] - req_amount)
-                if amount_diff < 0.01:
-                    logger.info(f"[FamPay Provider] Amount MATCHED (diff={amount_diff}). Checking if transaction UTR is already used...")
+                if amount_diff >= 0.01:
+                    logger.info(f"[FamPay Provider] Amount MISMATCH (req={req_amount}, parsed={parsed['amount']}, diff={amount_diff})")
+                    continue
 
-                    filter_conditions = [PaymentRequest.raw_email_id == parsed["raw_email_id"]]
-                    if parsed.get("utr"):
-                        filter_conditions.append(PaymentRequest.utr == parsed["utr"])
+                # 2. Check time validation (Email must not predate payment request creation time)
+                if pay_req.created_at and parsed.get("received_at"):
+                    from datetime import timedelta
+                    req_created = pay_req.created_at.replace(tzinfo=None) if hasattr(pay_req.created_at, 'tzinfo') and pay_req.created_at.tzinfo else pay_req.created_at
+                    email_received = parsed["received_at"].replace(tzinfo=None) if hasattr(parsed["received_at"], 'tzinfo') and parsed["received_at"].tzinfo else parsed["received_at"]
+                    if email_received < (req_created - timedelta(minutes=10)):
+                        logger.warning(
+                            f"[FamPay Provider] Match rejected: Email date ({email_received}) "
+                            f"is older than PaymentRequest creation time ({req_created})."
+                        )
+                        continue
 
-                    already_used = db.query(PaymentRequest).filter(
-                        PaymentRequest.status == "Completed",
-                        or_(*filter_conditions)
+                # 3. Check duplicate protection (in both PaymentRequest and Transaction ledgers)
+                from app.models import Transaction
+
+                filter_conditions = [PaymentRequest.raw_email_id == parsed["raw_email_id"]]
+                if parsed.get("utr"):
+                    filter_conditions.append(PaymentRequest.utr == parsed["utr"])
+
+                already_used_req = db.query(PaymentRequest).filter(
+                    PaymentRequest.status == "Completed",
+                    or_(*filter_conditions)
+                ).first()
+
+                already_used_txn = None
+                if parsed.get("utr"):
+                    already_used_txn = db.query(Transaction).filter(
+                        or_(
+                            Transaction.utr == parsed["utr"],
+                            Transaction.raw_email_id == parsed["raw_email_id"]
+                        )
                     ).first()
 
-                    if already_used:
-                        logger.warning(
-                            f"[FamPay Provider] Match rejected: email ID={parsed['raw_email_id']} "
-                            f"already used by completed PaymentRequest ID={already_used.id}"
-                        )
-                    else:
-                        logger.info(f"[FamPay Provider] Match APPROVED! UTR={parsed['utr']} is fresh.")
-                        return {
-                            "verified": True,
-                            "provider_transaction_id": parsed["provider_transaction_id"],
-                            "utr": parsed["utr"],
-                            "payer_name": parsed["payer_name"],
-                            "raw_email_id": parsed["raw_email_id"],
-                        }
-                else:
-                    logger.info(f"[FamPay Provider] Amount MISMATCH (req={req_amount}, parsed={parsed['amount']}, diff={amount_diff})")
+                if already_used_req or already_used_txn:
+                    logger.warning(
+                        f"[FamPay Provider] Match rejected: UTR={parsed.get('utr')} or email ID={parsed['raw_email_id']} "
+                        f"has already been redeemed."
+                    )
+                    continue
+
+                logger.info(f"[FamPay Provider] Match APPROVED! UTR={parsed['utr']} is fresh and valid.")
+                return {
+                    "verified": True,
+                    "provider_transaction_id": parsed["provider_transaction_id"],
+                    "utr": parsed["utr"],
+                    "payer_name": parsed["payer_name"],
+                    "raw_email_id": parsed["raw_email_id"],
+                }
 
             logger.info("[FamPay Provider] No fresh matching payment email found in IMAP.")
 
