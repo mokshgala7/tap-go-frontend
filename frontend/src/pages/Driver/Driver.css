@@ -1,0 +1,489 @@
+/* Driver.jsx also imports Passenger.css for the shared design tokens
+   (--bg/--card/--text/--muted/--line/--yellow, .tapgo-dark overrides) and
+   generic content classes (.ride, .details, .setting, .switch, .signout,
+   .back, .toast, .ranges, .primary, .secondary-btn, .wallet-note, .wallet,
+   .profile, .eyebrow, .muted). Everything below is either the app-shell
+   chrome re-scoped to `.driver` (header/main/nav/logo look identical to
+   the passenger app on purpose) or genuinely driver-only UI. */
+
+.driver {
+  min-height: 100vh;
+  width: 100%;
+  padding-bottom: 96px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Hanken Grotesk', sans-serif;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.driver button {
+  font: inherit;
+}
+
+.driver header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 max(20px, calc((100vw - 1180px) / 2));
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+
+.driver .logo {
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: 27px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.driver .logo span {
+  color: var(--yellow);
+}
+
+.driver .user {
+  display: grid;
+  place-items: center;
+  width: 39px;
+  height: 39px;
+  background: var(--yellow);
+  color: #172431;
+  border-radius: 50%;
+  font-weight: 800;
+}
+
+.driver main {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 38px max(20px, calc((100vw - 1180px) / 2 + 20px)) 0;
+  box-sizing: border-box;
+}
+
+.driver h1 {
+  font-size: 34px;
+  margin: 3px 0;
+}
+
+.driver h2 {
+  font-size: 22px;
+  margin: 34px 0 13px;
+}
+
+.driver nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  padding: 10px max(20px, calc((100vw - 1180px) / 2)) calc(10px + env(safe-area-inset-bottom));
+  background: var(--card);
+  border-top: 1px solid var(--line);
+}
+
+.driver nav button {
+  display: grid;
+  justify-items: center;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 64px;
+  padding: 4px 0;
+}
+
+.driver nav span {
+  font-size: 23px;
+}
+
+.driver nav .active {
+  color: #966b00;
+  font-weight: 800;
+}
+
+.tapgo-dark .driver nav .active {
+  color: var(--yellow);
+}
+
+/* ---------- KPI grid (dashboard) ---------- */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin: 22px 0 8px;
+}
+
+@media (max-width: 980px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.kpi-card {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: 0 6px 18px rgba(16, 34, 51, 0.05);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 128px;
+}
+
+.kpi-card .kpi-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.kpi-card .kpi-label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.kpi-card .kpi-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(253, 211, 77, 0.18);
+  color: #966b00;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.tapgo-dark .kpi-card .kpi-icon {
+  background: rgba(253, 211, 77, 0.14);
+  color: var(--yellow);
+}
+
+.kpi-card .kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.kpi-card .kpi-sub {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.kpi-card .kpi-trend {
+  font-size: 13px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.kpi-trend.up {
+  color: #1f9d55;
+}
+
+.kpi-trend.down {
+  color: #c0392b;
+}
+
+.kpi-card .kpi-action {
+  margin-top: auto;
+}
+
+/* ---------- Chart card ---------- */
+.chart-card {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: 0 6px 18px rgba(16, 34, 51, 0.05);
+  padding: 22px;
+  margin: 10px 0 24px;
+}
+
+.chart-card .chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.chart-card canvas {
+  max-height: 280px;
+}
+
+/* ---------- Reviews ---------- */
+.review-card {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: 0 6px 18px rgba(16, 34, 51, 0.05);
+  padding: 16px 20px;
+  margin: 10px 0;
+}
+
+.review-card .review-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.review-stars {
+  color: #d99a00;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.review-card p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+/* ---------- Account: field grid with editable/read-only badges ---------- */
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 11px;
+}
+
+@media (max-width: 640px) {
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.field-card {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: 0 6px 18px rgba(16, 34, 51, 0.05);
+  padding: 14px 16px;
+  display: grid;
+  gap: 5px;
+}
+
+.field-card .field-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.field-card .field-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.field-card .field-value {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.field-card input {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  padding: 4px 0;
+  width: 100%;
+}
+
+.field-tag {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.field-tag.readonly {
+  color: #6a5300;
+  background: rgba(253, 211, 77, 0.25);
+}
+
+.field-tag.editable {
+  color: #1f9d55;
+  background: rgba(31, 157, 85, 0.12);
+}
+
+.tapgo-dark .field-tag.readonly {
+  color: var(--yellow);
+  background: rgba(253, 211, 77, 0.14);
+}
+
+/* ---------- Lightweight modal (Withdraw / Bank account) ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(6, 12, 20, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+
+@media (min-width: 640px) {
+  .modal-overlay {
+    align-items: center;
+    padding: 20px;
+  }
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 480px;
+  background: var(--card);
+  color: var(--text);
+  border-radius: 22px 22px 0 0;
+  padding: 26px 24px 34px;
+}
+
+@media (min-width: 640px) {
+  .modal-card {
+    border-radius: 22px;
+    padding: 28px;
+  }
+}
+
+.modal-card h3 {
+  font-size: 22px;
+  margin: 0 0 6px;
+}
+
+.modal-card label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 14px 0 6px;
+}
+
+.modal-card input,
+.modal-card select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.modal-actions .secondary-btn {
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+/* ---------- Small helpers ---------- */
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.section-head .back {
+  margin: 0;
+}
+
+.driver-empty {
+  color: var(--muted);
+  font-size: 15px;
+  padding: 14px 0;
+}
+
+@media (max-width: 580px) {
+  .driver h1 {
+    font-size: 24px;
+    word-break: break-word;
+  }
+  .driver h2 {
+    font-size: 18px;
+  }
+  .driver nav {
+    gap: 6px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  }
+  .driver nav button {
+    min-width: 52px;
+    font-size: 10px;
+    padding: 4px 4px;
+  }
+  .driver nav span {
+    font-size: 21px;
+  }
+  .driver main {
+    padding: 24px 16px 0;
+  }
+  .kpi-card {
+    min-height: 110px;
+    padding: 16px;
+  }
+  .kpi-card .kpi-value {
+    font-size: 22px;
+  }
+  .modal-overlay {
+    padding: 0;
+  }
+  .modal-card {
+    border-radius: 20px 20px 0 0;
+    padding: 22px 18px 28px;
+  }
+}
+
+@media (max-width: 380px) {
+  .driver h1 {
+    font-size: 20px;
+  }
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  .driver nav {
+    gap: 2px;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  }
+  .driver nav button {
+    min-width: 44px;
+    font-size: 9px;
+  }
+}
+

@@ -1,0 +1,30 @@
+<svg width="720" height="560" viewBox="0 0 720 560" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Tap&amp;Go taxi payment illustration</title>
+  <desc id="desc">A modern taxi beside a secure mobile wallet and contactless payment card.</desc>
+  <rect width="720" height="560" rx="56" fill="#F7FAFC"/>
+  <circle cx="365" cy="276" r="206" fill="#FEB700" fill-opacity="0.16"/>
+  <circle cx="539" cy="132" r="78" fill="#FFFFFF"/>
+  <circle cx="156" cy="409" r="72" fill="#FFFFFF"/>
+  <path d="M166 410C166 347.592 216.592 297 279 297H443C505.408 297 556 347.592 556 410V429H166V410Z" fill="#041627"/>
+  <path d="M222 286C231.754 241.201 271.399 209 317.247 209H402.753C448.601 209 488.246 241.201 498 286L506 323H214L222 286Z" fill="#FEB700"/>
+  <path d="M259 272C265.457 250.981 284.871 236.625 306.857 236.625H413.143C435.129 236.625 454.543 250.981 461 272L466 288H254L259 272Z" fill="#FFFFFF"/>
+  <rect x="210" y="338" width="300" height="78" rx="28" fill="#FFFFFF"/>
+  <circle cx="268" cy="428" r="38" fill="#181C1E"/>
+  <circle cx="268" cy="428" r="17" fill="#E0E3E5"/>
+  <circle cx="454" cy="428" r="38" fill="#181C1E"/>
+  <circle cx="454" cy="428" r="17" fill="#E0E3E5"/>
+  <rect x="268" y="338" width="184" height="46" rx="23" fill="#F1F4F6"/>
+  <path d="M311 361H409" stroke="#041627" stroke-width="14" stroke-linecap="round"/>
+  <rect x="462" y="116" width="132" height="228" rx="28" fill="#041627"/>
+  <rect x="478" y="146" width="100" height="168" rx="18" fill="#FFFFFF"/>
+  <path d="M510 229C510 219.059 518.059 211 528 211C537.941 211 546 219.059 546 229V241C546 250.941 537.941 259 528 259C518.059 259 510 250.941 510 241V229Z" fill="#FEB700"/>
+  <path d="M494 183H562" stroke="#E0E3E5" stroke-width="10" stroke-linecap="round"/>
+  <path d="M503 288H553" stroke="#041627" stroke-width="10" stroke-linecap="round"/>
+  <rect x="126" y="135" width="166" height="108" rx="26" fill="#FFFFFF" stroke="#E0E3E5" stroke-width="3"/>
+  <path d="M156 179H225" stroke="#041627" stroke-width="12" stroke-linecap="round"/>
+  <path d="M156 211H241" stroke="#74777D" stroke-width="8" stroke-linecap="round"/>
+  <path d="M252 168C266.359 182.359 266.359 205.641 252 220" stroke="#FEB700" stroke-width="12" stroke-linecap="round"/>
+  <path d="M273 151C296.748 174.748 296.748 213.252 273 237" stroke="#FEB700" stroke-width="10" stroke-linecap="round" opacity="0.62"/>
+  <path d="M190 109L202 81L214 109L242 121L214 133L202 161L190 133L162 121L190 109Z" fill="#FEB700"/>
+  <path d="M573 376L581 357L589 376L608 384L589 392L581 411L573 392L554 384L573 376Z" fill="#FEB700"/>
+</svg>

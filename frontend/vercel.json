@@ -1,0 +1,15 @@
+{
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "build": {
+    "env": {
+      "VITE_API_BASE_URL": "https://tap-gohosting-production.up.railway.app",
+      "VITE_PAYU_REVIEW_MODE": "true"
+    }
+  },
+  "env": {
+    "VITE_API_BASE_URL": "https://tap-gohosting-production.up.railway.app",
+    "VITE_PAYU_REVIEW_MODE": "true"
+  }
+}
