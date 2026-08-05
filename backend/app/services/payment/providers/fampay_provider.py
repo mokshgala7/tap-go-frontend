@@ -62,15 +62,16 @@ class FamPayVerificationProvider:
                     logger.info(f"[FamPay Provider] Amount MISMATCH (req={req_amount}, parsed={parsed['amount']}, diff={amount_diff})")
                     continue
 
-                # 2. Check time validation (Email must not predate payment request creation time)
+                # 2. Check time validation (Email must not be older than 24 hours prior to payment request creation)
                 if pay_req.created_at and parsed.get("received_at"):
                     from datetime import timedelta
                     req_created = pay_req.created_at.replace(tzinfo=None) if hasattr(pay_req.created_at, 'tzinfo') and pay_req.created_at.tzinfo else pay_req.created_at
                     email_received = parsed["received_at"].replace(tzinfo=None) if hasattr(parsed["received_at"], 'tzinfo') and parsed["received_at"].tzinfo else parsed["received_at"]
-                    if email_received < (req_created - timedelta(minutes=10)):
+                    window_start = req_created - timedelta(hours=24)
+                    if email_received < window_start:
                         logger.warning(
                             f"[FamPay Provider] Match rejected: Email date ({email_received}) "
-                            f"is older than PaymentRequest creation time ({req_created})."
+                            f"is older than 24h window start ({window_start})."
                         )
                         continue
 

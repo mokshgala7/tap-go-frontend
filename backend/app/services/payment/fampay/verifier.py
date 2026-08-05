@@ -96,7 +96,7 @@ def parse_fampay_email(email_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         payer_match = re.search(r"(?:from|by|sender)\s+([A-Za-z\s]{2,40})(?:\.|\s+via|\s+to|\s+on|\s*$)", clean_text, re.IGNORECASE)
         payer_name = payer_match.group(1).strip() if payer_match else "FamPay User"
 
-        received_dt = datetime.now()
+        received_dt = datetime.now(timezone.utc).replace(tzinfo=None)
         if received_str:
             try:
                 import email.utils
@@ -133,7 +133,8 @@ def create_payment_request(user_id: int, amount: float, db: Session) -> PaymentR
 
     wallet = get_or_create_wallet(user_id, db)
     upi_uri = generate_upi_uri(amount)
-    expires_at = datetime.now() + timedelta(minutes=15)
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    expires_at = now_utc + timedelta(minutes=15)
 
     pay_req = PaymentRequest(
         user_id=user.id,
@@ -143,7 +144,7 @@ def create_payment_request(user_id: int, amount: float, db: Session) -> PaymentR
         status="Pending",
         provider="FAMPAY_TEST",
         expires_at=expires_at,
-        created_at=datetime.now(),
+        created_at=now_utc,
     )
     db.add(pay_req)
     db.commit()
