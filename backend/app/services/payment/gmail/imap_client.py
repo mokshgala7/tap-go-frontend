@@ -32,8 +32,7 @@ class GmailImapClient:
     Connects directly to Gmail IMAP (imap.gmail.com:993) via SSL using the Gmail account
     credentials configured strictly via environment variables (GMAIL_USER / GMAIL_EMAIL and GMAIL_APP_PASSWORD / SMTP_PASSWORD).
 
-    Fetches payment notification emails sent by FamApp / FamPay (e.g. from no-reply@famapp.in
-    or emails with subjects like 'You received ₹100.0 in your FamX account')
+    Fetches payment notification emails sent strictly by FamApp (no-reply@famapp.in)
     to automatically verify payments and credit passenger wallets.
     """
 
@@ -61,8 +60,7 @@ class GmailImapClient:
     def fetch_fampay_emails(self) -> List[Dict[str, Any]]:
         """
         Connects to Gmail IMAP via SSL and retrieves payment notification emails.
-        Searches ONLY for emails from 'no-reply@famapp.in' or containing FamApp / FamPay / FamX keywords.
-        Uses Gmail-compatible IMAP search query without unsupported nested OR expressions.
+        Searches ONLY for emails sent directly by 'no-reply@famapp.in'.
         """
         logger.info(f"[Gmail IMAP] Connecting to {self.host}:{self.port} for user={self.user}")
         if not self.user or not self.password:
@@ -96,23 +94,19 @@ class GmailImapClient:
                 mail.logout()
                 return []
 
-            # Optimized Gmail IMAP Search: Target ONLY no-reply@famapp.in / FamApp / FamPay / FamX emails
-            logger.info("[Gmail IMAP] Executing target search for FamApp / FamPay emails...")
-            status, data = mail.search(None, 'X-GM-RAW', '"from:no-reply@famapp.in OR FamApp OR FamPay OR FamX"')
+            # Standard RFC 3501 IMAP Search: Target ONLY emails from no-reply@famapp.in
+            logger.info("[Gmail IMAP] Searching INBOX strictly for emails from no-reply@famapp.in...")
+            status, data = mail.search(None, 'FROM', '"no-reply@famapp.in"')
 
             if status != "OK" or not data or not data[0]:
-                logger.info("[Gmail IMAP] X-GM-RAW search yielded 0 results. Fallback to standard FROM search...")
-                status, data = mail.search(None, 'FROM', '"no-reply@famapp.in"')
-
-            if status != "OK" or not data or not data[0]:
-                logger.info("[Gmail IMAP] No matching FamApp / FamPay payment emails found in INBOX.")
+                logger.info("[Gmail IMAP] No emails from no-reply@famapp.in found in INBOX.")
                 mail.logout()
                 return []
 
             email_ids = data[0].split()
-            logger.info(f"[Gmail IMAP] Search returned {len(email_ids)} matching FamApp/FamPay message ID(s).")
+            logger.info(f"[Gmail IMAP] Search returned {len(email_ids)} message ID(s) from no-reply@famapp.in.")
 
-            # Inspect only the recent matching IDs (up to last 20 matching messages)
+            # Inspect matching IDs (up to last 20 matching messages)
             recent_ids = email_ids[-20:]
             logger.info(f"[Gmail IMAP] Inspecting the last {len(recent_ids)} matching email ID(s)...")
 
@@ -145,19 +139,17 @@ class GmailImapClient:
                                 except Exception:
                                     pass
 
-                            full_content = f"{subject} {from_addr} {body}".lower()
-                            if any(k in full_content for k in ["famapp", "fampay", "famx", "fam", "received", "credited", "upi", "inr", "rs.", "utr", "rrn"]):
-                                messages_list.append({
-                                    "id": f"GMAIL-IMAP-{msg_id.decode('utf-8', errors='ignore')}",
-                                    "subject": subject,
-                                    "body": {"content": body},
-                                    "receivedDateTime": date_str,
-                                })
+                            messages_list.append({
+                                "id": f"GMAIL-IMAP-{msg_id.decode('utf-8', errors='ignore')}",
+                                "subject": subject,
+                                "body": {"content": body},
+                                "receivedDateTime": date_str,
+                            })
                 except Exception as fetch_ex:
                     logger.warning(f"[Gmail IMAP] Error fetching email ID {msg_id}: {fetch_ex}")
 
             mail.logout()
-            logger.info(f"[Gmail IMAP] Successfully retrieved {len(messages_list)} matching payment notification email(s).")
+            logger.info(f"[Gmail IMAP] Successfully retrieved {len(messages_list)} email(s) from no-reply@famapp.in.")
             self.last_error = None
             return messages_list
         except Exception as e:
