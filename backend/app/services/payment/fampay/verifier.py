@@ -1,14 +1,13 @@
 import re
 import logging
 from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import PaymentRequest, Transaction, User, Wallet
 from app.routes.wallet import get_or_create_wallet, wallet_to_dict
-from app.services.payment.gmail.imap_client import gmail_imap_client
 
 logger = logging.getLogger("fampay_verifier")
 
@@ -26,25 +25,54 @@ def generate_upi_uri(amount: float) -> str:
 
 def parse_fampay_email(email_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
-    Parses FamPay / FamApp / FamX payment notification email text/HTML.
+    Parses FamPay payment notification email text/HTML.
+    Supports both direct emails from no-reply@famapp.in and Outlook/Hotmail auto-forwarded emails.
     Extracts Amount, Payer Name, Transaction ID, UTR, and Received Timestamp.
     """
     try:
         raw_id = email_item.get("id")
-        subject = email_item.get("subject", "")
+        top_level_from = email_item.get("from", "")
+        top_level_subject = email_item.get("subject", "")
         body_content = email_item.get("body", {}).get("content", "")
         received_str = email_item.get("receivedDateTime", "")
 
         # Clean HTML tags for text matching
         clean_text = re.sub(r"<[^>]+>", " ", body_content)
-        full_text = f"{subject} {clean_text}"
 
-        # 1. Extract Amount (supports ₹, Rs., INR, \u20b9, or text like "received 14.0")
+        # ── 1. Extract Original Forwarded Sender & Subject (if Outlook auto-forwarded) ────
+        fwd_from_match = re.search(r"From:\s*([^\r\n]+(?:famapp\.in|famapp|fampay)[^\r\n]*)", clean_text, re.IGNORECASE)
+        if not fwd_from_match:
+            fwd_from_match = re.search(r"From:\s*([^\r\n]+)", clean_text, re.IGNORECASE)
+
+        fwd_subj_match = re.search(r"Subject:\s*([^\r\n]+)", clean_text, re.IGNORECASE)
+
+        original_from = fwd_from_match.group(1).strip() if fwd_from_match else "None"
+        original_subject = fwd_subj_match.group(1).strip() if fwd_subj_match else "None"
+
+        # ── 2. Explicit Debug Logging ──────────────────────────────────────────
+        logger.info(f"[FamPay Parser] Top-level From: '{top_level_from}'")
+        logger.info(f"[FamPay Parser] Top-level Subject: '{top_level_subject}'")
+        logger.info(f"[FamPay Parser] Original forwarded From: '{original_from}'")
+        logger.info(f"[FamPay Parser] Original forwarded Subject: '{original_subject}'")
+
+        # ── 3. Security Verification: Validate FamApp Sender ──────────────────
+        # Email MUST be sent directly by no-reply@famapp.in OR contain original sender no-reply@famapp.in inside forwarded header block
+        is_direct_famapp = "no-reply@famapp.in" in top_level_from.lower() or "famapp.in" in top_level_from.lower()
+        is_forwarded_famapp = "no-reply@famapp.in" in original_from.lower() or "famapp.in" in original_from.lower() or "famapp" in original_from.lower()
+
+        if not (is_direct_famapp or is_forwarded_famapp):
+            logger.info(f"[FamPay Parser] Email rejected: Sender '{top_level_from}' / Original sender '{original_from}' is not no-reply@famapp.in.")
+            return None
+
+        # ── 4. Extract Amount ────────────────────────────────────────────────
+        full_text = f"{top_level_subject} {clean_text}"
+
         amt_match = re.search(r"(?:₹|Rs\.?|INR|\u20b9)\s*([\d,]+(?:\.\d{1,2})?)", full_text, re.IGNORECASE)
         if not amt_match:
             amt_match = re.search(r"(?:received|credited|paid|payment of)\s+(?:₹|Rs\.?|INR|\u20b9)?\s*([\d,]+(?:\.\d{1,2})?)", full_text, re.IGNORECASE)
 
         if not amt_match:
+            logger.info("[FamPay Parser] Could not extract payment amount from email.")
             return None
 
         val_str = amt_match.group(1).replace(",", "").strip()
@@ -56,23 +84,22 @@ def parse_fampay_email(email_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         except ValueError:
             return None
 
-        # 2. Extract UTR / RRN (12 digits or alphanumeric reference)
+        # ── 5. Extract UTR / RRN (12 digits) ──────────────────────────────────
         utr_match = re.search(r"(?:utr|rrn|ref(?:erence)?(?:\s*no)?)\s*[:\-]?\s*([A-Za-z0-9]{10,18})", full_text, re.IGNORECASE)
         utr_val = utr_match.group(1) if utr_match else None
 
-        # 3. Extract Transaction ID
+        # ── 6. Extract Transaction ID ─────────────────────────────────────────
         txn_match = re.search(r"(?:txn|transaction)\s*(?:id|no)?\s*[:\-]?\s*([A-Za-z0-9]{8,24})", full_text, re.IGNORECASE)
         txn_id_val = txn_match.group(1) if txn_match else (utr_val or f"FAM-{raw_id[:10] if raw_id else 'TXN'}")
 
-        # 4. Extract Payer Name (e.g., "from Moksh Gala")
-        payer_match = re.search(r"(?:from|by|sender)\s+([A-Za-z\s]{2,40})(?:\.|\s+via|\s+to|\s+on|\s*$)", full_text, re.IGNORECASE)
+        # ── 7. Extract Payer Name ──────────────────────────────────────────────
+        payer_match = re.search(r"(?:from|by|sender)\s+([A-Za-z\s]{2,40})(?:\.|\s+via|\s+to|\s+on|\s*$)", clean_text, re.IGNORECASE)
         payer_name = payer_match.group(1).strip() if payer_match else "FamPay User"
 
         received_dt = datetime.now()
         if received_str:
             try:
                 import email.utils
-                from datetime import timezone
                 dt_parsed = email.utils.parsedate_to_datetime(received_str)
                 if dt_parsed:
                     received_dt = dt_parsed.astimezone(timezone.utc).replace(tzinfo=None)
@@ -81,15 +108,18 @@ def parse_fampay_email(email_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
         return {
             "raw_email_id": raw_id,
+            "top_level_from": top_level_from,
+            "top_level_subject": top_level_subject,
+            "original_from": original_from,
+            "original_subject": original_subject,
             "amount": amount_val,
             "utr": utr_val,
             "provider_transaction_id": txn_id_val,
             "payer_name": payer_name,
             "received_at": received_dt,
-            "subject": subject,
         }
     except Exception as e:
-        logger.error(f"[FamPay] Email parse error: {e}")
+        logger.error(f"[FamPay Parser] Email parse error: {e}")
         return None
 
 
