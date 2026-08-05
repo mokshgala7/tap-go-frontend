@@ -139,6 +139,71 @@ def ensure_demo_users(db):
         profile_photo="uploads/profile/e8b039c2086f4ff184751f4a294a25b4_profile_photo.png",
     )
 
+    # ── Ensure sample transactions exist for demo passenger ───────────────────
+    from app.models import Transaction
+    demo_p = db.query(User).filter(User.email == "passenger@tapandgo.com").first()
+    if demo_p:
+        demo_w = db.query(Wallet).filter(Wallet.user_id == demo_p.id).first()
+        if demo_w and not db.query(Transaction).filter(Transaction.passenger_id == demo_p.id).first():
+            from decimal import Decimal
+            sample_txns = [
+                Transaction(
+                    reference="FAM-DEMO-500",
+                    passenger_id=demo_p.id,
+                    wallet_id=demo_w.id,
+                    amount=Decimal("500.00"),
+                    payment_method="FamPay Test",
+                    status="completed",
+                    otp_verified=True,
+                    fraud_status="clear",
+                    transaction_type="deposit",
+                    description="₹500.00 credited via FamPay Test UPI",
+                    balance_after=Decimal("500.00"),
+                ),
+                Transaction(
+                    reference="TXN-RIDE-MH01AB",
+                    passenger_id=demo_p.id,
+                    wallet_id=demo_w.id,
+                    amount=Decimal("58.00"),
+                    payment_method="wallet",
+                    status="completed",
+                    otp_verified=True,
+                    fraud_status="clear",
+                    transaction_type="ride_payment",
+                    description="Auto Ride Fare to Punya Gala (MH 01 AB 1234)",
+                    balance_after=Decimal("442.00"),
+                ),
+                Transaction(
+                    reference="FAM-DEMO-100",
+                    passenger_id=demo_p.id,
+                    wallet_id=demo_w.id,
+                    amount=Decimal("100.00"),
+                    payment_method="FamPay Test",
+                    status="completed",
+                    otp_verified=True,
+                    fraud_status="clear",
+                    transaction_type="deposit",
+                    description="₹100.00 credited via UPI",
+                    balance_after=Decimal("542.00"),
+                ),
+                Transaction(
+                    reference="WD-DEMO-42",
+                    passenger_id=demo_p.id,
+                    wallet_id=demo_w.id,
+                    amount=Decimal("42.00"),
+                    payment_method="bank_transfer",
+                    status="completed",
+                    otp_verified=True,
+                    fraud_status="clear",
+                    transaction_type="withdrawal",
+                    description="₹42.00 transferred to bank account (XXXX XXXX 9876)",
+                    balance_after=Decimal("500.00"),
+                ),
+            ]
+            db.add_all(sample_txns)
+            db.commit()
+            print("[Demo] Seeded sample transactions for Demo Passenger")
+
 
 # Auto-create tables if database exists.  Existing installations keep their
 # current data; the migration below adds any columns that models.py defines
