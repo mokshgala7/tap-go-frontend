@@ -35,7 +35,17 @@ def _send_via_resend(to_email: str, subject: str, html_content: str) -> bool:
                 return True
             logger.error("HTTPS email provider returned status %s", response.status)
     except error.HTTPError as exc:
-        logger.error("HTTPS email provider rejected the message: %s", exc.read().decode("utf-8", "replace"))
+        body = exc.read().decode("utf-8", "replace")
+        logger.error("HTTPS email provider rejected the message: %s", body)
+        # Resend sandbox restriction: recipient must be a verified email address.
+        # Log a clear hint so the admin can troubleshoot via the Render log panel.
+        if "testing emails" in body.lower() or "can only send" in body.lower():
+            logger.error(
+                "RESEND SANDBOX RESTRICTION: Resend free plan only allows sending to verified "
+                "email addresses. Please verify the recipient email '%s' in your Resend dashboard "
+                "at https://resend.com/audiences or upgrade to a paid Resend plan / add a custom domain.",
+                to_email,
+            )
     except Exception as exc:
         logger.error("HTTPS email provider failed: %s", exc)
     return False

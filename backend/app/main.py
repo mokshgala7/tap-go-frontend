@@ -15,9 +15,9 @@ def ensure_demo_users(db):
     Accounts are NEVER duplicated — safe to call on every startup.
 
     Demo Credentials:
-      Admin:      payuadmin@tapandgo.com  / 123
-      Passenger:  passenger@tapandgo.com  / 123
-      Driver:     driver@tapandgo.com     / 123
+      Admin:          payuadmin@tapandgo.com  / 123
+      Passenger:      passenger@tapandgo.com  / 123
+      Driver (Punya): diymr070@gmail.com      / Punya@123
     """
     from app.models import User, Wallet, Admin
     from app.utils.security import hash_password
@@ -48,21 +48,22 @@ def ensure_demo_users(db):
         print(f"[Demo] Created admin in User table: {admin_email}")
 
     # ── Helper: create user + wallet ──────────────────────────────────────────
-    def _create_demo_user(email, phone, name, account_type):
+    def _create_demo_user(email, phone, name, account_type, password="123"):
         if db.query(User).filter(User.email == email).first():
             # Ensure wallet exists even for previously created users
             user = db.query(User).filter(User.email == email).first()
+            # Update password hash in case it changed
+            user.password_hash = hash_password(password)
             if not db.query(Wallet).filter(Wallet.user_id == user.id).first():
                 db.add(Wallet(user_id=user.id, balance=0))
-                db.commit()
-                print(f"[Demo] Created wallet for existing user: {email}")
+            db.commit()
             return
         user = User(
             account_type=account_type,
             name=name,
             email=email,
             phone=phone,
-            password_hash=hash_password("123"),
+            password_hash=hash_password(password),
             status="active",
         )
         db.add(user)
@@ -78,11 +79,13 @@ def ensure_demo_users(db):
         name="Demo Passenger",
         account_type="passenger",
     )
+    # Real driver account from existing database
     _create_demo_user(
-        email="driver@tapandgo.com",
-        phone="9000000002",
-        name="Demo Driver",
+        email="diymr070@gmail.com",
+        phone="9820123456",
+        name="Punya Gala",
         account_type="driver",
+        password="Punya@123",
     )
 
 

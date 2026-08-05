@@ -7,6 +7,8 @@ import illustration from '../assets/images/login-fintech-taxi.svg'
 import logo from '../assets/images/logio.png'
 import '../styles/Login.css'
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.onrender.com'
+
 const trustBadges = ['🔒 Secure Login', '🛡 AI Powered', '🚖 Trusted by Taxi Drivers']
 
 // Keep the reviewer credentials visible unless the deployment explicitly disables them.
@@ -21,6 +23,7 @@ const DEMO_ACCOUNTS = [
     color: '#7c3aed',
     bg: 'rgba(124, 58, 237, 0.08)',
     border: 'rgba(124, 58, 237, 0.2)',
+    isAdmin: true,
   },
   {
     role: 'Passenger',
@@ -32,9 +35,9 @@ const DEMO_ACCOUNTS = [
     border: 'rgba(2, 132, 199, 0.2)',
   },
   {
-    role: 'Driver',
-    email: 'driver@tapandgo.com',
-    password: '123',
+    role: 'Driver (Punya)',
+    email: 'diymr070@gmail.com',
+    password: 'Punya@123',
     icon: '🚖',
     color: '#d97706',
     bg: 'rgba(217, 119, 6, 0.08)',
@@ -102,7 +105,34 @@ function Login() {
     }
   }
 
+  const loginAsAdmin = async (account) => {
+    setIsLoading(true)
+    setErrors(initialErrors)
+    try {
+      const response = await fetch(`${API_BASE}/api/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: account.email, password: account.password }),
+      })
+      const data = await response.json()
+      if (data.success && data.admin) {
+        sessionStorage.setItem('tapgo_admin_session', JSON.stringify(data.admin))
+        navigate('/admin')
+      } else {
+        setErrors((current) => ({ ...current, password: data.detail || 'Admin login failed.' }))
+      }
+    } catch {
+      setErrors((current) => ({ ...current, password: 'Backend unavailable.' }))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const fillDemo = (account) => {
+    if (account.isAdmin) {
+      loginAsAdmin(account)
+      return
+    }
     setFormData({ account: account.email, password: account.password })
     setErrors(initialErrors)
   }
@@ -135,8 +165,23 @@ function Login() {
         navigate('/passenger')
       }
     } else if (res.redirect_admin) {
-      sessionStorage.setItem('tapgo_admin_session', JSON.stringify({ email: formData.account, name: 'PayU Demo Admin' }))
-      navigate('/admin')
+      // User typed admin credentials manually — call admin API to get real admin id
+      try {
+        const adminRes = await fetch(`${API_BASE}/api/admin/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: formData.account, password: formData.password }),
+        })
+        const adminData = await adminRes.json()
+        if (adminData.success && adminData.admin) {
+          sessionStorage.setItem('tapgo_admin_session', JSON.stringify(adminData.admin))
+          navigate('/admin')
+        } else {
+          setErrors((current) => ({ ...current, password: 'Admin login failed. Use the Admin Console.' }))
+        }
+      } catch {
+        setErrors((current) => ({ ...current, password: 'Backend unavailable.' }))
+      }
     } else {
       setErrors((current) => ({
         ...current,
@@ -305,7 +350,7 @@ function Login() {
                         <div className="demo-account-details">
                           <span className="demo-account-role" style={{ color: account.color }}>{account.role}</span>
                           <span className="demo-account-email">{account.email}</span>
-                          <span className="demo-account-pass">Password: <strong>123</strong></span>
+                          <span className="demo-account-pass">Password: <strong>{account.password}</strong></span>
                         </div>
                       </div>
                       <button

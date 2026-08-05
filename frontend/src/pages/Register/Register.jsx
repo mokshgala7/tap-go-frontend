@@ -692,8 +692,15 @@ function Register() {
                           })
                           const data = await res.json()
                           setOtpSending(false)
-                          if (res.ok) {
-                            setOtpMessage('OTP sent! Check your inbox.')
+                          if (res.ok && data.success) {
+                            if (data.demo_mode && data.otp) {
+                              // Demo mode: email delivery restricted, OTP returned directly
+                              setOtpMessage(`📋 Demo Mode — Your OTP is: ${data.otp} (copy & paste it above)`)
+                              // Auto-fill the OTP field for convenience
+                              updateForm({ target: { name: 'emailOtp', value: data.otp } })
+                            } else {
+                              setOtpMessage('OTP sent! Check your inbox.')
+                            }
                           } else {
                             setOtpMessage(data.detail || 'Failed to send OTP.')
                           }
@@ -713,7 +720,7 @@ function Register() {
                     </div>
                     {/* OTP status message */}
                     {otpMessage && (
-                      <p className={`text-xs font-bold mt-2 px-1 ${otpVerified ? 'text-[#00C853]' : 'text-[#FF3B30]'}`}>
+                      <p className={`text-xs font-bold mt-2 px-1 ${otpVerified ? 'text-[#00C853]' : otpMessage.includes('Demo Mode') ? 'text-[#d97706]' : 'text-[#FF3B30]'}`}>
                         {otpVerifying ? '⏳ Verifying...' : otpMessage}
                       </p>
                     )}

@@ -167,6 +167,12 @@ function ForgotPassword() {
         setStep(2)
         setTimer(60)
         window.setTimeout(() => otpRefs.current[0]?.focus(), 20)
+        // Demo mode: email delivery restricted, OTP returned in response — auto-fill it
+        if (data.demo_mode && data.otp) {
+          const digits = data.otp.split('')
+          setOtp(digits.slice(0, 6))
+          setOtpError(`📋 Demo Mode — OTP auto-filled: ${data.otp}`)
+        }
       } else {
         alert(data.detail || "Failed to process request.")
       }

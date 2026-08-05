@@ -70,6 +70,8 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     """
     Generate a 6-digit OTP and send it via email.
     The OTP is stored in DB and expires in 10 minutes.
+    In REVIEW_DEMO_MODE, if the email delivery fails (e.g. Resend sandbox restriction),
+    the OTP is returned directly in the response so the tester can still complete the flow.
     """
     existing_user = db.query(User).filter(User.email == request.email).first()
     if existing_user:
@@ -87,12 +89,30 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
 
     success = send_otp_email(request.email, otp, request.account_type)
     if not success:
+        if settings.REVIEW_DEMO_MODE:
+            # In review/demo mode, Resend sandbox may restrict delivery to unverified emails.
+            # Return the OTP directly in the response so the reviewer can still test the full flow.
+            import logging
+            logging.getLogger(__name__).warning(
+                "[REVIEW_DEMO] Email delivery failed for %s. Returning OTP in response for demo purposes.",
+                request.email,
+            )
+            return {
+                "success": True,
+                "demo_mode": True,
+                "otp": otp,
+                "message": (
+                    "Demo mode: Email delivery is restricted to verified addresses on the free plan. "
+                    f"Your OTP is: {otp} — please enter this code to continue."
+                ),
+            }
         # Rollback OTP so user can retry
         db.query(EmailOTP).filter(EmailOTP.email == request.email).delete()
         db.commit()
         raise HTTPException(status_code=500, detail="Failed to send OTP email. Please check your email address and try again.")
 
     return {"success": True, "message": "OTP sent to your email. Please check your inbox (and spam folder)."}
+
 
 
 class VerifyOTPRequest(BaseModel):
@@ -142,7 +162,17 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
     db.add(new_otp)
     db.commit()
 
-    send_otp_email(user.email, otp, user.account_type)
+    email_sent = send_otp_email(user.email, otp, user.account_type)
+    if not email_sent and settings.REVIEW_DEMO_MODE:
+        return {
+            "success": True,
+            "demo_mode": True,
+            "otp": otp,
+            "email": user.email,
+            "message": (
+                f"Demo mode: Email delivery restricted. Your OTP is: {otp} — use it to reset your password."
+            ),
+        }
     return {"success": True, "message": "If the account exists, an OTP will be sent.", "email": user.email}
 
 
