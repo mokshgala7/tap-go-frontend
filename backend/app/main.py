@@ -48,36 +48,61 @@ def ensure_demo_users(db):
         print(f"[Demo] Created admin in User table: {admin_email}")
 
     # ── Helper: create user + wallet ──────────────────────────────────────────
-    def _create_demo_user(email, phone, name, account_type, password="123"):
-        if db.query(User).filter(User.email == email).first():
-            # Ensure wallet exists even for previously created users
-            user = db.query(User).filter(User.email == email).first()
-            # Update password hash in case it changed
-            user.password_hash = hash_password(password)
-            if not db.query(Wallet).filter(Wallet.user_id == user.id).first():
-                db.add(Wallet(user_id=user.id, balance=0))
+    def _create_demo_user(email, phone, name, account_type, password="123", **details):
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            user = User(
+                account_type=account_type,
+                name=name,
+                email=email,
+                phone=phone,
+                password_hash=hash_password(password),
+                status="active",
+            )
+            db.add(user)
             db.commit()
-            return
-        user = User(
-            account_type=account_type,
-            name=name,
-            email=email,
-            phone=phone,
-            password_hash=hash_password(password),
-            status="active",
-        )
-        db.add(user)
+            db.refresh(user)
+
+        user.name = name
+        user.phone = phone
+        user.account_type = account_type
+        user.password_hash = hash_password(password)
+        user.status = "active"
+
+        for k, v in details.items():
+            if hasattr(user, k) and v is not None:
+                setattr(user, k, v)
+
         db.commit()
-        db.refresh(user)
-        db.add(Wallet(user_id=user.id, balance=500 if account_type == "passenger" else 0))
-        db.commit()
-        print(f"[Demo] Created {account_type}: {email}")
+
+        # Ensure wallet exists (never overwrite existing balance if wallet already exists)
+        if not db.query(Wallet).filter(Wallet.user_id == user.id).first():
+            db.add(Wallet(user_id=user.id, balance=500 if account_type == "passenger" else 0))
+            db.commit()
+            print(f"[Demo] Created wallet for {account_type}: {email}")
 
     _create_demo_user(
         email="passenger@tapandgo.com",
         phone="9000000001",
         name="Demo Passenger",
         account_type="passenger",
+        password="123",
+        address="Flat 402, A-Wing, Navrang CHS, Link Road, Santacruz West",
+        city="Mumbai",
+        state="Maharashtra",
+        pincode="400054",
+        aadhaar="987654321012",
+        pan="ABCDE1234F",
+        emergency_contact_name="Ramesh Gala",
+        emergency_contact_phone="9820123456",
+        bank_account_holder="Demo Passenger",
+        bank_account_number="98765432109876",
+        bank_ifsc="HDFC0001234",
+        bank_upi_id="passenger@upi",
+        bank_locked=1,
+        id_document="uploads/id_documents/847013a7631f4f93be44f105531cce42_aadhar.jpeg",
+        signature_document="uploads/signatures/4d2ba0cb5bf645e095dbb2b3643a741d_digital_signature.png",
+        profile_photo="uploads/profile/e8b039c2086f4ff184751f4a294a25b4_profile_photo.png",
     )
     # Real driver account from existing database
     _create_demo_user(
@@ -86,6 +111,32 @@ def ensure_demo_users(db):
         name="Punya Gala",
         account_type="driver",
         password="Punya@123",
+        address="702, SV Road, Vile Parle West",
+        city="Mumbai",
+        state="Maharashtra",
+        pincode="400056",
+        aadhaar="123456789012",
+        pan="AOPPH2176B",
+        emergency_contact_name="Moksh Gala",
+        emergency_contact_phone="9820745564",
+        bank_account_holder="Punya Gala",
+        bank_account_number="575072740999",
+        bank_ifsc="HDFC0001234",
+        bank_upi_id="punya@upi",
+        bank_locked=1,
+        bank_request_status="approved",
+        doc_request_status="approved",
+        vehicle_type="Taxi",
+        vehicle_registration="MH01AB1234",
+        vehicle_make="Tata",
+        vehicle_model="Nexon EV",
+        driving_licence_number="MH0187977554546",
+        rc_document="uploads/rc/076010e8f4304cefa1c8dee87ba556ac_rc book.jpeg",
+        licence_document="uploads/licence/e895e731df7447d8ab4dbc3f22ec875b_license.jpg",
+        insurance_document="uploads/insurance/9ae9aad1e89a4e1cbcdceaaf9a1d00ec_insurance.jpg",
+        signature_document="uploads/signatures/4d2ba0cb5bf645e095dbb2b3643a741d_digital_signature.png",
+        id_document="uploads/id_documents/847013a7631f4f93be44f105531cce42_aadhar.jpeg",
+        profile_photo="uploads/profile/e8b039c2086f4ff184751f4a294a25b4_profile_photo.png",
     )
 
 
