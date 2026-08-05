@@ -80,14 +80,38 @@ class FamPayVerificationProvider:
                 else:
                     logger.info(f"[FamPay Provider] Amount MISMATCH (req={req_amount}, parsed={parsed['amount']}, diff={amount_diff})")
 
-            logger.info("[FamPay Provider] No fresh matching payment email found.")
+            logger.info("[FamPay Provider] No fresh matching payment email found in IMAP.")
+
+            # In REVIEW_DEMO_MODE, if force_check is requested (e.g. user clicked "I Have Paid"),
+            # approve the payment as a demo transaction so reviewers/testers are never stuck.
+            if settings.REVIEW_DEMO_MODE and force_check:
+                logger.info(f"[FamPay Provider] REVIEW_DEMO_MODE active & force_check=True. Approving demo payment verification for Request ID={pay_req.id}")
+                return {
+                    "verified": True,
+                    "provider_transaction_id": f"FAM-DEMO-{pay_req.id}",
+                    "utr": f"UTR-DEMO-{pay_req.id:08d}",
+                    "payer_name": "FamPay Demo User",
+                    "raw_email_id": f"DEMO-EMAIL-{pay_req.id}",
+                }
+
             return {
                 "verified": False,
-                "message": "Payment notification not found yet." if not force_check else "Verification check completed. No matching payment found yet.",
+                "message": "Payment notification email not found yet. Please make sure payment was sent via UPI to the QR code above.",
             }
         except Exception as ex:
             logger.error(f"[FamPay Provider] Error in check_verification: {ex}")
             logger.error(traceback.format_exc())
+
+            if settings.REVIEW_DEMO_MODE and force_check:
+                logger.info(f"[FamPay Provider] IMAP error occurred in REVIEW_DEMO_MODE with force_check=True. Approving demo verification for Request ID={pay_req.id}")
+                return {
+                    "verified": True,
+                    "provider_transaction_id": f"FAM-DEMO-{pay_req.id}",
+                    "utr": f"UTR-DEMO-{pay_req.id:08d}",
+                    "payer_name": "FamPay Demo User",
+                    "raw_email_id": f"DEMO-EMAIL-{pay_req.id}",
+                }
+
             return {
                 "verified": False,
                 "message": f"Verification error: {str(ex)}",

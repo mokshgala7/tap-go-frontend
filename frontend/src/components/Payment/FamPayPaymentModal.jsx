@@ -124,7 +124,7 @@ export function FamPayPaymentModal({ paymentRequest, onClose, onSuccess, flash }
   const handleCheckNow = async () => {
     try {
       setChecking(true)
-      setMessage('Checking Outlook for FamPay email...')
+      setMessage('Verifying payment notification...')
       const res = await fetch(`${API_BASE}/api/payment/check-now/${payment_request_id}`, {
         method: 'POST',
       })
@@ -138,12 +138,12 @@ export function FamPayPaymentModal({ paymentRequest, onClose, onSuccess, flash }
           onSuccess(data)
         }, 1500)
       } else {
-        setMessage(data.message || 'Payment not found in Outlook yet. Please ensure payment is completed in FamPay.')
+        setMessage(data.message || 'Payment notification email not found yet. Please make sure payment was completed in FamPay/UPI app.')
         if (flash) flash(data.message || 'Payment not detected yet.')
       }
     } catch {
       setChecking(false)
-      setMessage('Backend error checking Outlook.')
+      setMessage('Server error while checking payment status.')
     }
   }
 
