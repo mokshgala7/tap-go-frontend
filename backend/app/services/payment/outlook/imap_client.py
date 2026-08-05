@@ -7,10 +7,15 @@ from typing import List, Dict, Any
 
 from app.config import settings
 
-logger = logging.getLogger("outlook_imap")
+logger = logging.getLogger("gmail_imap")
 
 
-class OutlookImapClient:
+class GmailImapClient:
+    """
+    Connects to Gmail IMAP (imap.gmail.com:993) via SSL and fetches FamPay/FamApp
+    payment notification emails (including emails forwarded from Outlook to Gmail).
+    """
+
     def __init__(self):
         self.last_login_success = False
         self.last_inbox_success = False
@@ -18,130 +23,127 @@ class OutlookImapClient:
 
     @property
     def host(self) -> str:
-        return settings.OUTLOOK_IMAP_SERVER or "outlook.office365.com"
+        return settings.GMAIL_IMAP_SERVER or "imap.gmail.com"
 
     @property
     def port(self) -> int:
-        return settings.OUTLOOK_IMAP_PORT or 993
+        return settings.GMAIL_IMAP_PORT or 993
 
     @property
     def user(self) -> str:
-        return settings.OUTLOOK_EMAIL
+        return settings.GMAIL_USER or "mokshgala070@gmail.com"
 
     @property
     def password(self) -> str:
-        return settings.OUTLOOK_APP_PASSWORD
+        return settings.GMAIL_APP_PASSWORD or settings.SMTP_PASSWORD or ""
 
     def fetch_fampay_emails(self) -> List[Dict[str, Any]]:
         """
-        Connects to Outlook IMAP via SSL and retrieves emails strictly from 'no-reply@famapp.in'.
-        Ignores all other emails completely.
+        Connects to Gmail IMAP via SSL and retrieves payment notification emails.
+        Searches for emails from 'no-reply@famapp.in' or forwarded FamPay emails in Gmail.
         """
-        logger.info(f"[IMAP] Fetching emails from host={self.host}:{self.port} for user={self.user}")
+        logger.info(f"[Gmail IMAP] Connecting to {self.host}:{self.port} for user={self.user}")
         if not self.user or not self.password:
-            logger.info("[IMAP] Outlook credentials not configured. Proceeding to Gmail IMAP channel...")
-            return self._fetch_gmail_fallback()
+            logger.info("[Gmail IMAP] Gmail credentials not configured in environment variables.")
+            return []
 
         messages_list = []
         mail = None
         try:
-            logger.info("[IMAP] Attempting SSL connection...")
+            logger.info(f"[Gmail IMAP] Connecting via SSL to {self.host}:{self.port}...")
             mail = imaplib.IMAP4_SSL(self.host, self.port)
-            
-            logger.info("[IMAP] Attempting login...")
+
+            logger.info(f"[Gmail IMAP] Logging in as {self.user}...")
             mail.login(self.user, self.password)
             self.last_login_success = True
-            logger.info("[IMAP] Login succeeded.")
+            logger.info("[Gmail IMAP] Login succeeded.")
 
-            logger.info("[IMAP] Selecting INBOX...")
+            logger.info("[Gmail IMAP] Selecting INBOX...")
             select_status, select_data = mail.select("INBOX")
             if select_status == "OK":
                 self.last_inbox_success = True
-                logger.info("[IMAP] INBOX selected successfully.")
+                logger.info("[Gmail IMAP] INBOX selected successfully.")
             else:
                 self.last_inbox_success = False
-                logger.error(f"[IMAP] Failed to select INBOX: {select_status} {select_data}")
+                logger.error(f"[Gmail IMAP] Failed to select INBOX: {select_status} {select_data}")
                 self.last_error = f"Select INBOX failed: {select_status}"
                 mail.logout()
                 return []
 
-            # Search strictly for emails from no-reply@famapp.in
-            logger.info("[IMAP] Searching for emails from no-reply@famapp.in...")
-            status, data = mail.search(None, '(FROM "no-reply@famapp.in")')
-            if status != "OK":
-                logger.error(f"[IMAP] Search failed with status: {status}")
-                self.last_error = f"Search failed: {status}"
-                mail.logout()
-                return []
+            # Search for emails from no-reply@famapp.in OR emails mentioning FamApp/FamPay (forwarded from Outlook)
+            logger.info("[Gmail IMAP] Searching for FamPay / FamApp payment emails in Gmail INBOX...")
+            status, data = mail.search(None, '(OR (FROM "no-reply@famapp.in") (OR (SUBJECT "FamApp") (OR (SUBJECT "FamPay") (BODY "FamApp"))))')
 
-            if not data or not data[0]:
-                logger.info("[IMAP] No emails found from no-reply@famapp.in.")
+            if status != "OK" or not data or not data[0]:
+                logger.info("[Gmail IMAP] Fallback search for all recent messages...")
+                status, data = mail.search(None, "ALL")
+
+            if status != "OK" or not data or not data[0]:
+                logger.info("[Gmail IMAP] No matching payment emails found in Gmail INBOX.")
                 mail.logout()
                 return []
 
             email_ids = data[0].split()
-            logger.info(f"[IMAP] Found total {len(email_ids)} emails from no-reply@famapp.in.")
-            
-            recent_ids = email_ids[-15:]
-            logger.info(f"[IMAP] Processing the last {len(recent_ids)} recent emails...")
+            logger.info(f"[Gmail IMAP] Found {len(email_ids)} matching messages in Gmail INBOX.")
+
+            recent_ids = email_ids[-20:]
+            logger.info(f"[Gmail IMAP] Processing the last {len(recent_ids)} recent emails...")
 
             for msg_id in reversed(recent_ids):
-                logger.info(f"[IMAP] Fetching email ID: {msg_id.decode('utf-8', errors='ignore')}")
-                res, msg_data = mail.fetch(msg_id, "(RFC822)")
-                if res != "OK":
-                    logger.error(f"[IMAP] Failed to fetch email ID: {msg_id.decode()} status={res}")
-                    continue
+                try:
+                    res, msg_data = mail.fetch(msg_id, "(RFC822)")
+                    if res != "OK":
+                        continue
 
-                for response_part in msg_data:
-                    if isinstance(response_part, tuple):
-                        msg = email.message_from_bytes(response_part[1])
-                        subject_header = msg.get("Subject", "")
-                        subject = ""
-                        if subject_header:
-                            dh = decode_header(subject_header)
-                            subject = "".join(
-                                str(t[0], t[1] or "utf-8") if isinstance(t[0], bytes) else str(t[0])
-                                for t in dh
-                            )
-                        logger.info(f"[IMAP] Email Subject: '{subject}'")
+                    for response_part in msg_data:
+                        if isinstance(response_part, tuple):
+                            msg = email.message_from_bytes(response_part[1])
+                            subject_header = msg.get("Subject", "")
+                            subject = ""
+                            if subject_header:
+                                dh = decode_header(subject_header)
+                                subject = "".join(
+                                    str(t[0], t[1] or "utf-8") if isinstance(t[0], bytes) else str(t[0])
+                                    for t in dh
+                                )
 
-                        date_str = msg.get("Date", "")
-                        body = ""
-                        if msg.is_multipart():
-                            for part in msg.walk():
-                                ctype = part.get_content_type()
-                                if ctype in ["text/plain", "text/html"]:
-                                    try:
-                                        body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", errors="ignore")
-                                        break
-                                    except Exception as body_ex:
-                                        logger.warning(f"[IMAP] Body part decoding failed: {body_ex}")
-                                        pass
-                        else:
-                            try:
-                                body = msg.get_payload(decode=True).decode(msg.get_content_charset() or "utf-8", errors="ignore")
-                            except Exception as body_ex:
-                                logger.warning(f"[IMAP] Simple body decoding failed: {body_ex}")
-                                pass
+                            date_str = msg.get("Date", "")
+                            body = ""
+                            if msg.is_multipart():
+                                for part in msg.walk():
+                                    ctype = part.get_content_type()
+                                    if ctype in ["text/plain", "text/html"]:
+                                        try:
+                                            body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", errors="ignore")
+                                            break
+                                        except Exception:
+                                            pass
+                            else:
+                                try:
+                                    body = msg.get_payload(decode=True).decode(msg.get_content_charset() or "utf-8", errors="ignore")
+                                except Exception:
+                                    pass
 
-                        messages_list.append({
-                            "id": f"IMAP-{msg_id.decode('utf-8', errors='ignore')}",
-                            "subject": subject,
-                            "body": {"content": body},
-                            "receivedDateTime": date_str,
-                        })
+                            # Include if it contains FamApp / FamPay / UPI payment info
+                            if any(k in f"{subject} {body}".lower() for k in ["famapp", "fampay", "received", "credited", "upi", "inr", "rs."]):
+                                messages_list.append({
+                                    "id": f"GMAIL-IMAP-{msg_id.decode('utf-8', errors='ignore')}",
+                                    "subject": subject,
+                                    "body": {"content": body},
+                                    "receivedDateTime": date_str,
+                                })
+                except Exception as fetch_ex:
+                    logger.warning(f"[Gmail IMAP] Error fetching email ID {msg_id}: {fetch_ex}")
 
             mail.logout()
-            logger.info(f"[Outlook IMAP] Successfully fetched {len(messages_list)} emails from no-reply@famapp.in.")
+            logger.info(f"[Gmail IMAP] Successfully parsed {len(messages_list)} payment notification emails from Gmail.")
             self.last_error = None
             return messages_list
         except Exception as e:
             self.last_login_success = False
             self.last_inbox_success = False
             self.last_error = str(e)
-            logger.error(f"[Outlook IMAP] Exception occurred during email fetch: {e}")
-            
-            return self._fetch_gmail_fallback()
+            logger.error(f"[Gmail IMAP] Exception occurred during email fetch: {e}")
             if mail:
                 try:
                     mail.logout()
@@ -149,70 +151,5 @@ class OutlookImapClient:
                     pass
             return []
 
-    def _fetch_gmail_fallback(self) -> List[Dict[str, Any]]:
-        messages_list = []
-        if settings.SMTP_USER and settings.SMTP_PASSWORD:
-            logger.info(f"[IMAP Fallback] Attempting Gmail IMAP fetch for user={settings.SMTP_USER}...")
-            try:
-                gmail_mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
-                gmail_mail.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-                self.last_login_success = True
-                self.last_inbox_success = True
-                self.last_error = None
-                logger.info("[Gmail IMAP] Login succeeded.")
 
-                gmail_mail.select("INBOX")
-                status, data = gmail_mail.search(None, '(OR (FROM "no-reply@famapp.in") (BODY "FamApp"))')
-                if status == "OK" and data and data[0]:
-                    email_ids = data[0].split()
-                    recent_ids = email_ids[-15:]
-                    for msg_id in reversed(recent_ids):
-                        res, msg_data = gmail_mail.fetch(msg_id, "(RFC822)")
-                        if res != "OK":
-                            continue
-                        for response_part in msg_data:
-                            if isinstance(response_part, tuple):
-                                msg = email.message_from_bytes(response_part[1])
-                                subject_header = msg.get("Subject", "")
-                                subject = ""
-                                if subject_header:
-                                    dh = decode_header(subject_header)
-                                    subject = "".join(
-                                        str(t[0], t[1] or "utf-8") if isinstance(t[0], bytes) else str(t[0])
-                                        for t in dh
-                                    )
-                                date_str = msg.get("Date", "")
-                                body = ""
-                                if msg.is_multipart():
-                                    for part in msg.walk():
-                                        ctype = part.get_content_type()
-                                        if ctype in ["text/plain", "text/html"]:
-                                            try:
-                                                body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", errors="ignore")
-                                                break
-                                            except Exception:
-                                                pass
-                                else:
-                                    try:
-                                        body = msg.get_payload(decode=True).decode(msg.get_content_charset() or "utf-8", errors="ignore")
-                                    except Exception:
-                                        pass
-
-                                messages_list.append({
-                                    "id": f"GMAIL-IMAP-{msg_id.decode('utf-8', errors='ignore')}",
-                                    "subject": subject,
-                                    "body": {"content": body},
-                                    "receivedDateTime": date_str,
-                                })
-                gmail_mail.logout()
-                logger.info(f"[Gmail IMAP Fallback] Successfully fetched {len(messages_list)} payment emails.")
-                return messages_list
-            except Exception as g_ex:
-                logger.error(f"[Gmail IMAP Fallback Error]: {g_ex}")
-                self.last_login_success = False
-                self.last_inbox_success = False
-                self.last_error = str(g_ex)
-        return []
-
-
-outlook_imap_client = OutlookImapClient()
+outlook_imap_client = GmailImapClient()

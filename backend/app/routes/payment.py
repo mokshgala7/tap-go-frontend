@@ -67,7 +67,7 @@ def force_check_payment(request_id: int, db: Session = Depends(get_db)):
 @debug_router.get("/debug/payment-status")
 def get_debug_payment_status(db: Session = Depends(get_db)):
     """
-    Temporary debug endpoint to diagnose Outlook IMAP connection, parsed email payload,
+    Temporary debug endpoint to diagnose Gmail IMAP connection, parsed email payload,
     and pending requests mapping.
     """
     # 1. Fetch emails to trigger IMAP connection

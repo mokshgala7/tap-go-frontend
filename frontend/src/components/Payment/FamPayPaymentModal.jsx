@@ -228,7 +228,7 @@ export function FamPayPaymentModal({ paymentRequest, onClose, onSuccess, flash }
             <div style={{ marginBottom: 20, padding: '14px 16px', borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--line)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 4 }}>
                 <span className="pulse-dot" style={{ width: 9, height: 9, borderRadius: '50%', background: checking ? '#f59e0b' : '#3b82f6', display: 'inline-block' }} />
-                <span style={{ fontWeight: 800, fontSize: 14 }}>{checking ? 'Checking payment with Outlook...' : 'Waiting for payment...'}</span>
+                <span style={{ fontWeight: 800, fontSize: 14 }}>{checking ? 'Checking payment with Gmail...' : 'Waiting for payment...'}</span>
               </div>
               {secondsLeft > 0 ? (
                 <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>Checking automatically ({secondsLeft}s)</div>

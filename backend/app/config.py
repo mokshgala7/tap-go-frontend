@@ -116,37 +116,53 @@ class Settings:
         return os.getenv("OUTLOOK_REFRESH_TOKEN", "")
 
     @property
-    def OUTLOOK_IMAP_SERVER(self) -> str:
-        return os.getenv("OUTLOOK_IMAP_SERVER") or os.getenv("IMAP_HOST") or "outlook.office365.com"
+    def GMAIL_IMAP_SERVER(self) -> str:
+        return os.getenv("GMAIL_IMAP_SERVER") or os.getenv("IMAP_HOST") or "imap.gmail.com"
 
     @property
-    def OUTLOOK_IMAP_PORT(self) -> int:
-        val = os.getenv("OUTLOOK_IMAP_PORT") or os.getenv("IMAP_PORT") or "993"
+    def GMAIL_IMAP_PORT(self) -> int:
+        val = os.getenv("GMAIL_IMAP_PORT") or os.getenv("IMAP_PORT") or "993"
         return int(val)
 
     @property
+    def GMAIL_USER(self) -> str:
+        return os.getenv("GMAIL_USER") or os.getenv("GMAIL_EMAIL") or os.getenv("SMTP_USER") or os.getenv("OUTLOOK_EMAIL") or os.getenv("IMAP_USER") or "mokshgala070@gmail.com"
+
+    @property
+    def GMAIL_APP_PASSWORD(self) -> str:
+        return os.getenv("GMAIL_APP_PASSWORD") or os.getenv("GMAIL_PASSWORD") or os.getenv("SMTP_PASSWORD") or os.getenv("OUTLOOK_APP_PASSWORD") or os.getenv("IMAP_PASSWORD") or ""
+
+    @property
+    def OUTLOOK_IMAP_SERVER(self) -> str:
+        return self.GMAIL_IMAP_SERVER
+
+    @property
+    def OUTLOOK_IMAP_PORT(self) -> int:
+        return self.GMAIL_IMAP_PORT
+
+    @property
     def OUTLOOK_EMAIL(self) -> str:
-        return os.getenv("OUTLOOK_EMAIL") or os.getenv("IMAP_USER") or ""
+        return self.GMAIL_USER
 
     @property
     def OUTLOOK_APP_PASSWORD(self) -> str:
-        return os.getenv("OUTLOOK_APP_PASSWORD") or os.getenv("IMAP_PASSWORD") or os.getenv("OUTLOOK_PASSWORD") or ""
+        return self.GMAIL_APP_PASSWORD
 
     @property
     def IMAP_HOST(self) -> str:
-        return self.OUTLOOK_IMAP_SERVER
+        return self.GMAIL_IMAP_SERVER
 
     @property
     def IMAP_PORT(self) -> int:
-        return self.OUTLOOK_IMAP_PORT
+        return self.GMAIL_IMAP_PORT
 
     @property
     def IMAP_USER(self) -> str:
-        return self.OUTLOOK_EMAIL
+        return self.GMAIL_USER
 
     @property
     def IMAP_PASSWORD(self) -> str:
-        return self.OUTLOOK_APP_PASSWORD
+        return self.GMAIL_APP_PASSWORD
 
     @property
     def FAMPAY_UPI_ID(self) -> str:
