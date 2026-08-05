@@ -194,6 +194,7 @@ function Register() {
   const [otpSending, setOtpSending] = useState(false)
   const [otpMessage, setOtpMessage] = useState('')       // Status message for OTP
   const [otpVerifying, setOtpVerifying] = useState(false)
+  const [legalModal, setLegalModal] = useState(null)     // null | 'terms' | 'privacy' | 'esign'
   const canvasRef = useRef(null)
   const [sessionId] = useState(() => Math.floor(100000 + Math.random() * 900000))
   const [sessionTime] = useState(() => {
@@ -825,7 +826,11 @@ function Register() {
                     {form.terms && <CheckIcon className="absolute inset-1 w-5 h-5 text-brand" />}
                   </div>
                   <div className="text-[0.95rem] text-gray-600 font-medium leading-relaxed">
-                    I accept the <a href="#" className="text-darker font-bold underline decoration-brand decoration-2 underline-offset-4">Terms & Conditions</a>, <a href="#" className="text-darker font-bold underline decoration-brand decoration-2 underline-offset-4">Privacy Policy</a> and legally bind myself to the <a href="#" className="text-darker font-bold underline decoration-brand decoration-2 underline-offset-4">Electronic Signature Agreement</a>.
+                    I accept the{' '}
+                    <button type="button" onClick={() => setLegalModal('terms')} className="text-darker font-bold underline decoration-brand decoration-2 underline-offset-4 hover:text-brand transition-colors">Terms &amp; Conditions</button>,{' '}
+                    <button type="button" onClick={() => setLegalModal('privacy')} className="text-darker font-bold underline decoration-brand decoration-2 underline-offset-4 hover:text-brand transition-colors">Privacy Policy</button>{' '}
+                    and legally bind myself to the{' '}
+                    <button type="button" onClick={() => setLegalModal('esign')} className="text-darker font-bold underline decoration-brand decoration-2 underline-offset-4 hover:text-brand transition-colors">Electronic Signature Agreement</button>.
                   </div>
                 </label>
 
@@ -868,6 +873,112 @@ function Register() {
             </form>
           </div>
         </main>
+
+        {/* Legal Modal */}
+        {legalModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
+            onClick={() => setLegalModal(null)}
+          >
+            <div
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-8 py-6 border-b border-gray-100 bg-[#1C1C1E] rounded-t-3xl">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[3px] text-[#FDD34D] mb-1">
+                    Tap&amp;Go Legal
+                  </div>
+                  <h2 className="text-white font-black text-xl tracking-tight">
+                    {legalModal === 'terms' && 'Terms & Conditions'}
+                    {legalModal === 'privacy' && 'Privacy Policy'}
+                    {legalModal === 'esign' && 'Electronic Signature Agreement'}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLegalModal(null)}
+                  className="w-10 h-10 rounded-full bg-white/10 text-white hover:bg-white/20 transition flex items-center justify-center text-xl font-bold"
+                >
+                  ×
+                </button>
+              </div>
+              {/* Gold bar */}
+              <div style={{ height: 4, background: 'linear-gradient(90deg,#FDD34D,#F59E0B)' }} />
+              {/* Scrollable content */}
+              <div className="overflow-y-auto px-8 py-6 text-[0.92rem] text-gray-700 leading-relaxed space-y-5 flex-1">
+                {legalModal === 'terms' && (
+                  <>
+                    <p><strong>Last updated:</strong> August 2026</p>
+                    <p>Welcome to <strong>Tap&amp;Go</strong>. By registering an account, you agree to the following terms and conditions in their entirety.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">1. Service Description</h3>
+                    <p>Tap&amp;Go is a smart transit payment platform that facilitates cashless fare collection between passengers and registered drivers. The platform operates via NFC/QR-based transactions and digital wallets.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">2. Eligibility</h3>
+                    <p>You must be at least 18 years of age and a resident of India to register. By registering, you confirm that all information provided is accurate and complete.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">3. Account Responsibility</h3>
+                    <p>You are solely responsible for maintaining the confidentiality of your login credentials. Tap&amp;Go is not liable for losses arising from unauthorized account access.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">4. Payments & Wallet</h3>
+                    <p>All wallet top-ups and payments are processed through authorized payment gateways. Refunds are subject to our refund policy and may take 5–7 business days.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">5. Prohibited Activities</h3>
+                    <p>You agree not to misuse the platform for fraudulent transactions, unauthorized access, or any activity that violates applicable Indian laws.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">6. Termination</h3>
+                    <p>Tap&amp;Go reserves the right to suspend or terminate accounts found in violation of these terms without prior notice.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">7. Governing Law</h3>
+                    <p>These terms are governed by the laws of India. Any disputes shall be subject to the exclusive jurisdiction of courts in Mumbai, Maharashtra.</p>
+                  </>
+                )}
+                {legalModal === 'privacy' && (
+                  <>
+                    <p><strong>Last updated:</strong> August 2026</p>
+                    <p>Your privacy is important to us. This policy explains how Tap&amp;Go collects, uses, and protects your personal information.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">1. Information We Collect</h3>
+                    <p>We collect your name, email, phone number, Aadhaar number, PAN card, address, profile photo, and uploaded documents for identity verification purposes.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">2. How We Use Your Information</h3>
+                    <p>Your information is used to: verify your identity, process payments, provide customer support, detect fraud, and comply with legal obligations under Indian law.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">3. Data Sharing</h3>
+                    <p>We do not sell your personal data. We may share data with payment processors (e.g. PayU), regulatory authorities, and fraud prevention services as required.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">4. Data Security</h3>
+                    <p>All data is encrypted in transit (TLS 1.3) and at rest. Passwords are hashed using bcrypt. Sensitive documents are stored on secured servers.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">5. Your Rights</h3>
+                    <p>You have the right to access, update, or request deletion of your personal data. Contact us at support@tapandgo.app to exercise these rights.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">6. Cookies</h3>
+                    <p>We use session cookies for authentication purposes only. We do not use tracking or advertising cookies.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">7. Contact</h3>
+                    <p>For privacy concerns, contact our Data Protection Officer at <strong>privacy@tapandgo.app</strong>.</p>
+                  </>
+                )}
+                {legalModal === 'esign' && (
+                  <>
+                    <p><strong>Last updated:</strong> August 2026</p>
+                    <p>By drawing your digital signature on this registration form, you agree to the following Electronic Signature Agreement.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">1. Legal Validity</h3>
+                    <p>Your digital signature drawn on this form constitutes a legally binding electronic signature under the <strong>Information Technology Act, 2000</strong> of India and has the same legal effect as a handwritten signature.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">2. Consent to Electronic Records</h3>
+                    <p>You consent to receive all agreements, notices, disclosures, and communications electronically. You confirm you have the ability to access and retain electronic records.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">3. Signature Binding</h3>
+                    <p>By submitting this form with your drawn signature, you acknowledge that you have read and agree to all terms, and that this signature binds you to the Tap&amp;Go Terms &amp; Conditions and Privacy Policy.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">4. Signature Storage</h3>
+                    <p>Your signature image is stored securely on our servers and linked to your account for audit and compliance purposes. It will not be shared with third parties except as required by law.</p>
+                    <h3 className="font-black text-[#1C1C1E] text-base">5. Right to Withdraw</h3>
+                    <p>You may withdraw your consent to electronic signatures by contacting support@tapandgo.app. However, withdrawal will require account deactivation as e-signature is mandatory for platform compliance.</p>
+                  </>
+                )}
+              </div>
+              {/* Footer button */}
+              <div className="px-8 py-5 border-t border-gray-100 bg-gray-50 rounded-b-3xl">
+                <button
+                  type="button"
+                  onClick={() => setLegalModal(null)}
+                  className="w-full py-4 rounded-2xl font-black text-sm tracking-widest uppercase bg-[#1C1C1E] text-white hover:bg-[#FDD34D] hover:text-[#1C1C1E] transition-all duration-300"
+                >
+                  I Understand — Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
