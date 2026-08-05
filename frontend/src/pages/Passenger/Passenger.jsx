@@ -127,7 +127,7 @@ function Passenger() {
     }
     setTopupLoading(true)
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/payment/create-request`, {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.onrender.com'}/api/payment/create-request`, {
 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

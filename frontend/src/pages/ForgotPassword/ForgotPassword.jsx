@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '../../routes/navigation.jsx'
 import logo from '../../assets/images/logio.png'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.onrender.com'
 
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
