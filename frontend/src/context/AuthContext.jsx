@@ -60,6 +60,12 @@ export function AuthProvider({ children }) {
       const data = await response.json()
       if (data.success && data.user) {
         const nextUser = normalizeUser(data.user)
+        try {
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser))
+          if (nextUser.account_type === 'admin' || nextUser.role === 'admin') {
+            sessionStorage.setItem('tapgo_admin_session', JSON.stringify({ email: nextUser.email, name: nextUser.name || 'Admin', id: nextUser.id }))
+          }
+        } catch {}
         setUser(nextUser)
         return { success: true, user: nextUser }
       } else {

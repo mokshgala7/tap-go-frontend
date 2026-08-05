@@ -114,11 +114,19 @@ function Login() {
     const res = await login(formData)
     setIsLoading(false)
 
-    if (res.success) {
+    if (res.success && res.user) {
       setSuccessMessage(rememberMe ? 'Login validated. This device will be remembered.' : 'Login validated securely.')
-      navigate(res.user.account_type === 'driver' ? '/driver' : '/passenger')
+      const targetRole = (res.user.account_type || res.user.role || '').toLowerCase()
+      if (targetRole === 'admin' || res.user.email === 'payuadmin@tapandgo.com') {
+        sessionStorage.setItem('tapgo_admin_session', JSON.stringify({ email: res.user.email, name: res.user.name || 'Admin', id: res.user.id }))
+        navigate('/admin')
+      } else if (targetRole === 'driver') {
+        navigate('/driver')
+      } else {
+        navigate('/passenger')
+      }
     } else if (res.redirect_admin) {
-      // This is an admin account — send them to the Admin Console
+      sessionStorage.setItem('tapgo_admin_session', JSON.stringify({ email: formData.account, name: 'PayU Demo Admin' }))
       navigate('/admin')
     } else {
       setErrors((current) => ({

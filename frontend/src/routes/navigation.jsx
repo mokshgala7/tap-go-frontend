@@ -34,18 +34,26 @@ export function isViewAllowed(targetView) {
 
       if (targetView === 'admin') {
         const adminSession = sessionStorage.getItem('tapgo_admin_session')
-        return Boolean(adminSession)
+        if (adminSession) return true
+        const storedUser = sessionStorage.getItem('tapgo_user')
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser)
+          return parsed.account_type === 'admin' || parsed.role === 'admin' || parsed.email === 'payuadmin@tapandgo.com'
+        }
+        return false
       }
 
       const storedUser = sessionStorage.getItem('tapgo_user')
       if (!storedUser) return false
 
       const parsed = JSON.parse(storedUser)
+      const userRole = (parsed.account_type || parsed.role || '').toLowerCase()
+
       if (targetView === 'passenger') {
-        return parsed.account_type === 'passenger' || parsed.role === 'passenger'
+        return userRole === 'passenger' || userRole === 'user' || userRole === ''
       }
       if (targetView === 'driver') {
-        return parsed.account_type === 'driver' || parsed.role === 'driver'
+        return userRole === 'driver'
       }
     } catch {
       return false
