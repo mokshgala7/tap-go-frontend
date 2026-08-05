@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
 import { useAuth } from './AuthContext.jsx'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-gohosting-production.up.railway.app'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 const WalletContext = createContext(null)
 

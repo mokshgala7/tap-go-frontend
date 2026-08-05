@@ -1,4 +1,4 @@
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-gohosting-production.up.railway.app'
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 
 export async function adminRequest(path, adminId, options = {}) {

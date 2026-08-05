@@ -1,4 +1,6 @@
 import smtplib
+import json
+from urllib import error, request
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from app.config import settings
@@ -7,11 +9,46 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _send_via_resend(to_email: str, subject: str, html_content: str) -> bool:
+    """Send email through Resend's HTTPS API for hosts that block SMTP."""
+    payload = json.dumps({
+        "from": settings.RESEND_FROM_EMAIL,
+        "to": [to_email],
+        "subject": subject,
+        "html": html_content,
+    }).encode("utf-8")
+    api_request = request.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": "TapGo-Review-Demo/1.0",
+        },
+    )
+
+    try:
+        with request.urlopen(api_request, timeout=15) as response:
+            if 200 <= response.status < 300:
+                logger.info("Email sent successfully through the HTTPS provider to %s", to_email)
+                return True
+            logger.error("HTTPS email provider returned status %s", response.status)
+    except error.HTTPError as exc:
+        logger.error("HTTPS email provider rejected the message: %s", exc.read().decode("utf-8", "replace"))
+    except Exception as exc:
+        logger.error("HTTPS email provider failed: %s", exc)
+    return False
+
+
 def send_email(to_email: str, subject: str, html_content: str) -> bool:
     """
     Sends an HTML email using the configured SMTP settings.
     Returns True on success, False on failure.
     """
+    if settings.RESEND_API_KEY:
+        return _send_via_resend(to_email, subject, html_content)
+
     if not settings.SMTP_HOST or not settings.SMTP_USER or not settings.SMTP_PASSWORD:
         logger.warning(
             f"SMTP settings not fully configured. Simulating email to {to_email}. Subject: {subject}"

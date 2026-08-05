@@ -11,6 +11,7 @@ from app.schemas import UserRegisterForm, UserLoginRequest, SendOTPRequest, EMAI
 from pydantic import BaseModel
 from app.utils.security import hash_password, verify_password
 from app.utils.email_service import send_otp_email, send_welcome_email
+from app.config import settings
 import random
 from datetime import datetime, timedelta
 
@@ -239,6 +240,16 @@ async def register(
     # Consume the OTP immediately
     db.delete(db_otp)
     db.commit()
+
+    if settings.REVIEW_DEMO_MODE:
+        return {
+            "success": True,
+            "review_demo": True,
+            "message": (
+                "Registration completed in the PayU review environment. "
+                "This demo resets automatically, so please sign in with one of the supplied tester accounts."
+            ),
+        }
 
     # 3. Check for duplicate email or phone
     if db.query(User).filter(User.email == validated_data.email).first():

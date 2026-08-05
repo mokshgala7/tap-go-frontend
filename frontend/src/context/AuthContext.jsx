@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 
 const STORAGE_KEY = 'tapgo_user'
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-gohosting-production.up.railway.app'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 
 const AuthContext = createContext(null)
@@ -95,7 +95,7 @@ export function AuthProvider({ children }) {
       const data = await response.json()
       if (response.ok && data.success) {
         const nextUser = normalizeUser(data.user)
-        return { success: true, user: nextUser }
+        return { success: true, user: nextUser, message: data.message, review_demo: Boolean(data.review_demo) }
       } else {
         let errorMsg = 'Registration failed'
         if (typeof data.detail === 'string') {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from '../routes/navigation.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import Footer from '../components/Common/Footer.jsx'
@@ -9,7 +9,8 @@ import '../styles/Login.css'
 
 const trustBadges = ['🔒 Secure Login', '🛡 AI Powered', '🚖 Trusted by Taxi Drivers']
 
-const PAYU_REVIEW_MODE = import.meta.env.VITE_PAYU_REVIEW_MODE === 'true'
+// Keep the reviewer credentials visible unless the deployment explicitly disables them.
+const PAYU_REVIEW_MODE = import.meta.env.VITE_PAYU_REVIEW_MODE !== 'false'
 
 const DEMO_ACCOUNTS = [
   {
@@ -76,6 +77,14 @@ function Login() {
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState(initialErrors)
   const [successMessage, setSuccessMessage] = useState('')
+
+  useEffect(() => {
+    const reviewNotice = sessionStorage.getItem('tapgo_registration_notice')
+    if (reviewNotice) {
+      setSuccessMessage(reviewNotice)
+      sessionStorage.removeItem('tapgo_registration_notice')
+    }
+  }, [])
 
   const updateField = (event) => {
     const { name, value } = event.target

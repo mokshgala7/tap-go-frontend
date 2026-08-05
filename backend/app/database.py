@@ -1,3 +1,7 @@
+import os
+import shutil
+from pathlib import Path
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import settings
@@ -8,6 +12,25 @@ def get_engine():
     If MySQL is reachable, it uses MySQL. If MySQL is unreachable or not configured,
     it falls back to SQLite so the server runs smoothly on any deployment.
     """
+    if settings.REVIEW_DEMO_MODE:
+        project_root = Path(__file__).resolve().parent.parent
+        seed_database = project_root / "reviewer_seed" / "tapgo-reviewer.db"
+        runtime_database = Path(os.getenv("REVIEW_DEMO_DATABASE_PATH", "/tmp/tapgo-reviewer.db"))
+
+        if not seed_database.exists():
+            raise RuntimeError(f"Reviewer database snapshot is missing: {seed_database}")
+
+        # Always restore the bundled snapshot when the service process starts.
+        # Changes made by a reviewer are temporary and never alter the source snapshot.
+        runtime_database.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(seed_database, runtime_database)
+        print("[Database] Restored the PayU reviewer database snapshot.")
+        return create_engine(
+            f"sqlite:///{runtime_database}",
+            connect_args={"check_same_thread": False},
+            echo=False,
+        )
+
     db_url = settings.DATABASE_URL
     if db_url.startswith("sqlite"):
         print("[Database] Using SQLite database file.")
@@ -34,4 +57,3 @@ def get_db():
         yield db
     finally:
         db.close()
-

@@ -15,6 +15,11 @@ for p in possible_env_paths:
 
 class Settings:
     @property
+    def REVIEW_DEMO_MODE(self) -> bool:
+        """Run the hosted PayU review environment from a resettable snapshot."""
+        return os.getenv("REVIEW_DEMO_MODE", "false").lower() in ("1", "true", "yes")
+
+    @property
     def DB_HOST(self) -> str:
         return os.getenv("DB_HOST", "localhost")
 
@@ -69,6 +74,15 @@ class Settings:
     @property
     def SMTP_FROM_EMAIL(self) -> str:
         return os.getenv("SMTP_FROM_EMAIL", "TapAndGo <test@gmail.com>")
+
+    @property
+    def RESEND_API_KEY(self) -> str:
+        """Optional HTTPS email provider key used by the hosted review demo."""
+        return os.getenv("RESEND_API_KEY", "")
+
+    @property
+    def RESEND_FROM_EMAIL(self) -> str:
+        return os.getenv("RESEND_FROM_EMAIL", self.SMTP_FROM_EMAIL)
 
     @property
     def DATABASE_URL(self) -> str:

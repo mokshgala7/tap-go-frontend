@@ -111,6 +111,9 @@ function RegistrationReview() {
 
     if (res.success) {
       sessionStorage.removeItem('registrationReviewData')
+      if (res.review_demo && res.message) {
+        sessionStorage.setItem('tapgo_registration_notice', res.message)
+      }
       navigate('/login')
     } else {
       setErrorMessage(res.message || 'Registration failed')

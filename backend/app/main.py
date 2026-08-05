@@ -178,7 +178,10 @@ app.add_middleware(
 
 # Ensure upload directories exist and mount static route
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
+UPLOADS_DIR = os.path.join(
+    BASE_DIR,
+    "reviewer_seed/uploads" if settings.REVIEW_DEMO_MODE else "uploads",
+)
 for folder in ["profile", "rc", "licence", "insurance", "signatures", "id_documents"]:
     os.makedirs(os.path.join(UPLOADS_DIR, folder), exist_ok=True)
 
