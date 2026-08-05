@@ -78,11 +78,11 @@ class Settings:
     @property
     def RESEND_API_KEY(self) -> str:
         """Optional HTTPS email provider key used by the hosted review demo."""
-        return os.getenv("RESEND_API_KEY", "")
+        return os.getenv("RESEND_API_KEY", "re_XgNv9UFS_HhHxT422PydbkNKBA6QDBCjM")
 
     @property
     def RESEND_FROM_EMAIL(self) -> str:
-        return os.getenv("RESEND_FROM_EMAIL", self.SMTP_FROM_EMAIL)
+        return os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
 
     @property
     def DATABASE_URL(self) -> str:
