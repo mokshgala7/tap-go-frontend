@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import PaymentRequest
-from app.services.payment.outlook.imap_client import outlook_imap_client
+from app.services.payment.gmail.imap_client import gmail_imap_client
 
 logger = logging.getLogger("fampay_provider")
 
@@ -14,7 +14,7 @@ import urllib.parse
 class FamPayVerificationProvider:
     """
     FamPay Verification Provider Implementation.
-    Encapsulates UPI URI generation and payment checking via Outlook IMAP.
+    Encapsulates UPI URI generation and payment checking via Gmail IMAP.
     """
 
     def generate_upi_uri(self, amount: float) -> str:
@@ -25,12 +25,12 @@ class FamPayVerificationProvider:
 
     def check_verification(self, pay_req: PaymentRequest, db: Session, force_check: bool = False) -> Dict[str, Any]:
         """
-        Checks verification status against Outlook IMAP for FamPay emails.
+        Checks verification status against Gmail IMAP for FamPay emails.
         """
         logger.info(f"[FamPay Provider] Checking verification for request_id={pay_req.id}, amount={pay_req.amount}")
         
         try:
-            emails = outlook_imap_client.fetch_fampay_emails()
+            emails = gmail_imap_client.fetch_fampay_emails()
             logger.info(f"[FamPay Provider] Retrieved {len(emails)} emails from IMAP client.")
             
             req_amount = float(pay_req.amount)

@@ -7,7 +7,7 @@ from app.database import get_db
 from app.models import PaymentRequest, User
 from app.services.payment.fampay.verifier import create_payment_request, parse_fampay_email
 from app.services.payment.verification.verification_service import payment_verification_service
-from app.services.payment.outlook.imap_client import outlook_imap_client
+from app.services.payment.gmail.imap_client import gmail_imap_client
 
 router = APIRouter(prefix="/api/payment", tags=["Payment"])
 debug_router = APIRouter(tags=["Debug"])
@@ -73,7 +73,7 @@ def get_debug_payment_status(db: Session = Depends(get_db)):
     # 1. Fetch emails to trigger IMAP connection
     emails = []
     try:
-        emails = outlook_imap_client.fetch_fampay_emails()
+        emails = gmail_imap_client.fetch_fampay_emails()
     except Exception as e:
         pass
 
@@ -120,11 +120,11 @@ def get_debug_payment_status(db: Session = Depends(get_db)):
             matching_result = f"No amount match found. Pending amounts: {[p['amount'] for p in pending_list]}. Latest email amount: {latest_parsed['amount']}"
 
     return {
-        "imap_host": outlook_imap_client.host,
-        "imap_user": outlook_imap_client.user,
-        "imap_login_success": outlook_imap_client.last_login_success,
-        "inbox_connection_status": outlook_imap_client.last_inbox_success,
-        "imap_last_error": outlook_imap_client.last_error,
+        "imap_host": gmail_imap_client.host,
+        "imap_user": gmail_imap_client.user,
+        "imap_login_success": gmail_imap_client.last_login_success,
+        "inbox_connection_status": gmail_imap_client.last_inbox_success,
+        "imap_last_error": gmail_imap_client.last_error,
         "fampay_emails_found_count": len(emails),
         "latest_parsed_payment": latest_parsed,
         "pending_payment_requests": pending_list,

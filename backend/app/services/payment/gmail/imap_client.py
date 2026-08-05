@@ -12,8 +12,11 @@ logger = logging.getLogger("gmail_imap")
 
 class GmailImapClient:
     """
-    Connects to Gmail IMAP (imap.gmail.com:993) via SSL and fetches FamPay/FamApp
-    payment notification emails (including emails forwarded from Outlook to Gmail).
+    Connects directly to Gmail IMAP (imap.gmail.com:993) via SSL using the Gmail account
+    credentials configured in .env (GMAIL_USER / SMTP_USER and GMAIL_APP_PASSWORD / SMTP_PASSWORD).
+
+    Fetches payment notification emails sent by FamApp / FamPay (e.g. from no-reply@famapp.in)
+    to automatically verify payments and credit passenger wallets.
     """
 
     def __init__(self):
@@ -31,7 +34,7 @@ class GmailImapClient:
 
     @property
     def user(self) -> str:
-        return settings.GMAIL_USER or "mokshgala070@gmail.com"
+        return settings.GMAIL_USER or settings.SMTP_USER or "mokshgala070@gmail.com"
 
     @property
     def password(self) -> str:
@@ -40,11 +43,11 @@ class GmailImapClient:
     def fetch_fampay_emails(self) -> List[Dict[str, Any]]:
         """
         Connects to Gmail IMAP via SSL and retrieves payment notification emails.
-        Searches for emails from 'no-reply@famapp.in' or forwarded FamPay emails in Gmail.
+        Searches for emails from 'no-reply@famapp.in' or emails containing FamPay payment details.
         """
         logger.info(f"[Gmail IMAP] Connecting to {self.host}:{self.port} for user={self.user}")
         if not self.user or not self.password:
-            logger.info("[Gmail IMAP] Gmail credentials not configured in environment variables.")
+            logger.warning("[Gmail IMAP] Gmail credentials (GMAIL_USER / SMTP_USER & GMAIL_APP_PASSWORD / SMTP_PASSWORD) not configured in .env.")
             return []
 
         messages_list = []
@@ -53,41 +56,41 @@ class GmailImapClient:
             logger.info(f"[Gmail IMAP] Connecting via SSL to {self.host}:{self.port}...")
             mail = imaplib.IMAP4_SSL(self.host, self.port)
 
-            logger.info(f"[Gmail IMAP] Logging in as {self.user}...")
+            logger.info(f"[Gmail IMAP] Logging into Gmail as {self.user}...")
             mail.login(self.user, self.password)
             self.last_login_success = True
-            logger.info("[Gmail IMAP] Login succeeded.")
+            logger.info("[Gmail IMAP] Gmail IMAP login succeeded!")
 
             logger.info("[Gmail IMAP] Selecting INBOX...")
             select_status, select_data = mail.select("INBOX")
             if select_status == "OK":
                 self.last_inbox_success = True
-                logger.info("[Gmail IMAP] INBOX selected successfully.")
+                logger.info("[Gmail IMAP] Gmail INBOX selected successfully.")
             else:
                 self.last_inbox_success = False
-                logger.error(f"[Gmail IMAP] Failed to select INBOX: {select_status} {select_data}")
+                logger.error(f"[Gmail IMAP] Failed to select Gmail INBOX: {select_status} {select_data}")
                 self.last_error = f"Select INBOX failed: {select_status}"
                 mail.logout()
                 return []
 
-            # Search for emails from no-reply@famapp.in OR emails mentioning FamApp/FamPay (forwarded from Outlook)
-            logger.info("[Gmail IMAP] Searching for FamPay / FamApp payment emails in Gmail INBOX...")
+            # 1. Search for emails from no-reply@famapp.in or containing FamApp/FamPay in subject/body
+            logger.info("[Gmail IMAP] Searching Gmail INBOX for FamPay / FamApp payment emails...")
             status, data = mail.search(None, '(OR (FROM "no-reply@famapp.in") (OR (SUBJECT "FamApp") (OR (SUBJECT "FamPay") (BODY "FamApp"))))')
 
             if status != "OK" or not data or not data[0]:
-                logger.info("[Gmail IMAP] Fallback search for all recent messages...")
+                logger.info("[Gmail IMAP] Specific search yielded 0 results. Running fallback search for recent emails...")
                 status, data = mail.search(None, "ALL")
 
             if status != "OK" or not data or not data[0]:
-                logger.info("[Gmail IMAP] No matching payment emails found in Gmail INBOX.")
+                logger.info("[Gmail IMAP] No matching emails found in Gmail INBOX.")
                 mail.logout()
                 return []
 
             email_ids = data[0].split()
-            logger.info(f"[Gmail IMAP] Found {len(email_ids)} matching messages in Gmail INBOX.")
+            logger.info(f"[Gmail IMAP] Found {len(email_ids)} total messages in search result.")
 
             recent_ids = email_ids[-20:]
-            logger.info(f"[Gmail IMAP] Processing the last {len(recent_ids)} recent emails...")
+            logger.info(f"[Gmail IMAP] Inspecting the last {len(recent_ids)} recent emails...")
 
             for msg_id in reversed(recent_ids):
                 try:
@@ -124,8 +127,9 @@ class GmailImapClient:
                                 except Exception:
                                     pass
 
-                            # Include if it contains FamApp / FamPay / UPI payment info
-                            if any(k in f"{subject} {body}".lower() for k in ["famapp", "fampay", "received", "credited", "upi", "inr", "rs."]):
+                            full_content = f"{subject} {body}".lower()
+                            # Check if email contains payment attributes
+                            if any(k in full_content for k in ["famapp", "fampay", "received", "credited", "upi", "inr", "rs.", "utr", "rrn"]):
                                 messages_list.append({
                                     "id": f"GMAIL-IMAP-{msg_id.decode('utf-8', errors='ignore')}",
                                     "subject": subject,
@@ -136,7 +140,7 @@ class GmailImapClient:
                     logger.warning(f"[Gmail IMAP] Error fetching email ID {msg_id}: {fetch_ex}")
 
             mail.logout()
-            logger.info(f"[Gmail IMAP] Successfully parsed {len(messages_list)} payment notification emails from Gmail.")
+            logger.info(f"[Gmail IMAP] Successfully retrieved {len(messages_list)} payment notification emails from Gmail.")
             self.last_error = None
             return messages_list
         except Exception as e:
@@ -152,4 +156,4 @@ class GmailImapClient:
             return []
 
 
-outlook_imap_client = GmailImapClient()
+gmail_imap_client = GmailImapClient()

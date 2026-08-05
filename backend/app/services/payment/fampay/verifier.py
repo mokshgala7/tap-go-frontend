@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import PaymentRequest, Transaction, User, Wallet
 from app.routes.wallet import get_or_create_wallet, wallet_to_dict
-from app.services.payment.outlook.imap_client import outlook_imap_client
+from app.services.payment.gmail.imap_client import gmail_imap_client
 
 logger = logging.getLogger("fampay_verifier")
 
