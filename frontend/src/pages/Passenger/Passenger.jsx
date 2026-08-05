@@ -6,6 +6,7 @@ import { useWallet } from '../../context/WalletContext.jsx'
 import { useDarkMode } from '../../hooks/useDarkMode.js'
 import { RANGE_OPTIONS, formatRelativeTime, vehicleLabel } from './format.js'
 import FamPayPaymentModal from '../../components/Payment/FamPayPaymentModal.jsx'
+import DemoInfoCard from '../../components/Common/DemoInfoCard.jsx'
 import './Passenger.css'
 
 const Icon = ({ children, className = '' }) => (
@@ -1045,6 +1046,10 @@ function Passenger() {
         <PassengerDocCard title="Profile Photo" path={user?.profile_photo} />
         <PassengerDocCard title="Govt ID / Aadhaar / PAN" path={user?.id_document} />
         <PassengerDocCard title="Digital Signature" path={user?.signature_document} />
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <DemoInfoCard type="documents" />
       </div>
 
       <div style={{ marginTop: 12 }}>

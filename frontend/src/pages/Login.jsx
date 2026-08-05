@@ -3,6 +3,8 @@ import { Link, useNavigate } from '../routes/navigation.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import Footer from '../components/Common/Footer.jsx'
 import Navbar from '../components/Common/Navbar.jsx'
+import DemoInfoBanner from '../components/Common/DemoInfoBanner.jsx'
+import DemoInfoCard from '../components/Common/DemoInfoCard.jsx'
 import illustration from '../assets/images/login-fintech-taxi.svg'
 import logo from '../assets/images/logio.png'
 import '../styles/Login.css'
@@ -193,6 +195,7 @@ function Login() {
   return (
     <div className="tapgo-login tapgo-shell font-body-lg antialiased selection:bg-secondary-container selection:text-on-secondary-container">
       <Navbar />
+      <DemoInfoBanner />
 
       <main className="login-main">
         <div className="login-background" aria-hidden="true">
@@ -332,6 +335,10 @@ function Login() {
                 )}
               </div>
             </article>
+
+            <div className="mt-6">
+              <DemoInfoCard type="database" />
+            </div>
 
             {PAYU_REVIEW_MODE && (
               <div className="demo-accounts-card" aria-label="Demo accounts for PayU review">

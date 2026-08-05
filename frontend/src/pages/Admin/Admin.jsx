@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from '../../routes/navigation.jsx'
 import { adminRequest, API_BASE, fileUrl } from './api.js'
 import DatabaseViewer from './database/DatabaseViewer.jsx'
+import DemoInfoCard from '../../components/Common/DemoInfoCard.jsx'
 import './admin.css'
 
 const navigation = [
@@ -45,7 +46,7 @@ function Dashboard({ adminId }) {
     ['Total Passengers', stats.total_passengers, `${stats.active_passengers} active`], ['Transactions', stats.total_transactions, `${stats.today_transactions} today`], ['Wallet Balance', money(stats.wallet_balance), 'Across live wallets'],
     ['Revenue', money(stats.revenue), 'Completed transactions'], ['Fraud Alerts', stats.fraud_alerts, 'Awaiting review'], ['Edit Requests', stats.pending_edit_requests, 'Awaiting action'],
   ]
-  return <section className="admin-section"><div className="section-heading"><div><span className="eyebrow">Operations at a glance</span><h2>Dashboard Overview</h2><p>Live counts from the Tap&Go MySQL database.</p></div></div><LoadState error={error}>{!stats ? <Empty text="Loading live operations…" /> : <div className="metric-grid">{cards.map(([label, value, hint]) => <article className="metric-card" key={label}><div className="metric-icon">◈</div><p>{label}</p><strong>{typeof value === 'number' ? number(value) : value}</strong><small>{hint}</small></article>)}</div>}</LoadState></section>
+  return <section className="admin-section"><DemoInfoCard type="admin_dashboard" className="mb-6" /><div className="section-heading"><div><span className="eyebrow">Operations at a glance</span><h2>Dashboard Overview</h2><p>Live counts from the Tap&Go backend database.</p></div></div><LoadState error={error}>{!stats ? <Empty text="Loading live operations…" /> : <div className="metric-grid">{cards.map(([label, value, hint]) => <article className="metric-card" key={label}><div className="metric-icon">◈</div><p>{label}</p><strong>{typeof value === 'number' ? number(value) : value}</strong><small>{hint}</small></article>)}</div>}</LoadState></section>
 }
 
 function UserDirectory({ adminId, type }) {

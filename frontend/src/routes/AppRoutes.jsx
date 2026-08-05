@@ -6,6 +6,7 @@ import Login from '../pages/Login.jsx'
 import Passenger from '../pages/Passenger/Passenger.jsx'
 import Register from '../pages/Register/Register.jsx'
 import RegistrationReview from '../pages/RegistrationReview.jsx'
+import ReadmePage from '../pages/ReadmePage.jsx'
 import { useCurrentView } from './navigation.jsx'
 
 // Tap&Go is a single-page app: this is the only place that decides what's
@@ -23,6 +24,8 @@ function AppRoutes() {
       return <RegistrationReview />
     case 'forgot-password':
       return <ForgotPassword />
+    case 'readme':
+      return <ReadmePage />
     case 'passenger':
       return <Passenger />
     case 'driver':

@@ -4,6 +4,41 @@ Tap&Go is a modern, secure, and instant cashless payment and payout ecosystem bu
 
 ---
 
+## 📋 PayU Merchant Verification Notes
+
+This deployment is created specifically for **PayU Merchant Verification**.
+
+The PayU review team can test and evaluate all end-to-end business workflows in this demonstration deployment. Certain production infrastructure services are simulated due to hosting environment constraints (Render Free Tier & Vercel Free Tier). Below is a complete breakdown of hosted demonstration behavior vs live production implementation.
+
+### 1. Database Persistence
+- **Demo Deployment (Render Free Tier):** The backend database is **REAL and fully functional** while the server container is live. Account registrations, wallet top-ups, ride payments, profile updates, and admin actions are saved normally in active database storage. Whenever the Render server container restarts or redeploys, a clean seeded database snapshot is automatically restored. This behavior guarantees every PayU reviewer starts with a clean, fully-populated demonstration environment.
+- **Production Environment:** Will use a persistent managed database service (e.g., AWS RDS MySQL / GCP Cloud SQL). User registrations, wallet balances, and transactions will remain permanently and never reset after redeployments.
+
+### 2. OTP Verification
+- **Demo Deployment:** SMS OTP delivery is intentionally simulated in this hosted deployment. A secure 6-digit OTP is automatically generated and auto-filled in the frontend so reviewers can complete the registration and recovery flows seamlessly without requiring external SMS delivery.
+- **Production Environment:** The backend generates the OTP and dispatches it directly to the user's mobile number via an integrated SMS Gateway (Twilio / Fast2SMS). The user manually enters the received SMS code for validation.
+
+### 3. Uploaded Document Storage
+- **Demo Deployment:** Uploaded driver licences, vehicle RC books, Aadhaar/PAN cards, and digital signatures are processed and stored temporarily within the active server container. File previews after container restarts are represented by professional documentation cards.
+- **Production Environment:** Uploaded documents will be stored securely using persistent Object Storage (e.g., AWS S3 / Google Cloud Storage) with encrypted pre-signed URLs for reviewer access and document previews.
+
+### 4. Payment Gateway Integration
+- **Demo Deployment:** Demonstrates the cashless transit payment workflow using a dynamic UPI QR integration with real-time wallet ledger updates.
+- **Production Environment:** Upon PayU Merchant Account approval, the temporary payment implementation will be replaced with official PayU Payment Gateway APIs (PayU Web Checkout SDK & Webhook Callbacks) without altering the user wallet experience or transaction history.
+
+### 📊 Deployment vs Production Summary
+
+| Feature | Demo Deployment (Hosted) | Production Environment |
+| :--- | :--- | :--- |
+| **Frontend** | Vercel Global CDN | Vercel / Custom CDN |
+| **Backend API** | Render Web Service (FastAPI) | AWS ECS / Render Dedicated Instance |
+| **Database** | Temporary Render Container Database | Persistent Managed Database (AWS RDS) |
+| **OTP Delivery** | Auto-Generated & Auto-Filled | Real SMS Gateway Delivery |
+| **Document Storage** | Temporary Instance Storage | Persistent Object Storage (AWS S3) |
+| **Payment Gateway** | Demo UPI Payment Integration | Official PayU Payment Gateway APIs |
+
+---
+
 ## 🚀 Architecture & Tech Stack
 
 ```text

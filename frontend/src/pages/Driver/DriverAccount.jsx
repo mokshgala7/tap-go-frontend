@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth, resolveFileUrl } from '../../context/AuthContext.jsx'
 import { useDriverData } from '../../context/DriverContext.jsx'
+import DemoInfoCard from '../../components/Common/DemoInfoCard.jsx'
 import { inr } from './format.js'
 
 const Icon = ({ children, className = '' }) => (
@@ -365,6 +366,10 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
         <DocCard title="RC Book Document" path={user?.rc_document} type="Document" />
         <DocCard title="Driving Licence Document" path={user?.licence_document} type="Document" />
         <DocCard title="Insurance Document" path={user?.insurance_document} type="Document" />
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <DemoInfoCard type="documents" />
       </div>
 
       <div style={{ marginTop: 12 }}>

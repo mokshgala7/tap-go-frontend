@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 const PROTECTED_VIEWS = new Set(['passenger', 'driver', 'admin'])
 
 // Views that are public
-const PUBLIC_VIEWS = new Set(['home', 'login', 'register', 'registration-review', 'forgot-password'])
+const PUBLIC_VIEWS = new Set(['home', 'login', 'register', 'registration-review', 'forgot-password', 'readme'])
 
 const ROUTE_TO_VIEW = {
   '/': 'home',
@@ -13,6 +13,8 @@ const ROUTE_TO_VIEW = {
   '/register': 'register',
   '/registration-review': 'registration-review',
   '/forgot-password': 'forgot-password',
+  '/readme': 'readme',
+  '/verification-guide': 'readme',
   '/passenger': 'passenger',
   '/driver': 'driver',
   '/admin': 'admin',

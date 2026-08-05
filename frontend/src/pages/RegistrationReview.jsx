@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from '../routes/navigation.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import DemoInfoCard from '../components/Common/DemoInfoCard.jsx'
 
 function RegistrationReview() {
   const navigate = useNavigate()
@@ -250,6 +251,8 @@ function RegistrationReview() {
                 <span className="text-gray-400 text-sm font-medium">Signature preview</span>
               )}
             </div>
+
+            <DemoInfoCard type="documents" />
           </div>
         </div>
 

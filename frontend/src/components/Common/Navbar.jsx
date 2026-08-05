@@ -55,7 +55,7 @@ function Navbar() {
           Tap<span className="text-yellow-500">&amp;</span>Go
         </Link>
 
-        <nav className="hidden gap-8 text-sm font-semibold md:flex" aria-label="Primary navigation">
+        <nav className="hidden gap-8 text-sm font-semibold md:flex items-center" aria-label="Primary navigation">
           <Link to="/">Home</Link>
           <button className="tapgo-nav-link" type="button" onClick={() => handleSectionClick('features')}>
             Features
@@ -91,6 +91,11 @@ function Navbar() {
               </div>
             )}
           </div>
+
+          <Link className="tapgo-nav-link flex items-center gap-1 font-bold text-indigo-600 hover:text-indigo-800" to="/readme">
+            <span className="material-symbols-outlined text-base">description</span>
+            <span>README</span>
+          </Link>
         </nav>
 
         <div className="flex gap-3">

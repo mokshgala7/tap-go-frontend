@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '../../routes/navigation.jsx'
+import DemoInfoBanner from '../../components/Common/DemoInfoBanner.jsx'
+import DemoInfoCard from '../../components/Common/DemoInfoCard.jsx'
 import '../../styles/AuthPages.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.onrender.com'
@@ -618,6 +620,10 @@ function Register() {
               <p className="text-[#8E8E93] text-base lg:text-lg font-medium tracking-wide">Join the secure cashless ecosystem with Tap&Go.</p>
             </div>
 
+            <div className="mb-8">
+              <DemoInfoCard type="database" />
+            </div>
+
             <form className="space-y-10" noValidate onSubmit={handleSubmit}>
               <div className="bg-white p-2.5 rounded-[1.25rem] shadow-card-border">
                 <div className="flex">
@@ -730,6 +736,9 @@ function Register() {
                     )}
                   </div>
                   <FloatingInput name="phone" type="tel" maxLength={10} value={form.phone} onChange={updateForm} touched={touched.phone} valid={valid.phone} />
+                </div>
+                <div className="pt-2">
+                  <DemoInfoCard type="otp" />
                 </div>
               </section>
 
