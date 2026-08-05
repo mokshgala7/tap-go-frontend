@@ -20,11 +20,12 @@ def get_engine():
         if not seed_database.exists():
             raise RuntimeError(f"Reviewer database snapshot is missing: {seed_database}")
 
-        # Always restore the bundled snapshot when the service process starts.
-        # Changes made by a reviewer are temporary and never alter the source snapshot.
-        runtime_database.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(seed_database, runtime_database)
-        print("[Database] Restored the PayU reviewer database snapshot.")
+        if not runtime_database.exists():
+            runtime_database.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(seed_database, runtime_database)
+            print("[Database] Initialized runtime database from reviewer seed snapshot.")
+        else:
+            print("[Database] Using existing live runtime database.")
         return create_engine(
             f"sqlite:///{runtime_database}",
             connect_args={"check_same_thread": False},
