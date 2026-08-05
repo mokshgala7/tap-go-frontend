@@ -550,7 +550,8 @@ function Passenger() {
         </p>
       </div>
 
-      {import.meta.env.VITE_PAYU_REVIEW_MODE === 'true' && (
+      {/* Always show the PayU review workflow details */}
+      {true && (
         <div style={{
           marginTop: 28,
           borderRadius: 24,
