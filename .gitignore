@@ -144,3 +144,5 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+frontend/.env
