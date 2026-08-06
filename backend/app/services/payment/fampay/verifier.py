@@ -31,6 +31,7 @@ def parse_fampay_email(email_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     try:
         raw_id = email_item.get("id")
+        imap_uid = email_item.get("imap_uid") or raw_id
         top_level_from = email_item.get("from", "")
         top_level_subject = email_item.get("subject", "")
         body_content = email_item.get("body", {}).get("content", "")
@@ -50,10 +51,11 @@ def parse_fampay_email(email_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         original_subject = fwd_subj_match.group(1).strip() if fwd_subj_match else "None"
 
         # ── 2. Explicit Debug Logging ──────────────────────────────────────────
-        logger.info(f"[FamPay Parser] Top-level From: '{top_level_from}'")
-        logger.info(f"[FamPay Parser] Top-level Subject: '{top_level_subject}'")
-        logger.info(f"[FamPay Parser] Original forwarded From: '{original_from}'")
-        logger.info(f"[FamPay Parser] Original forwarded Subject: '{original_subject}'")
+        logger.info(f"[FamPay Parser] Parsing email (UID: {imap_uid}):")
+        logger.info(f"[FamPay Parser]  Top-level sender: '{top_level_from}'")
+        logger.info(f"[FamPay Parser]  Top-level Subject: '{top_level_subject}'")
+        logger.info(f"[FamPay Parser]  Original forwarded sender: '{original_from}'")
+        logger.info(f"[FamPay Parser]  Original forwarded Subject: '{original_subject}'")
 
         # ── 3. Security Verification: Validate FamApp Sender ──────────────────
         # Email MUST be sent directly by no-reply@famapp.in OR contain original sender no-reply@famapp.in inside forwarded header block
@@ -61,7 +63,11 @@ def parse_fampay_email(email_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         is_forwarded_famapp = "no-reply@famapp.in" in original_from.lower() or "famapp.in" in original_from.lower() or "famapp" in original_from.lower()
 
         if not (is_direct_famapp or is_forwarded_famapp):
-            logger.info(f"[FamPay Parser] Email rejected: Sender '{top_level_from}' / Original sender '{original_from}' is not no-reply@famapp.in.")
+            fail_reason = (
+                f"Sender verification FAILED: Top-level sender '{top_level_from}' and original sender '{original_from}' "
+                f"do not match FamApp sender domain ('no-reply@famapp.in' / 'famapp.in')."
+            )
+            logger.warning(f"[FamPay Parser] [UID: {imap_uid}] {fail_reason}")
             return None
 
         # ── 4. Extract Amount ────────────────────────────────────────────────
@@ -72,16 +78,21 @@ def parse_fampay_email(email_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             amt_match = re.search(r"(?:received|credited|paid|payment of)\s+(?:₹|Rs\.?|INR|\u20b9)?\s*([\d,]+(?:\.\d{1,2})?)", full_text, re.IGNORECASE)
 
         if not amt_match:
-            logger.info("[FamPay Parser] Could not extract payment amount from email.")
+            fail_reason = f"Amount extraction FAILED: Could not locate numeric payment amount (₹/Rs/INR) in email text."
+            logger.warning(f"[FamPay Parser] [UID: {imap_uid}] {fail_reason}")
             return None
 
         val_str = amt_match.group(1).replace(",", "").strip()
         if not val_str:
+            fail_reason = f"Amount extraction FAILED: Amount text string was empty after cleanup."
+            logger.warning(f"[FamPay Parser] [UID: {imap_uid}] {fail_reason}")
             return None
 
         try:
             amount_val = float(val_str)
-        except ValueError:
+        except ValueError as ve:
+            fail_reason = f"Amount parsing FAILED: Could not convert '{val_str}' to float ({ve})."
+            logger.warning(f"[FamPay Parser] [UID: {imap_uid}] {fail_reason}")
             return None
 
         # ── 5. Extract UTR / RRN (12 digits) ──────────────────────────────────
@@ -106,8 +117,20 @@ def parse_fampay_email(email_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             except Exception:
                 pass
 
+        logger.info(
+            f"[FamPay Parser] Parse SUCCESS for Email UID: {imap_uid}\n"
+            f"  Top-level sender: '{top_level_from}'\n"
+            f"  Original forwarded sender: '{original_from}'\n"
+            f"  Parsed amount: {amount_val}\n"
+            f"  Parsed UTR: {utr_val}\n"
+            f"  Parsed transaction ID: {txn_id_val}\n"
+            f"  Parsed payer: '{payer_name}'\n"
+            f"  Parsed received_at: {received_dt}"
+        )
+
         return {
             "raw_email_id": raw_id,
+            "imap_uid": imap_uid,
             "top_level_from": top_level_from,
             "top_level_subject": top_level_subject,
             "original_from": original_from,
@@ -119,7 +142,8 @@ def parse_fampay_email(email_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             "received_at": received_dt,
         }
     except Exception as e:
-        logger.error(f"[FamPay Parser] Email parse error: {e}")
+        fail_reason = f"Unhandled exception during parsing: {e}"
+        logger.error(f"[FamPay Parser] [UID: {email_item.get('id')}] {fail_reason}")
         return None
 
 

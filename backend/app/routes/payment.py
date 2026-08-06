@@ -64,70 +64,83 @@ def force_check_payment(request_id: int, db: Session = Depends(get_db)):
     return res
 
 
-@debug_router.get("/debug/payment-status")
-def get_debug_payment_status(db: Session = Depends(get_db)):
+@router.get("/debug/status")
+def get_payment_debug_status(db: Session = Depends(get_db)):
     """
-    Temporary debug endpoint to diagnose Gmail IMAP connection, parsed email payload,
-    and pending requests mapping.
+    Temporary debug endpoint: GET /api/payment/debug/status
+    Traces Gmail IMAP login, mailbox selection, parsed email payload,
+    pending requests, and payment verification diagnostic result.
     """
-    # 1. Fetch emails to trigger IMAP connection
     emails = []
     try:
         emails = gmail_imap_client.fetch_fampay_emails()
-    except Exception as e:
+    except Exception:
         pass
 
-    # 2. Get latest parsed email details
-    latest_parsed = None
+    latest_email = None
     if emails:
         for item in emails:
             parsed = parse_fampay_email(item)
             if parsed:
-                latest_parsed = {
-                    "raw_email_id": parsed.get("raw_email_id"),
+                latest_email = {
+                    "from": parsed.get("original_from") or parsed.get("top_level_from"),
+                    "subject": parsed.get("original_subject") or parsed.get("top_level_subject"),
                     "amount": parsed.get("amount"),
                     "utr": parsed.get("utr"),
-                    "provider_transaction_id": parsed.get("provider_transaction_id"),
-                    "payer_name": parsed.get("payer_name"),
                     "received_at": parsed.get("received_at").isoformat() if parsed.get("received_at") else None,
-                    "subject": parsed.get("subject"),
                 }
                 break
 
-    # 3. Get pending requests
+        if not latest_email and len(emails) > 0:
+            first = emails[0]
+            latest_email = {
+                "from": first.get("from", ""),
+                "subject": first.get("subject", ""),
+                "amount": None,
+                "utr": None,
+                "received_at": first.get("receivedDateTime", ""),
+            }
+
     pending_reqs = db.query(PaymentRequest).filter(PaymentRequest.status == "Pending").all()
     pending_list = []
     for pr in pending_reqs:
         pending_list.append({
             "id": pr.id,
-            "user_id": pr.user_id,
-            "wallet_id": pr.wallet_id,
             "amount": float(pr.amount),
-            "status": pr.status,
             "created_at": pr.created_at.isoformat() if pr.created_at else None,
+            "status": pr.status,
         })
 
-    # 4. Generate matching diagnostics
-    matching_result = "No pending requests or no emails found."
-    if pending_list and latest_parsed:
-        match_found = False
-        for pr in pending_list:
-            if abs(pr["amount"] - latest_parsed["amount"]) < 0.01:
-                matching_result = f"Potential match found on Amount={pr['amount']} for Request ID={pr['id']}"
-                match_found = True
-                break
-        if not match_found:
-            matching_result = f"No amount match found. Pending amounts: {[p['amount'] for p in pending_list]}. Latest email amount: {latest_parsed['amount']}"
+    verification_result = "Pending"
+    failure_reason = None
+
+    if pending_reqs:
+        latest_req = pending_reqs[-1]
+        res = payment_verification_service.verify_payment(latest_req.id, db, force_check=True)
+        if res.get("success") and res.get("status") == "Completed":
+            verification_result = "Verified"
+            failure_reason = None
+        else:
+            verification_result = "Failed"
+            failure_reason = res.get("failure_reason") or res.get("message")
+    else:
+        verification_result = "No pending payment requests"
+        failure_reason = "No pending payment requests found in DB."
 
     return {
-        "imap_host": gmail_imap_client.host,
-        "imap_user": gmail_imap_client.user,
-        "imap_login_success": gmail_imap_client.last_login_success,
-        "inbox_connection_status": gmail_imap_client.last_inbox_success,
-        "imap_last_error": gmail_imap_client.last_error,
-        "fampay_emails_found_count": len(emails),
-        "latest_parsed_payment": latest_parsed,
+        "gmail_login_success": gmail_imap_client.last_login_success,
+        "gmail_account": gmail_imap_client.user or "Not configured",
+        "mailbox_selected": gmail_imap_client.last_inbox_success,
+        "emails_found": len(emails),
+        "latest_email": latest_email,
         "pending_payment_requests": pending_list,
-        "matching_result": matching_result,
-        "final_verification_status": "Success" if (latest_parsed and pending_list and "Potential match found" in matching_result) else "Pending"
+        "verification_result": verification_result,
+        "failure_reason": failure_reason,
     }
+
+
+@debug_router.get("/debug/payment-status")
+def get_debug_payment_status(db: Session = Depends(get_db)):
+    """Legacy alias endpoint for backward compatibility."""
+    return get_payment_debug_status(db)
+

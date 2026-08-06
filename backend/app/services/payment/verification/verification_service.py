@@ -69,6 +69,7 @@ class PaymentVerificationService:
                     "success": False,
                     "status": pay_req.status,
                     "message": provider_result.get("message", "Payment verification pending."),
+                    "failure_reason": provider_result.get("failure_reason"),
                     "amount": float(pay_req.amount),
                 }
 
