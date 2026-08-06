@@ -67,7 +67,7 @@ def force_check_payment(request_id: int, db: Session = Depends(get_db)):
 @router.get("/debug/status")
 def get_payment_debug_status(db: Session = Depends(get_db)):
     """
-    Temporary debug endpoint: GET /api/payment/debug/status
+    Enhanced debug endpoint: GET /api/payment/debug/status
     Traces Gmail IMAP login, mailbox selection, parsed email payload,
     pending requests, and payment verification diagnostic result.
     """
@@ -77,29 +77,35 @@ def get_payment_debug_status(db: Session = Depends(get_db)):
     except Exception:
         pass
 
-    latest_email = None
+    latest_candidate_email = None
+    latest_candidate_amount = None
+    latest_candidate_received_at = None
+
     if emails:
         for item in emails:
             parsed = parse_fampay_email(item)
             if parsed:
-                latest_email = {
+                latest_candidate_email = {
                     "from": parsed.get("original_from") or parsed.get("top_level_from"),
                     "subject": parsed.get("original_subject") or parsed.get("top_level_subject"),
                     "amount": parsed.get("amount"),
                     "utr": parsed.get("utr"),
                     "received_at": parsed.get("received_at").isoformat() if parsed.get("received_at") else None,
                 }
+                latest_candidate_amount = parsed.get("amount")
+                latest_candidate_received_at = parsed.get("received_at").isoformat() if parsed.get("received_at") else None
                 break
 
-        if not latest_email and len(emails) > 0:
+        if not latest_candidate_email and len(emails) > 0:
             first = emails[0]
-            latest_email = {
+            latest_candidate_email = {
                 "from": first.get("from", ""),
                 "subject": first.get("subject", ""),
                 "amount": None,
                 "utr": None,
                 "received_at": first.get("receivedDateTime", ""),
             }
+            latest_candidate_received_at = first.get("receivedDateTime", "")
 
     pending_reqs = db.query(PaymentRequest).filter(PaymentRequest.status == "Pending").all()
     pending_list = []
@@ -108,15 +114,18 @@ def get_payment_debug_status(db: Session = Depends(get_db)):
             "id": pr.id,
             "amount": float(pr.amount),
             "created_at": pr.created_at.isoformat() if pr.created_at else None,
+            "expires_at": pr.expires_at.isoformat() if pr.expires_at else None,
             "status": pr.status,
         })
 
     verification_result = "Pending"
     failure_reason = None
+    validation_results = []
 
     if pending_reqs:
         latest_req = pending_reqs[-1]
         res = payment_verification_service.verify_payment(latest_req.id, db, force_check=True)
+        validation_results = res.get("validation_results") or []
         if res.get("success") and res.get("status") == "Completed":
             verification_result = "Verified"
             failure_reason = None
@@ -131,10 +140,17 @@ def get_payment_debug_status(db: Session = Depends(get_db)):
         "gmail_login_success": gmail_imap_client.last_login_success,
         "gmail_account": gmail_imap_client.user or "Not configured",
         "mailbox_selected": gmail_imap_client.last_inbox_success,
-        "emails_found": len(emails),
-        "latest_email": latest_email,
+        "candidate_fampay_emails_found": len(emails),
+        "latest_candidate_email": latest_candidate_email,
+        "latest_candidate_amount": latest_candidate_amount,
+        "latest_candidate_received_at": latest_candidate_received_at,
+        "pending_payment_request": pending_list[-1] if pending_list else None,
         "pending_payment_requests": pending_list,
         "verification_result": verification_result,
+        "validation_results": validation_results,
+        "exact_failure_reason": failure_reason,
+        "emails_found": len(emails),
+        "latest_email": latest_candidate_email,
         "failure_reason": failure_reason,
     }
 

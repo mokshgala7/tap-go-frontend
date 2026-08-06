@@ -70,6 +70,7 @@ class PaymentVerificationService:
                     "status": pay_req.status,
                     "message": provider_result.get("message", "Payment verification pending."),
                     "failure_reason": provider_result.get("failure_reason"),
+                    "validation_results": provider_result.get("validation_results") or [],
                     "amount": float(pay_req.amount),
                 }
 
@@ -138,6 +139,7 @@ class PaymentVerificationService:
                 "wallet": wallet_to_dict(wallet),
                 "utr": pay_req.utr,
                 "payer_name": pay_req.payer_name,
+                "validation_results": provider_result.get("validation_results") or [],
             }
         except Exception as e:
             logger.error(f"[PaymentVerificationService] Exception in verify_payment: {e}")

@@ -102,26 +102,43 @@ class GmailImapClient:
                 mail.logout()
                 return []
 
-            # Retrieve recent message IDs to inspect both direct and Outlook-forwarded FamApp emails
-            logger.info("[Gmail IMAP] Searching INBOX for messages (Search command: ALL)...")
-            status, data = mail.search(None, "ALL")
-            logger.info(f"[Gmail IMAP] Search status: {status}")
+            # Search ONLY for FamPay payment notification email candidates (Privacy compliance: Never search or inspect unrelated personal emails)
+            logger.info("[Gmail IMAP] Searching INBOX for targeted FamPay payment emails (Privacy search)...")
+            candidate_uids = set()
+            search_queries = [
+                '(SUBJECT "You received")',
+                '(SUBJECT "FamX")',
+                '(SUBJECT "FamPay")',
+                '(SUBJECT "FamApp")',
+                '(FROM "famapp.in")',
+                '(FROM "famapp")',
+            ]
 
-            if status != "OK" or not data or not data[0]:
+            for q in search_queries:
+                try:
+                    s_status, s_data = mail.search(None, q)
+                    if s_status == "OK" and s_data and s_data[0]:
+                        for msg_id in s_data[0].split():
+                            candidate_uids.add(msg_id)
+                except Exception as q_err:
+                    logger.warning(f"[Gmail IMAP] Search query '{q}' notice: {q_err}")
+
+            if not candidate_uids:
                 self.total_emails_found = 0
                 self.last_fetched_count = 0
-                logger.info("[Gmail IMAP] Total emails in INBOX: 0")
+                logger.info("[Gmail IMAP] Total candidate FamPay payment emails in INBOX: 0")
                 mail.logout()
                 return []
 
-            email_ids = data[0].split()
-            self.total_emails_found = len(email_ids)
-            logger.info(f"[Gmail IMAP] Total emails in INBOX: {self.total_emails_found}")
+            # Sort candidate IDs numerically
+            sorted_ids = sorted(list(candidate_uids), key=lambda x: int(x))
+            self.total_emails_found = len(sorted_ids)
+            logger.info(f"[Gmail IMAP] Total candidate FamPay payment emails found in INBOX: {self.total_emails_found}")
 
-            # Inspect matching IDs (up to last 30 recent messages)
-            recent_ids = email_ids[-30:]
+            # Inspect matching IDs (up to last 30 recent candidate messages)
+            recent_ids = sorted_ids[-30:]
             self.last_fetched_count = len(recent_ids)
-            logger.info(f"[Gmail IMAP] Number of emails fetched/inspected: {self.last_fetched_count}")
+            logger.info(f"[Gmail IMAP] Number of candidate emails fetched/inspected: {self.last_fetched_count}")
 
             for msg_id in reversed(recent_ids):
                 uid_str = msg_id.decode('utf-8', errors='ignore')
