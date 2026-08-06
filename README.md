@@ -226,16 +226,16 @@ The source of truth for Tap&Go is the MySQL `tapgo` database. The backend uses s
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=07102007
+DB_PASSWORD=your_db_password
 DB_NAME=tapgo
-SECRET_KEY=tapgo_super_secret_jwt_key_2026
+SECRET_KEY=your_super_secret_jwt_key
 ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=mokshgala070@gmail.com
-SMTP_PASSWORD=xthh gizy wzvh oqmi
-SMTP_FROM_EMAIL=TapAndGo <mokshgala070@gmail.com>
+SMTP_USER=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+SMTP_FROM_EMAIL=TapAndGo <your_email@gmail.com>
 
 # Outlook & FamPay Payment Verification Settings (Appended)
 OUTLOOK_CLIENT_ID=
