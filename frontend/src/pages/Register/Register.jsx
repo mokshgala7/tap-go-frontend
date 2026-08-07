@@ -715,7 +715,7 @@ function Register() {
                           setOtpSending(false)
                           setOtpMessage('Error connecting to server.')
                         }
-                      }} className={`h-[60px] px-5 font-black rounded-xl transition whitespace-nowrap text-sm tracking-wide border-2 ${
+                      }} className={`h-[60px] px-3 sm:px-5 font-black rounded-xl transition whitespace-nowrap text-xs sm:text-sm tracking-wide border-2 ${
                         otpVerified
                           ? 'bg-[#00C853] text-white border-[#00C853] cursor-default'
                           : otpSending

@@ -487,3 +487,28 @@
   }
 }
 
+@media (max-width: 360px) {
+  .driver header {
+    padding: 0 12px;
+  }
+  .driver .logo {
+    font-size: 22px;
+  }
+  .driver main {
+    padding: 16px 12px 0;
+  }
+  .driver nav {
+    gap: 0;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  }
+  .driver nav button {
+    min-width: 0;
+    flex: 1;
+    font-size: 8.5px;
+  }
+  .driver nav span {
+    font-size: 18px;
+  }
+}
+
+

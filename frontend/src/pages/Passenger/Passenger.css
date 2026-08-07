@@ -612,3 +612,31 @@
   }
 }
 
+@media (max-width: 360px) {
+  .passenger header {
+    padding: 0 12px;
+  }
+  .passenger .logo {
+    font-size: 22px;
+  }
+  .passenger main {
+    padding: 16px 12px 0;
+  }
+  .passenger nav {
+    gap: 0;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  }
+  .passenger nav button {
+    min-width: 0;
+    flex: 1;
+    font-size: 8.5px;
+  }
+  .passenger nav span {
+    font-size: 18px;
+  }
+  .wallet {
+    padding: 18px;
+  }
+}
+
+

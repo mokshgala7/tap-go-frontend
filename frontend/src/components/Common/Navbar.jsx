@@ -50,8 +50,8 @@ function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        <Link className="text-2xl font-bold text-black" to="/" aria-label="Tap&Go home">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-3 sm:px-6 py-3 sm:py-4">
+        <Link className="text-xl sm:text-2xl font-bold text-black" to="/" aria-label="Tap&Go home">
           Tap<span className="text-yellow-500">&amp;</span>Go
         </Link>
 
@@ -98,14 +98,14 @@ function Navbar() {
           </Link>
         </nav>
 
-        <div className="flex gap-3">
+        <div className="flex gap-2 sm:gap-3">
           <Link
-            className="rounded-lg border border-primary-container bg-transparent px-4 py-2 font-semibold text-primary-container"
+            className="rounded-lg border border-primary-container bg-transparent px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-primary-container"
             to="/login"
           >
             Login
           </Link>
-          <Link className="rounded-lg bg-yellow-400 px-4 py-2 font-semibold text-black" to="/register">
+          <Link className="rounded-lg bg-yellow-400 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-black" to="/register">
             Register
           </Link>
         </div>

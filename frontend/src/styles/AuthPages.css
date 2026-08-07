@@ -504,3 +504,50 @@
     top: 0;
   }
 }
+
+@media (max-width: 640px) {
+  .auth-page .form-section-card {
+    padding: 1.5rem 1.25rem;
+    border-radius: 1.25rem;
+  }
+
+  .auth-page .otp-input {
+    width: 2.5rem;
+    height: 3.25rem;
+    font-size: 1.25rem;
+  }
+
+  .auth-page .upload-zone {
+    padding: 1.5rem 1rem;
+    border-radius: 1rem;
+  }
+
+  .auth-page .input-premium {
+    padding: 1.35rem 1rem 0.65rem;
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 400px) {
+  .auth-page .form-section-card {
+    padding: 1.25rem 1rem;
+    border-radius: 1rem;
+  }
+
+  .auth-page .otp-input {
+    width: 2.1rem;
+    height: 2.85rem;
+    font-size: 1.1rem;
+  }
+
+  .auth-page .floating-label {
+    font-size: 0.88rem;
+    left: 1rem;
+  }
+
+  .auth-page.forgot-page .floating-label {
+    left: 2.75rem;
+    font-size: 0.9rem;
+  }
+}
+

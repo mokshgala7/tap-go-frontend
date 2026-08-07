@@ -179,7 +179,7 @@ function Home() {
           <h2 className="mb-4 text-center text-4xl font-bold">How Tap&Go Works</h2>
           <p className="mb-12 text-center text-gray-600">Getting started is simple and takes only a few seconds.</p>
 
-          <div className="grid gap-6 text-center md:grid-cols-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 text-center">
             {steps.map((step) => (
               <article key={step.title}>
                 <div className="text-5xl">{step.number}</div>
@@ -194,7 +194,7 @@ function Home() {
           <div className="mx-auto max-w-7xl px-6">
             <h2 className="mb-12 text-center text-4xl font-bold">Why Choose Tap&Go?</h2>
 
-            <div className="grid gap-6 md:grid-cols-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {benefits.map((benefit) => (
                 <article key={benefit.title} className="rounded-xl bg-white p-6 shadow">
                   <h3 className="font-bold">{benefit.title}</h3>

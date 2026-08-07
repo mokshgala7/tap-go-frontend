@@ -111,7 +111,7 @@
   min-height: 680px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.85fr);
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.85fr);
   align-items: center;
   gap: 64px;
 }

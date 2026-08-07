@@ -153,12 +153,12 @@ function RegistrationReview() {
 
   return (
     <div className="bg-surface text-[#1C1C1E] selection:bg-brand selection:text-darker min-h-screen antialiased">
-      <div className="w-full max-w-6xl mx-auto p-6 lg:p-16 min-h-screen flex flex-col relative">
+      <div className="w-full max-w-6xl mx-auto p-4 sm:p-6 lg:p-16 min-h-screen flex flex-col relative">
         {/* Header */}
-        <div className="flex items-center justify-between mb-12 pb-8 border-b border-gray-200 relative z-10">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 sm:mb-12 pb-8 border-b border-gray-200 relative z-10">
           <div>
-            <h2 className="text-4xl lg:text-[3rem] font-black text-darker tracking-tighter mb-2">Review Application</h2>
-            <p className="text-gray-500 font-medium text-lg tracking-wide">Please verify your details before final submission.</p>
+            <h2 className="text-3xl sm:text-4xl lg:text-[3rem] font-black text-darker tracking-tighter mb-2">Review Application</h2>
+            <p className="text-gray-500 font-medium text-base sm:text-lg tracking-wide">Please verify your details before final submission.</p>
           </div>
           <div className="px-6 py-3 bg-white text-brand text-[0.8rem] font-black rounded-full uppercase tracking-widest border border-brand/30 shadow-[0_4px_12px_rgba(253,211,77,0.2)]">
             Final Step
@@ -166,11 +166,11 @@ function RegistrationReview() {
         </div>
 
         {/* Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 relative z-10">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12 relative z-10">
           {/* Left Column */}
-          <div className="space-y-10">
+          <div className="space-y-6 sm:space-y-10">
             {/* Profile Section */}
-            <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-premium flex items-center gap-8 relative overflow-hidden">
+            <div className="bg-white p-5 sm:p-8 rounded-[2rem] border border-gray-100 shadow-premium flex flex-col sm:flex-row items-center text-center sm:text-left gap-4 sm:gap-8 relative overflow-hidden">
               <div className="w-32 h-32 rounded-full border-[6px] border-white shadow-[0_8px_24px_rgba(0,0,0,0.1)] overflow-hidden bg-gray-50 relative z-10">
                 {profilePhoto ? (
                   <img src={profilePhoto} className="w-full h-full object-cover" alt="Profile" />

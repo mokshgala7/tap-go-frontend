@@ -32,6 +32,7 @@
   top: calc(100% + 16px);
   right: 0;
   width: 260px;
+  max-width: calc(100vw - 32px);
   border: 1px solid #e0e3e5;
   border-radius: 16px;
   background: #ffffff;

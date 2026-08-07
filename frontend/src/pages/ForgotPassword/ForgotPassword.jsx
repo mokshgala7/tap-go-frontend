@@ -321,7 +321,7 @@ function ForgotPassword() {
         <ProgressTracker step={step} />
       </aside>
 
-      <main className="w-full lg:w-[60%] bg-gray-50 flex flex-col justify-center items-center p-6 sm:p-12 lg:p-24 min-h-[70vh] lg:min-h-screen relative z-0">
+      <main className="w-full lg:w-[60%] bg-gray-50 flex flex-col justify-center items-center p-4 sm:p-12 lg:p-24 min-h-[70vh] lg:min-h-screen relative z-0">
         <div className="w-full max-w-[480px] relative">
           {step === 1 && (
             <div className="transition-all duration-500">
@@ -386,14 +386,14 @@ function ForgotPassword() {
                 </p>
               </div>
               <form className="space-y-8" noValidate onSubmit={submitOtp}>
-                <div className="flex justify-between gap-2 sm:gap-4">
+                <div className="flex justify-between gap-1 sm:gap-4">
                   {otp.map((digit, index) => (
                     <input
                       key={index}
                       ref={(node) => {
                         otpRefs.current[index] = node
                       }}
-                      className="w-10 h-12 sm:w-14 sm:h-16 bg-white border border-gray-200 shadow-sm rounded-xl text-center text-2xl font-bold text-gray-900 focus:outline-none focus:border-yellow-400 focus:shadow-[0_0_15px_rgba(251,191,36,0.15)] transition-all"
+                      className="w-9 h-12 sm:w-14 sm:h-16 bg-white border border-gray-200 shadow-sm rounded-xl text-center text-xl sm:text-2xl font-bold text-gray-900 focus:outline-none focus:border-yellow-400 focus:shadow-[0_0_15px_rgba(251,191,36,0.15)] transition-all"
                       type="text"
                       maxLength={1}
                       inputMode="numeric"

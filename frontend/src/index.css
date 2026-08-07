@@ -7,11 +7,17 @@ html {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 
 body {
   margin: 0;
+  width: 100%;
   min-width: 320px;
+  max-width: 100vw;
+  overflow-x: hidden;
   font-family: 'Hanken Grotesk', sans-serif;
 }
 
@@ -25,8 +31,21 @@ input,
 textarea,
 select {
   font: inherit;
+  max-width: 100%;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
 }
 
 #root {
   min-height: 100vh;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
 }
+
