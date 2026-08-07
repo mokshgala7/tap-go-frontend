@@ -484,7 +484,7 @@ function Register() {
             <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-blue-600 opacity-[0.06] blur-[120px] animate-ambient"></div>
           </div>
 
-          <div className="glass-panel w-full max-w-[520px] lg:rounded-[3rem] p-6 lg:p-8 relative z-10 shadow-[0_30px_60px_rgba(0,0,0,0.6)] flex flex-col gap-5 min-h-full lg:min-h-0 lg:my-auto shrink-0">
+          <div className="glass-panel w-full max-w-xl lg:rounded-[3rem] p-6 lg:p-8 relative z-10 shadow-[0_30px_60px_rgba(0,0,0,0.6)] flex flex-col gap-5 min-h-full lg:min-h-0 lg:my-auto shrink-0">
             <div className="flex justify-between items-start">
               <div className="space-y-2">
                 <div className="text-[0.65rem] tracking-[0.25em] text-brand font-black uppercase mb-3 flex items-center gap-2">
@@ -613,7 +613,7 @@ function Register() {
         </aside>
 
         <main className="form-wrap w-full lg:w-[55%] bg-surface flex flex-col items-center py-12 lg:py-24 px-5 sm:px-10 lg:px-20 min-h-screen lg:h-screen lg:overflow-y-auto relative z-10">
-          <div className="w-full max-w-[640px]">
+          <div className="w-full max-w-2xl lg:max-w-3xl">
             <div className="mb-14 text-center lg:text-left">
               <Link to="/" className="inline-flex mb-6 text-sm font-black uppercase tracking-widest text-gray-400 hover:text-darker">Back Home</Link>
               <h2 className="text-4xl lg:text-[3.5rem] font-black text-darker tracking-tighter mb-4 leading-none">Create Account</h2>

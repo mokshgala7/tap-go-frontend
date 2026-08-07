@@ -322,7 +322,7 @@ function ForgotPassword() {
       </aside>
 
       <main className="w-full lg:w-[60%] bg-gray-50 flex flex-col justify-center items-center p-4 sm:p-12 lg:p-24 min-h-[70vh] lg:min-h-screen relative z-0">
-        <div className="w-full max-w-[480px] relative">
+        <div className="w-full max-w-xl relative">
           {step === 1 && (
             <div className="transition-all duration-500">
               <div className="mb-10 text-center lg:text-left">

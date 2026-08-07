@@ -183,7 +183,7 @@
 .login-card {
   position: relative;
   width: 100%;
-  max-width: 440px;
+  max-width: 560px;
   overflow: hidden;
   border: 1px solid rgba(196, 198, 205, 0.7);
   border-radius: 28px;
@@ -611,7 +611,7 @@
    ========================================================= */
 .demo-accounts-card {
   width: 100%;
-  max-width: 440px;
+  max-width: 560px;
   margin-top: 20px;
   border: 1px solid rgba(254, 183, 0, 0.35);
   border-radius: 20px;

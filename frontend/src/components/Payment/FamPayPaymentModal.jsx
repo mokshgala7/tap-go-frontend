@@ -153,7 +153,7 @@ export function FamPayPaymentModal({ paymentRequest, onClose, onSuccess, flash }
         className="modal-card"
         onClick={(e) => e.stopPropagation()}
         style={{
-          maxWidth: 440,
+          maxWidth: 520,
           width: '92%',
           borderRadius: 24,
           padding: '24px 28px',
