@@ -28,7 +28,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 max(20px, calc((100vw - 1180px) / 2));
+  padding: 0 max(20px, 3vw);
   background: var(--card);
   border-bottom: 1px solid var(--line);
 }
@@ -62,9 +62,9 @@
 
 .driver main {
   width: 100%;
-  max-width: 1180px;
+  max-width: 1360px;
   margin: 0 auto;
-  padding: 38px max(20px, calc((100vw - 1180px) / 2 + 20px)) 0;
+  padding: 38px max(20px, 3vw) 0;
   box-sizing: border-box;
 }
 
@@ -87,7 +87,7 @@
   display: flex;
   justify-content: center;
   gap: 28px;
-  padding: 10px max(20px, calc((100vw - 1180px) / 2)) calc(10px + env(safe-area-inset-bottom));
+  padding: 10px max(20px, 3vw) calc(10px + env(safe-area-inset-bottom));
   background: var(--card);
   border-top: 1px solid var(--line);
 }
