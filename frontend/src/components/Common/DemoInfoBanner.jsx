@@ -10,10 +10,10 @@ export function DemoInfoBanner() {
           </div>
           <div>
             <span className="font-bold text-amber-400 tracking-wide uppercase text-[11px] block sm:inline sm:mr-2">
-              Tap&amp;Go Demonstration Deployment
+              Academic Demonstration Environment
             </span>
             <span className="text-slate-200">
-              This deployment demonstrates the complete application workflow. Certain production services are simulated due to free hosting environment limitations.
+              This deployment is provided for academic evaluation. Payment and wallet funding actions shown in Demo Mode are simulated and do not represent real financial transactions.
             </span>
           </div>
         </div>

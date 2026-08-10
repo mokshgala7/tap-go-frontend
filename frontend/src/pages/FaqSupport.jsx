@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import Navbar from '../components/Common/Navbar.jsx'
 import Footer from '../components/Common/Footer.jsx'
-import { Link } from '../routes/navigation.jsx'
 
 export function FaqSupport() {
   const [openIdx, setOpenIdx] = useState(null)
@@ -9,27 +8,27 @@ export function FaqSupport() {
   const faqs = [
     {
       q: 'What is Tap&Go?',
-      a: 'Tap&Go is a smart cashless payment platform designed for taxis and auto-rickshaws. It enables passengers to pay fares instantly using NFC card taps or QR code scans, while providing drivers with digital wallet balances and real-time transaction records.',
+      a: 'Tap&Go is a smart cashless payment platform designed for taxis and auto-rickshaws. It enables passengers to pay fares using NFC card taps or QR code scans, while providing drivers with digital wallet balances and real-time transaction records.',
     },
     {
       q: 'Who can use Tap&Go?',
-      a: 'Tap&Go is designed for both passengers and drivers in public transportation. Passengers use it for hassle-free fare payments, while drivers use it to receive instant payments, track earnings, and manage wallet withdrawals.',
+      a: 'Tap&Go is designed for both passengers and drivers in public transportation. Passengers use it for cashless fare payments, while drivers use it to receive payments, track earnings, and manage wallet withdrawals.',
     },
     {
       q: 'How do I add money to my wallet?',
-      a: 'You can add funds to your Tap&Go digital wallet by clicking "Recharge" or "Add Money" inside your passenger or driver dashboard. Top-ups are processed securely using supported payment gateways via UPI, debit/credit card, or netbanking.',
+      a: 'You can add funds to your Tap&Go digital wallet by clicking "Recharge" or "Add Money" inside your passenger or driver dashboard. Top-ups are processed using supported payment gateways via UPI, debit/credit card, or netbanking.',
     },
     {
       q: 'How do I pay for a ride?',
-      a: 'When your ride is complete, tap your Tap&Go NFC card on the driver’s smart POS terminal or scan the driver’s dynamic QR code using your smartphone. The fare is instantly transferred from your passenger wallet to the driver’s wallet.',
+      a: 'When your ride is complete, tap your Tap&Go NFC card on the driver’s smart POS terminal or scan the driver’s dynamic QR code using your smartphone. The fare is transferred from your passenger wallet to the driver’s wallet.',
     },
     {
       q: 'Do I need physical cash for travel?',
-      a: 'No. Tap&Go is built to eliminate the need for physical cash and exact-change friction during taxi and auto-rickshaw rides.',
+      a: 'No. Tap&Go is built to reduce reliance on physical cash and exact-change friction during taxi and auto-rickshaw rides.',
     },
     {
       q: 'What happens if a wallet funding transaction fails?',
-      a: 'If a payment fails or gets delayed during wallet funding, funds are normally auto-refunded by your bank. If your bank account is debited but your Tap&Go wallet is not updated, please reach out to tapandgosupport@gmail.com with your transaction details.',
+      a: 'If a payment is debited from your bank account but the Tap&Go wallet is not credited, the transaction will be checked against the payment status/callback information and the applicable payment provider’s refund process. You can contact support at tapandgosupport@gmail.com with transaction details.',
     },
     {
       q: 'What happens if I see a suspicious transaction?',
@@ -37,11 +36,11 @@ export function FaqSupport() {
     },
     {
       q: 'What should I do if I lose my Tap&Go card?',
-      a: 'If you lose your physical Tap&Go card, immediately call our dedicated lost card support helpline at 9321768503 to request card blocking and protect your remaining wallet balance.',
+      a: 'If you lose your physical Tap&Go card, immediately call our dedicated lost card support helpline at 9321768503 to report the card and protect your account.',
     },
     {
       q: 'How do I contact Tap&Go support?',
-      a: 'You can reach us via email at tapandgosupport@gmail.com, call general support at 8779914564, call lost card helpline at 9321768503, or visit our support office at 7/711, Rajni Mahal, Opp. AC Market, Tardeo, Mumbai – 400034, Maharashtra, India.',
+      a: 'You can reach us via email at tapandgosupport@gmail.com, call general support at 8779914564, call lost card helpline at 9321768503, or reach Tap&Go Project Support at 7/711, Rajni Mahal, Opp. AC Market, Tardeo, Mumbai – 400034, Maharashtra, India.',
     },
   ]
 
@@ -106,17 +105,26 @@ export function FaqSupport() {
             Still Need Help?
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs sm:text-sm text-slate-700">
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <span className="font-bold block text-slate-900 mb-1">Email Support</span>
-              <a href="mailto:tapandgosupport@gmail.com" className="text-indigo-600 font-bold break-all">tapandgosupport@gmail.com</a>
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+              <span className="font-bold block text-slate-900">Email Support</span>
+              <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-1.5 text-indigo-600 font-bold break-all hover:underline">
+                <span className="material-symbols-outlined text-sm">mail</span>
+                tapandgosupport@gmail.com
+              </a>
             </div>
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <span className="font-bold block text-slate-900 mb-1">General Support</span>
-              <a href="tel:8779914564" className="text-emerald-600 font-bold">8779914564</a>
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+              <span className="font-bold block text-slate-900">General Support</span>
+              <a href="tel:8779914564" className="inline-flex items-center gap-1.5 text-emerald-600 font-bold hover:underline">
+                <span className="material-symbols-outlined text-sm">call</span>
+                8779914564
+              </a>
             </div>
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <span className="font-bold block text-slate-900 mb-1">Lost Card Support</span>
-              <a href="tel:9321768503" className="text-amber-600 font-bold">9321768503</a>
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+              <span className="font-bold block text-slate-900">Lost Card Support</span>
+              <a href="tel:9321768503" className="inline-flex items-center gap-1.5 text-amber-600 font-bold hover:underline">
+                <span className="material-symbols-outlined text-sm">phone_in_talk</span>
+                9321768503
+              </a>
             </div>
           </div>
         </section>

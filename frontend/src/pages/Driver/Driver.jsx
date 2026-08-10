@@ -48,6 +48,9 @@ function WithdrawModal({ onClose, flash }) {
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <h3>Withdraw to Bank</h3>
         <p className="muted">Available balance: {inr(walletBalance)}</p>
+        <div style={{ background: '#FFF3C4', border: '1px solid #FFE082', borderRadius: 10, padding: '10px 12px', margin: '10px 0 14px', fontSize: 12, color: '#664d03', fontWeight: 600 }}>
+          <strong>DEMO MODE:</strong> Wallet withdrawal in this demonstration environment is simulated for academic evaluation.
+        </div>
         {isFrozen && <p style={{ color: '#9f1730', fontWeight: 700 }}>⚠️ Wallet is frozen by administrator.</p>}
         <label htmlFor="withdraw-amount">Amount (₹)</label>
         <input

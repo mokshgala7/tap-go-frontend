@@ -203,16 +203,45 @@ function Home() {
               ))}
             </div>
 
-            <div className="mt-16 text-center">
-              <h3 className="mb-4 text-3xl font-bold">Ready to Experience Smarter Travel?</h3>
-              <p className="mb-6 text-gray-600">
-                Join Tap&Go today and enjoy fast, secure and cashless transportation payments.
+            <div className="mt-16 text-center space-y-4">
+              <h3 className="text-3xl font-bold text-slate-900">Ready to Experience Smarter Travel?</h3>
+              <p className="text-gray-600 max-w-xl mx-auto">
+                Join Tap&amp;Go today and enjoy fast, secure and cashless transportation payments.
               </p>
-              <Link className="rounded-lg bg-yellow-400 px-8 py-4 font-bold text-black" to="/register">
-                Register Now
+              <div>
+                <Link className="inline-block rounded-lg bg-yellow-400 px-8 py-4 font-bold text-black hover:bg-yellow-300 transition-colors shadow" to="/register">
+                  Register Now
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Need Help Support CTA Section */}
+        <section className="mx-auto w-full max-w-7xl px-6 py-12">
+          <div className="rounded-3xl bg-slate-900 p-8 sm:p-10 text-white flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="space-y-2 max-w-2xl">
+              <h3 className="text-2xl font-bold text-amber-400">Need Help?</h3>
+              <p className="text-slate-300 text-sm leading-relaxed">
+                Tap&amp;Go Project Support is available for questions regarding wallets, transactions, account security, and the academic demonstration platform.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Link to="/contact" className="px-5 py-3 rounded-xl bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm hover:bg-amber-300 transition-colors">
+                Contact Support
+              </Link>
+              <Link to="/lost-card" className="px-5 py-3 rounded-xl bg-slate-800 border border-slate-700 text-white font-bold text-xs sm:text-sm hover:bg-slate-700 transition-colors">
+                Lost Card Support
               </Link>
             </div>
           </div>
+        </section>
+
+        {/* Compliance Footer Banner Disclosure */}
+        <section className="w-full bg-slate-100 border-t border-slate-200 py-6 text-center px-4">
+          <p className="text-xs text-slate-600 max-w-4xl mx-auto leading-relaxed">
+            <strong className="text-slate-900">Academic Project Disclosure:</strong> Tap&amp;Go is a student / final-year academic project developed by Moksh Gala at SVKM’s Shri Bhagubai Mafatlal Polytechnic. The platform is presented for technological demonstration and evaluation and is not a registered commercial payment institution.
+          </p>
         </section>
       </main>
 

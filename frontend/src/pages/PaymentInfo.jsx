@@ -18,8 +18,8 @@ export function PaymentInfo() {
       title: 'Step 2 — Wallet Balance Confirmation',
       icon: 'verified',
       color: 'bg-blue-50 border-blue-200 text-blue-700',
-      badge: 'Instant Balance Credit',
-      desc: 'Upon successful payment gateway confirmation, the requested funds become instantly available in the user’s secure Tap&Go wallet.',
+      badge: 'Balance Credit Confirmation',
+      desc: 'Once the payment gateway confirms the transaction, the corresponding wallet balance is updated according to the payment confirmation received by Tap&Go.',
     },
     {
       num: '3',
@@ -34,7 +34,7 @@ export function PaymentInfo() {
       title: 'Step 4 — Driver Wallet Settlement',
       icon: 'savings',
       color: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-      badge: 'Real-Time Transaction Record',
+      badge: 'Transaction Record',
       desc: 'The driver receives immediate transaction confirmation, digital receipt, and updated wallet balance in their Tap&Go driver portal.',
     },
     {
@@ -64,7 +64,7 @@ export function PaymentInfo() {
               How Tap&amp;Go Payments Work
             </h1>
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-              Understand the two-tier wallet architecture designed for high-speed transport payments.
+              Understand the two-tier wallet architecture designed for seamless transport payments.
             </p>
           </div>
         </section>
@@ -78,10 +78,10 @@ export function PaymentInfo() {
             Wallet-Based Architecture Overview
           </h2>
           <p className="text-slate-700 leading-relaxed text-sm sm:text-base">
-            Tap&amp;Go uses a specialized <strong>wallet-based payment architecture</strong> to ensure instant ride payments without latency or dependency on cellular payment gateway sessions during travel.
+            Tap&amp;Go uses a specialized <strong>wallet-based payment architecture</strong> to ensure smooth ride payments without dependency on active payment gateway sessions during travel.
           </p>
           <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 text-xs sm:text-sm font-semibold leading-relaxed">
-            <strong>Key Distinction:</strong> External payment gateways are utilized exclusively for <strong>wallet funding</strong> and <strong>withdrawals</strong>. Individual passenger-to-driver ride payments are executed as zero-latency internal wallet transfers.
+            <strong>Key Distinction:</strong> External payment gateways are utilized exclusively for <strong>wallet funding</strong> and <strong>withdrawals</strong>. Individual passenger-to-driver ride payments are executed as internal wallet-to-wallet transfers within the Tap&amp;Go system.
           </div>
         </section>
 
@@ -113,6 +113,29 @@ export function PaymentInfo() {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* Support Buttons Section */}
+        <section className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-200 space-y-4">
+          <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <span className="material-symbols-outlined text-indigo-600">headset_mic</span>
+            Need Payment Assistance?
+          </h3>
+          <p className="text-xs sm:text-sm text-slate-600">Our support team is available to assist with wallet recharges, transaction status, or account questions.</p>
+          <div className="flex flex-wrap gap-3 pt-2">
+            <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-xs sm:text-sm hover:bg-indigo-700 transition-colors">
+              <span className="material-symbols-outlined text-base">mail</span>
+              Email Support
+            </a>
+            <a href="tel:8779914564" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs sm:text-sm hover:bg-emerald-700 transition-colors">
+              <span className="material-symbols-outlined text-base">call</span>
+              Call General Support
+            </a>
+            <a href="tel:9321768503" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs sm:text-sm hover:bg-amber-400 transition-colors">
+              <span className="material-symbols-outlined text-base">credit_card_off</span>
+              Call Lost Card Helpline
+            </a>
           </div>
         </section>
 

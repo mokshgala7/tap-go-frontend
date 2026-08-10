@@ -35,7 +35,7 @@ export function AboutUs() {
             Platform Overview
           </h2>
           <p className="text-slate-700 leading-relaxed text-sm sm:text-base">
-            Tap&amp;Go simplifies daily travel payments by enabling instant cashless transactions between passengers and drivers. Using custom ESP32-S3-based smart POS terminal hardware, high-speed NFC interaction, and dynamic QR code generation, Tap&amp;Go eliminates the hassle of physical cash and exact-change disputes in urban transport.
+            Tap&amp;Go simplifies daily travel payments by enabling instant cashless transactions between passengers and drivers. Using custom ESP32-S3-based smart POS terminal hardware, high-speed NFC interaction, and dynamic QR code generation, Tap&amp;Go reduces reliance on physical cash and exact-change transactions in urban transport.
           </p>
         </section>
 

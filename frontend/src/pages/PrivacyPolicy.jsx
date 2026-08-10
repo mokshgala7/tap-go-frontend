@@ -66,7 +66,7 @@ export function PrivacyPolicy() {
           <section className="space-y-3">
             <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">4. Data Security</h2>
             <p>
-              We implement industry-standard administrative, technical, and physical safeguards to protect personal data against unauthorized access, loss, misuse, or alteration. Password records are hashed securely, and database communications utilize encryption protocol standards.
+              We implement reasonable technical and organizational measures to protect personal data against unauthorized access, loss, misuse, or alteration. Password records are hashed securely, and data communications utilize standard secure protocols.
             </p>
           </section>
 

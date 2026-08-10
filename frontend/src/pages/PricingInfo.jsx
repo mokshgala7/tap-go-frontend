@@ -41,14 +41,14 @@ export function PricingInfo() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">2. Wallet Top-Up &amp; Platform Fees</h2>
+            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">2. Wallet Top-Up &amp; Fee Transparency</h2>
             <p>
-              Adding money to your Tap&amp;Go digital wallet via supported payment gateway channels is designed to be free of hidden platform surcharges.
+              Tap&amp;Go displays wallet top-up details prior to confirmation.
             </p>
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs sm:text-sm space-y-1 font-medium">
-              <p className="font-bold text-slate-900">Fee Transparency:</p>
+              <p className="font-bold text-slate-900">Fee Disclosure:</p>
               <p>
-                If any external payment gateway or processing charge applies during wallet funding or withdrawal, it will be clearly displayed on the payment screen prior to user confirmation.
+                Any applicable platform, payment processing, or withdrawal charges will be disclosed to the user before confirmation where applicable.
               </p>
             </div>
           </section>

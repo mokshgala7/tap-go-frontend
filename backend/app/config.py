@@ -16,7 +16,7 @@ for p in possible_env_paths:
 class Settings:
     @property
     def REVIEW_DEMO_MODE(self) -> bool:
-        """Run the hosted PayU review environment from a resettable snapshot."""
+        """Run the hosted demonstration environment from a resettable snapshot."""
         return os.getenv("REVIEW_DEMO_MODE", "false").lower() in ("1", "true", "yes")
 
     @property
@@ -185,9 +185,11 @@ class Settings:
         return int(os.getenv("PAYMENT_TIMEOUT", "30"))
 
     @property
-    def PAYU_REVIEW_MODE(self) -> bool:
-        """When True, demo accounts are auto-created and the PayU info card is
-        shown in the frontend (controlled via VITE_PAYU_REVIEW_MODE on the FE)."""
-        return os.getenv("PAYU_REVIEW_MODE", "true").lower() in ("1", "true", "yes")
+    def PAYMENT_GATEWAY_PROVIDER(self) -> str:
+        return os.getenv("PAYMENT_GATEWAY_PROVIDER", "GENERIC_GATEWAY")
+
+    @property
+    def DEMO_MODE(self) -> bool:
+        return os.getenv("DEMO_MODE", "true").lower() in ("1", "true", "yes")
 
 settings = Settings()

@@ -492,7 +492,7 @@ function ForgotPassword() {
                 Password Reset Successfully
               </h2>
               <p className="text-gray-500 text-[1.05rem] font-medium leading-relaxed mb-10 max-w-[300px]">
-                Your Tap&Go account is now secured with bank-grade encryption.
+                Your Tap&amp;Go account security settings have been updated successfully.
               </p>
               <div className="w-full space-y-4">
                 <button type="button" className="w-full py-4 rounded-2xl font-black text-[1.1rem] tracking-wide relative overflow-hidden bg-yellow-400 text-gray-900 shadow-[0_4px_14px_rgba(251,191,36,0.3)] hover:shadow-[0_6px_20px_rgba(251,191,36,0.4)] hover:bg-yellow-500 transition-all" onClick={() => navigate('/')}>

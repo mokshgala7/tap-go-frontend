@@ -18,10 +18,10 @@ export function LostCardSupport() {
               Emergency Helpline
             </div>
             <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
-              Lost Card &amp; Account Protection
+              Lost Card &amp; Account Assistance
             </h1>
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-              If you have lost your physical Tap&amp;Go NFC card or suspect unauthorized wallet activity, take immediate action to protect your account.
+              If you have lost your physical Tap&amp;Go NFC card or suspect unauthorized wallet activity, take immediate action by contacting support.
             </p>
           </div>
         </section>
@@ -34,18 +34,29 @@ export function LostCardSupport() {
 
           <div className="space-y-2">
             <h2 className="text-xs uppercase font-extrabold tracking-widest text-slate-500">Dedicated Lost Card Support Helpline</h2>
-            <a href="tel:9321768503" className="block text-4xl sm:text-5xl font-black text-rose-600 hover:text-rose-700 tracking-tight">
+            <a href="tel:9321768503" className="inline-block text-4xl sm:text-5xl font-black text-rose-600 hover:text-rose-700 tracking-tight">
               9321768503
             </a>
             <p className="text-xs sm:text-sm text-slate-600 font-medium pt-1">
-              Available for immediate card blocking, account locking, and emergency reporting.
+              Call immediately for account assistance and lost card support.
             </p>
+          </div>
+
+          <div className="flex justify-center gap-3 pt-2">
+            <a href="tel:9321768503" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-rose-600 text-white font-bold text-sm hover:bg-rose-700 transition-colors shadow-sm">
+              <span className="material-symbols-outlined">call</span>
+              Call Lost Card Support Now
+            </a>
+            <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-800 text-white font-bold text-sm hover:bg-slate-700 transition-colors shadow-sm">
+              <span className="material-symbols-outlined">mail</span>
+              Email Support
+            </a>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs sm:text-sm max-w-2xl mx-auto space-y-1">
             <p className="font-bold text-slate-900">Email Support Backup:</p>
             <p>
-              You can also send an urgent lock request to <a href="mailto:tapandgosupport@gmail.com" className="text-indigo-600 font-bold">tapandgosupport@gmail.com</a> with your registered phone number and account email.
+              Send an urgent report to <a href="mailto:tapandgosupport@gmail.com" className="text-indigo-600 font-bold">tapandgosupport@gmail.com</a> with your registered phone number and account email.
             </p>
           </div>
         </section>
@@ -63,21 +74,21 @@ export function LostCardSupport() {
             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
               <span className="font-extrabold text-rose-600 text-base block">1. Call Support</span>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Dial <strong>9321768503</strong> to inform our support team to flag your card ID and prevent unauthorized tap transactions.
+                Dial <strong>9321768503</strong> to report a lost card and request account assistance.
               </p>
             </div>
 
             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
               <span className="font-extrabold text-indigo-600 text-base block">2. Lock Account Session</span>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Log into your Tap&amp;Go portal and update your password or trigger account lock under Security Settings.
+                Log into your Tap&amp;Go portal and update your password or lock your active browser session.
               </p>
             </div>
 
             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-              <span className="font-extrabold text-emerald-600 text-base block">3. Request Replacement</span>
+              <span className="font-extrabold text-emerald-600 text-base block">3. Support Replacement</span>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Request a replacement NFC card linkage to restore seamless tap-and-go travel payments to your existing wallet balance.
+                Request replacement card linkage assistance from the Tap&amp;Go support team.
               </p>
             </div>
           </div>

@@ -1117,9 +1117,13 @@ function Passenger() {
         <div className="modal-overlay" onClick={() => !topupLoading && setShowTopupModal(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
             <h3 style={{ margin: '0 0 8px' }}>Add Money to Wallet</h3>
-            <p className="muted" style={{ margin: '0 0 16px', fontSize: 14 }}>
+            <p className="muted" style={{ margin: '0 0 12px', fontSize: 14 }}>
               Enter the exact amount you want to top up into your Tap&amp;Go wallet.
             </p>
+
+            <div style={{ background: '#FFF3C4', border: '1px solid #FFE082', borderRadius: 10, padding: '10px 12px', marginBottom: 16, fontSize: 12, color: '#664d03', fontWeight: 600, leadingHeight: 1.4 }}>
+              <strong>DEMO MODE:</strong> Wallet funding in this demonstration environment is simulated for academic evaluation. No real payment is processed.
+            </div>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
               {[100, 200, 500, 1000].map((val) => (

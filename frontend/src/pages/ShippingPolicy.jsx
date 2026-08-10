@@ -46,7 +46,7 @@ export function ShippingPolicy() {
                 <strong>No Standard Shipping Required:</strong> Since transactions represent digital wallet top-ups and fare settlements, standard postal shipping or delivery tracking protocols do not apply to website transactions.
               </li>
               <li>
-                <strong>Physical NFC Cards &amp; Hardware Concept:</strong> Where a physical Tap&amp;Go NFC smart card or ESP32-S3 hardware POS unit is issued to drivers or passengers under trial or demonstration programs, its issuance and physical delivery arrangements are communicated separately and directly to the recipient.
+                <strong>Prototype Hardware Clarification:</strong> Tap&amp;Go may demonstrate prototype hardware such as an NFC card and ESP32-S3 POS terminal as part of the academic project. These prototypes are not sold as e-commerce products through this website.
               </li>
             </ul>
           </section>

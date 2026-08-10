@@ -1,7 +1,6 @@
 import React from 'react'
 import Navbar from '../components/Common/Navbar.jsx'
 import Footer from '../components/Common/Footer.jsx'
-import { Link } from '../routes/navigation.jsx'
 
 export function RefundPolicy() {
   return (
@@ -45,7 +44,7 @@ export function RefundPolicy() {
           <section className="space-y-3">
             <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">3. Failed Wallet Top-Ups</h2>
             <p>
-              If funds are debited from a user&apos;s bank account or UPI application during a wallet top-up but fail to reflect in the Tap&amp;Go wallet balance due to network issues or callback delays, the amount is typically auto-refunded by the issuing bank or payment gateway as per banking standards. If the balance remains uncredited, users can submit transaction proof to our support team.
+              If a payment is debited from a user&apos;s bank account or UPI application during a wallet top-up but the Tap&amp;Go wallet is not credited, the transaction will be checked against the payment status/callback information and the applicable payment provider&apos;s refund/reversal process. Users can contact support with transaction details.
             </p>
           </section>
 
@@ -53,7 +52,7 @@ export function RefundPolicy() {
           <section className="space-y-3">
             <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">4. Duplicate Transactions</h2>
             <p>
-              In the event of a technical glitch causing duplicate fare deductions for a single trip, users should report the transaction reference IDs to our support email. Once verified against backend logs, appropriate wallet adjustments will be initiated.
+              In the event of a technical glitch causing duplicate fare deductions for a single trip, users should report the transaction reference IDs to our support team. Once verified against backend logs, appropriate wallet adjustments will be initiated.
             </p>
           </section>
 
@@ -63,12 +62,25 @@ export function RefundPolicy() {
             <p>
               To lodge a dispute or request assistance regarding a wallet or ride transaction, please contact us with your account email, registered phone number, transaction ID, and transaction details:
             </p>
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 space-y-2 font-medium text-sm">
+            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-800 space-y-3 font-medium text-sm">
               <p className="font-bold text-slate-900">Tap&amp;Go Refund Support</p>
-              <p>Email: <a href="mailto:tapandgosupport@gmail.com" className="text-indigo-600 font-bold">tapandgosupport@gmail.com</a></p>
-              <p>General Support Helpline: <span className="font-bold text-slate-900">8779914564</span></p>
-              <p>Lost Card / Wallet Support: <span className="font-bold text-slate-900">9321768503</span></p>
-              <p>Address: 7/711, Rajni Mahal, Opp. AC Market, Tardeo, Mumbai – 400034, Maharashtra, India</p>
+              <div className="flex flex-wrap gap-3 pt-1">
+                <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-colors">
+                  <span className="material-symbols-outlined text-sm">mail</span>
+                  Email Support (tapandgosupport@gmail.com)
+                </a>
+                <a href="tel:8779914564" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 transition-colors">
+                  <span className="material-symbols-outlined text-sm">call</span>
+                  General Support (8779914564)
+                </a>
+                <a href="tel:9321768503" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 transition-colors">
+                  <span className="material-symbols-outlined text-sm">phone_in_talk</span>
+                  Lost Card Helpline (9321768503)
+                </a>
+              </div>
+              <p className="text-xs text-slate-600 pt-1">
+                Address: 7/711, Rajni Mahal, Opp. AC Market, Tardeo, Mumbai – 400034, Maharashtra, India
+              </p>
             </div>
           </section>
         </div>

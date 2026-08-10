@@ -67,7 +67,7 @@ export function WalletProvider({ children }) {
       const res = await fetch(`${API_BASE}/api/wallet/topup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, amount, payment_method: 'razorpay' }),
+        body: JSON.stringify({ user_id: user.id, amount, payment_method: import.meta.env.VITE_PAYMENT_METHOD || 'payment_gateway' }),
       })
       const data = await res.json()
       if (res.ok && data.success) {

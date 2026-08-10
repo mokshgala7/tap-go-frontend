@@ -103,7 +103,7 @@ def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
         change = amount_dec
         
         if t.passenger_id == user_id:
-            if t.payment_method in ("topup", "razorpay", "deposit", "upi") or t.transaction_type == "deposit" or t.amount < 0:
+            if t.payment_method in ("topup", "payment_gateway", "deposit", "upi") or t.transaction_type == "deposit" or t.amount < 0:
                 is_credit = True
                 change = abs(amount_dec)
                 type_label = "Deposit"
@@ -196,11 +196,17 @@ def topup_wallet(data: TopupRequest, db: Session = Depends(get_db)):
     if wallet.is_frozen:
         raise HTTPException(status_code=400, detail="Your wallet is frozen by an administrator. Adding funds is disabled.")
 
+    if not settings.DEMO_MODE:
+        raise HTTPException(
+            status_code=400,
+            detail="Payment gateway is not configured. Direct wallet funding is disabled in production mode until live gateway integration."
+        )
+
     topup_dec = Decimal(str(round(data.amount, 2)))
     wallet.balance += topup_dec
 
     ref_code = f"TXN{uuid.uuid4().hex[:10].upper()}"
-    desc = f"₹{data.amount:.2f} credited to wallet"
+    desc = f"₹{data.amount:.2f} credited to wallet (Demo Mode)"
     txn = Transaction(
         reference=ref_code,
         passenger_id=user.id if user.account_type == "passenger" else None,
@@ -223,7 +229,7 @@ def topup_wallet(data: TopupRequest, db: Session = Depends(get_db)):
 
     return {
         "success": True,
-        "message": f"Successfully added ₹{data.amount:.2f} to your wallet.",
+        "message": f"Demo Mode: Successfully added ₹{data.amount:.2f} to your demonstration wallet.",
         "wallet": wallet_to_dict(wallet),
     }
 
@@ -267,12 +273,18 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
             detail=f"Insufficient wallet balance. Available balance is ₹{float(wallet.balance):.2f}."
         )
 
+    if not settings.DEMO_MODE:
+        raise HTTPException(
+            status_code=400,
+            detail="Withdrawal service is not configured in production mode."
+        )
+
     # Atomic reduction
     wallet.balance -= withdraw_dec
 
     masked_acc = f"XXXX XXXX {user.bank_account_number.strip()[-4:]}"
     ref_code = f"WD-{uuid.uuid4().hex[:10].upper()}"
-    desc = f"₹{data.amount:.2f} transferred to bank account ({masked_acc})"
+    desc = f"₹{data.amount:.2f} transferred to bank account ({masked_acc}) (Demo Mode)"
 
     txn = Transaction(
         reference=ref_code,
@@ -296,7 +308,7 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
 
     return {
         "success": True,
-        "message": f"Successfully transferred ₹{data.amount:.2f} to bank account ({masked_acc}).",
+        "message": f"Demo Mode: Simulated withdrawal of ₹{data.amount:.2f} to bank account ({masked_acc}) completed.",
         "wallet": wallet_to_dict(wallet),
     }
 

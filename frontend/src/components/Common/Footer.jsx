@@ -32,7 +32,7 @@ function Footer() {
                 </a>
               </p>
               <p className="pt-1 text-[11px] text-slate-400 leading-normal">
-                <strong className="text-slate-300">Address:</strong> 7/711, Rajni Mahal, Opp. AC Market, Tardeo, Mumbai – 400034, Maharashtra, India
+                <strong className="text-slate-300">Project Support Address:</strong> 7/711, Rajni Mahal, Opp. AC Market, Tardeo, Mumbai – 400034, Maharashtra, India
               </p>
             </div>
           </div>

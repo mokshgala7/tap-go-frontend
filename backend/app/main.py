@@ -11,11 +11,11 @@ from app.routes import admin, auth, wallet, payment
 
 def ensure_demo_users(db):
     """
-    Create permanent demo accounts for PayU Integration Team review.
+    Create permanent demo accounts for demonstration and evaluation.
     Accounts are NEVER duplicated — safe to call on every startup.
 
     Demo Credentials:
-      Admin:          payuadmin@tapandgo.com  / 123
+      Admin:          admin@tapandgo.com      / 123
       Passenger:      passenger@tapandgo.com  / 123
       Driver (Punya): diymr070@gmail.com      / Punya@123
     """
@@ -23,7 +23,7 @@ def ensure_demo_users(db):
     from app.utils.security import hash_password
 
     # ── Demo Admin ────────────────────────────────────────────────────────────
-    for admin_email in ["admin@tapandgo.com", "payuadmin@tapandgo.com"]:
+    for admin_email in ["admin@tapandgo.com"]:
         if not db.query(Admin).filter(Admin.email == admin_email).first():
             demo_admin = Admin(
                 email=admin_email,
@@ -273,8 +273,8 @@ try:
     from app.routes.admin import ensure_default_admin
     with SessionLocal() as db:
         ensure_default_admin(db)
-        # Seed PayU demo accounts when PAYU_REVIEW_MODE is enabled
-        if settings.PAYU_REVIEW_MODE:
+        # Seed demo accounts when DEMO_MODE is enabled
+        if settings.DEMO_MODE:
             ensure_demo_users(db)
 except Exception as e:
     print(f"[Warning] Could not auto-create database tables on startup: {e}")
@@ -316,4 +316,4 @@ app.include_router(payment.debug_router)
 @app.get("/")
 def root():
     """Root endpoint for status check."""
-    return {"message": "Tap&Go Backend Running", "review_mode": settings.PAYU_REVIEW_MODE}
+    return {"message": "Tap&Go Backend Running", "demo_mode": settings.DEMO_MODE}
