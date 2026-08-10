@@ -13,13 +13,13 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.on
 
 const trustBadges = ['🔒 Secure Login', '🛡 AI Powered', '🚖 Trusted by Taxi Drivers']
 
-// Keep the reviewer credentials visible unless the deployment explicitly disables them.
-const PAYU_REVIEW_MODE = import.meta.env.VITE_PAYU_REVIEW_MODE !== 'false'
+// Keep demo account helper cards visible unless explicitly disabled.
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
 
 const DEMO_ACCOUNTS = [
   {
     role: 'Admin',
-    email: 'payuadmin@tapandgo.com',
+    email: 'admin@tapandgo.com',
     password: '123',
     icon: '🛡️',
     color: '#7c3aed',
@@ -158,7 +158,7 @@ function Login() {
     if (res.success && res.user) {
       setSuccessMessage(rememberMe ? 'Login validated. This device will be remembered.' : 'Login validated securely.')
       const targetRole = (res.user.account_type || res.user.role || '').toLowerCase()
-      if (targetRole === 'admin' || res.user.email === 'payuadmin@tapandgo.com') {
+      if (targetRole === 'admin' || res.user.email === 'admin@tapandgo.com') {
         sessionStorage.setItem('tapgo_admin_session', JSON.stringify({ email: res.user.email, name: res.user.name || 'Admin', id: res.user.id }))
         navigate('/admin')
       } else if (targetRole === 'driver') {
@@ -340,13 +340,13 @@ function Login() {
               <DemoInfoCard type="database" />
             </div>
 
-            {PAYU_REVIEW_MODE && (
-              <div className="demo-accounts-card" aria-label="Demo accounts for PayU review">
+            {DEMO_MODE && (
+              <div className="demo-accounts-card" aria-label="Demo accounts for testing">
                 <div className="demo-accounts-header">
                   <div className="demo-accounts-badge">DEMO</div>
                   <div>
                     <div className="demo-accounts-title">Demo Accounts</div>
-                    <div className="demo-accounts-subtitle">For PayU Integration Team Review</div>
+                    <div className="demo-accounts-subtitle">For Testing &amp; Evaluation</div>
                   </div>
                 </div>
                 <div className="demo-accounts-list">

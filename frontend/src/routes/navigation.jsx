@@ -4,7 +4,24 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 const PROTECTED_VIEWS = new Set(['passenger', 'driver', 'admin'])
 
 // Views that are public
-const PUBLIC_VIEWS = new Set(['home', 'login', 'register', 'registration-review', 'forgot-password', 'readme'])
+const PUBLIC_VIEWS = new Set([
+  'home',
+  'login',
+  'register',
+  'registration-review',
+  'forgot-password',
+  'readme',
+  'about',
+  'contact',
+  'privacy',
+  'terms',
+  'refund-policy',
+  'shipping-policy',
+  'pricing',
+  'payments',
+  'lost-card',
+  'faq',
+])
 
 const ROUTE_TO_VIEW = {
   '/': 'home',
@@ -15,6 +32,16 @@ const ROUTE_TO_VIEW = {
   '/forgot-password': 'forgot-password',
   '/readme': 'readme',
   '/verification-guide': 'readme',
+  '/about': 'about',
+  '/contact': 'contact',
+  '/privacy': 'privacy',
+  '/terms': 'terms',
+  '/refund-policy': 'refund-policy',
+  '/shipping-policy': 'shipping-policy',
+  '/pricing': 'pricing',
+  '/payments': 'payments',
+  '/lost-card': 'lost-card',
+  '/faq': 'faq',
   '/passenger': 'passenger',
   '/driver': 'driver',
   '/admin': 'admin',
@@ -40,7 +67,7 @@ export function isViewAllowed(targetView) {
         const storedUser = sessionStorage.getItem('tapgo_user')
         if (storedUser) {
           const parsed = JSON.parse(storedUser)
-          return parsed.account_type === 'admin' || parsed.role === 'admin' || parsed.email === 'payuadmin@tapandgo.com'
+          return parsed.account_type === 'admin' || parsed.role === 'admin' || parsed.email === 'admin@tapandgo.com'
         }
         return false
       }

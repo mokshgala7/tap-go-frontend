@@ -947,11 +947,11 @@ function Register() {
                     <h3 className="font-black text-[#1C1C1E] text-base">2. How We Use Your Information</h3>
                     <p>Your information is used to: verify your identity, process payments, provide customer support, detect fraud, and comply with legal obligations under Indian law.</p>
                     <h3 className="font-black text-[#1C1C1E] text-base">3. Data Sharing</h3>
-                    <p>We do not sell your personal data. We may share data with payment processors (e.g. PayU), regulatory authorities, and fraud prevention services as required.</p>
+                    <p>We do not sell your personal data. We may share data with payment processors, regulatory authorities, and fraud prevention services as required.</p>
                     <h3 className="font-black text-[#1C1C1E] text-base">4. Data Security</h3>
                     <p>All data is encrypted in transit (TLS 1.3) and at rest. Passwords are hashed using bcrypt. Sensitive documents are stored on secured servers.</p>
                     <h3 className="font-black text-[#1C1C1E] text-base">5. Your Rights</h3>
-                    <p>You have the right to access, update, or request deletion of your personal data. Contact us at support@tapandgo.app to exercise these rights.</p>
+                    <p>You have the right to access, update, or request deletion of your personal data. Contact us at tapandgosupport@gmail.com to exercise these rights.</p>
                     <h3 className="font-black text-[#1C1C1E] text-base">6. Cookies</h3>
                     <p>We use session cookies for authentication purposes only. We do not use tracking or advertising cookies.</p>
                     <h3 className="font-black text-[#1C1C1E] text-base">7. Contact</h3>

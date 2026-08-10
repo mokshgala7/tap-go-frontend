@@ -4,14 +4,14 @@ Tap&Go is a modern, secure, and instant cashless payment and payout ecosystem bu
 
 ---
 
-## 📋 PayU Merchant Verification Notes
+## 📋 Technical & Demonstration Notes
 
-This deployment is created specifically for **PayU Merchant Verification**.
+This deployment demonstrates the complete application workflow of **Tap&Go**.
 
-The PayU review team can test and evaluate all end-to-end business workflows in this demonstration deployment. Certain production infrastructure services are simulated due to hosting environment constraints (Render Free Tier & Vercel Free Tier). Below is a complete breakdown of hosted demonstration behavior vs live production implementation.
+The review team can test and evaluate all end-to-end business workflows in this demonstration deployment. Certain production infrastructure services are simulated due to hosting environment constraints (Render Free Tier & Vercel Free Tier). Below is a complete breakdown of hosted demonstration behavior vs live production implementation.
 
 ### 1. Database Persistence
-- **Demo Deployment (Render Free Tier):** The backend database is **REAL and fully functional** while the server container is live. Account registrations, wallet top-ups, ride payments, profile updates, and admin actions are saved normally in active database storage. Whenever the Render server container restarts or redeploys, a clean seeded database snapshot is automatically restored. This behavior guarantees every PayU reviewer starts with a clean, fully-populated demonstration environment.
+- **Demo Deployment (Render Free Tier):** The backend database is **REAL and fully functional** while the server container is live. Account registrations, wallet top-ups, ride payments, profile updates, and admin actions are saved normally in active database storage. Whenever the Render server container restarts or redeploys, a clean seeded database snapshot is automatically restored. This behavior guarantees every reviewer starts with a clean, fully-populated demonstration environment.
 - **Production Environment:** Will use a persistent managed database service (e.g., AWS RDS MySQL / GCP Cloud SQL). User registrations, wallet balances, and transactions will remain permanently and never reset after redeployments.
 
 ### 2. OTP Verification
@@ -24,7 +24,7 @@ The PayU review team can test and evaluate all end-to-end business workflows in 
 
 ### 4. Payment Gateway Integration
 - **Demo Deployment:** Demonstrates the cashless transit payment workflow using a dynamic UPI QR integration with real-time wallet ledger updates.
-- **Production Environment:** Upon PayU Merchant Account approval, the temporary payment implementation will be replaced with official PayU Payment Gateway APIs (PayU Web Checkout SDK & Webhook Callbacks) without altering the user wallet experience or transaction history.
+- **Production Environment:** When connected with a production Payment Gateway, the wallet funding workflow connects directly via live Payment Gateway APIs (Web Checkout SDK & Webhook Callbacks) without altering the user wallet experience or transaction history.
 
 ### 📊 Deployment vs Production Summary
 
@@ -35,7 +35,7 @@ The PayU review team can test and evaluate all end-to-end business workflows in 
 | **Database** | Temporary Render Container Database | Persistent Managed Database (AWS RDS) |
 | **OTP Delivery** | Auto-Filled Email OTP | Real Email OTP (Registered Email Address) |
 | **Document Storage** | Temporary Instance Storage | Persistent Object Storage (AWS S3) |
-| **Payment Gateway** | Demo UPI Payment Integration | Official PayU Payment Gateway APIs |
+| **Payment Gateway** | Demo UPI Payment Integration | Production Payment Gateway APIs |
 
 ---
 

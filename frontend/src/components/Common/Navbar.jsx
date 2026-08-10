@@ -4,21 +4,22 @@ import './Navbar.css'
 
 const contactDetails = [
   {
-    label: 'Mobile Number',
-    value: '8796751324',
+    label: 'General Support',
+    value: '8779914564',
   },
   {
     label: 'Email',
-    value: 'support@tapandgo.com',
+    value: 'tapandgosupport@gmail.com',
   },
   {
-    label: 'Lost Card Number',
-    value: '9812567880',
+    label: 'Lost Card Helpline',
+    value: '9321768503',
   },
 ]
 
 function Navbar() {
   const [isContactOpen, setIsContactOpen] = useState(false)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const view = useCurrentView()
   const navigate = useNavigate()
 
@@ -41,6 +42,7 @@ function Navbar() {
 
   const handleSectionClick = (sectionId) => {
     setIsContactOpen(false)
+    setIsMobileMenuOpen(false)
     scrollToSection(sectionId)
   }
 
@@ -55,17 +57,16 @@ function Navbar() {
           Tap<span className="text-yellow-500">&amp;</span>Go
         </Link>
 
-        <nav className="hidden gap-8 text-sm font-semibold md:flex items-center" aria-label="Primary navigation">
+        {/* Desktop Navigation */}
+        <nav className="hidden gap-6 lg:gap-8 text-sm font-semibold md:flex items-center" aria-label="Primary navigation">
           <Link to="/">Home</Link>
+          <Link to="/about">About Us</Link>
+          <Link to="/payments">Payments</Link>
           <button className="tapgo-nav-link" type="button" onClick={() => handleSectionClick('features')}>
             Features
           </button>
-          <button className="tapgo-nav-link" type="button" onClick={() => handleSectionClick('how')}>
-            How It Works
-          </button>
-          <button className="tapgo-nav-link" type="button" onClick={() => handleSectionClick('why')}>
-            Why Choose Us
-          </button>
+          <Link to="/faq">FAQ</Link>
+
           <div className="tapgo-contact-menu">
             <button
               className="tapgo-nav-link tapgo-contact-trigger"
@@ -88,6 +89,11 @@ function Navbar() {
                     <strong>{detail.value}</strong>
                   </div>
                 ))}
+                <div className="pt-2 text-center border-t border-slate-100 mt-1">
+                  <Link to="/contact" onClick={() => setIsContactOpen(false)} className="text-xs text-indigo-600 font-bold hover:underline">
+                    View Full Contact Details →
+                  </Link>
+                </div>
               </div>
             )}
           </div>
@@ -98,7 +104,8 @@ function Navbar() {
           </Link>
         </nav>
 
-        <div className="flex gap-2 sm:gap-3">
+        {/* Action Buttons & Mobile Hamburger */}
+        <div className="flex items-center gap-2 sm:gap-3">
           <Link
             className="rounded-lg border border-primary-container bg-transparent px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-primary-container"
             to="/login"
@@ -108,8 +115,49 @@ function Navbar() {
           <Link className="rounded-lg bg-yellow-400 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-black" to="/register">
             Register
           </Link>
+
+          <button
+            type="button"
+            className="md:hidden p-1.5 text-slate-700 hover:text-black rounded-lg focus:outline-none"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            aria-label="Toggle mobile menu"
+          >
+            <span className="material-symbols-outlined text-2xl">
+              {isMobileMenuOpen ? 'close' : 'menu'}
+            </span>
+          </button>
         </div>
       </div>
+
+      {/* Mobile Navigation Drawer */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden border-t border-slate-200 bg-white px-4 py-4 space-y-3 font-semibold text-sm">
+          <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="block py-1">
+            Home
+          </Link>
+          <Link to="/about" onClick={() => setIsMobileMenuOpen(false)} className="block py-1">
+            About Us
+          </Link>
+          <Link to="/payments" onClick={() => setIsMobileMenuOpen(false)} className="block py-1">
+            How Payments Work
+          </Link>
+          <Link to="/pricing" onClick={() => setIsMobileMenuOpen(false)} className="block py-1">
+            Pricing &amp; Fares
+          </Link>
+          <Link to="/faq" onClick={() => setIsMobileMenuOpen(false)} className="block py-1">
+            FAQ &amp; Support
+          </Link>
+          <Link to="/contact" onClick={() => setIsMobileMenuOpen(false)} className="block py-1 text-indigo-600 font-bold">
+            Contact Us
+          </Link>
+          <Link to="/lost-card" onClick={() => setIsMobileMenuOpen(false)} className="block py-1 text-amber-600 font-bold">
+            Lost Card Support (9321768503)
+          </Link>
+          <Link to="/readme" onClick={() => setIsMobileMenuOpen(false)} className="block py-1 text-indigo-600">
+            Technical README
+          </Link>
+        </div>
+      )}
     </header>
   )
 }

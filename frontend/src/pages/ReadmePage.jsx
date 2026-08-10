@@ -16,10 +16,10 @@ export function ReadmePage() {
           <div className="relative z-10 space-y-4 max-w-3xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-bold uppercase tracking-wider">
               <span className="material-symbols-outlined text-sm">verified</span>
-              PayU Merchant Verification Documentation
+              Tap&amp;Go Technical &amp; System Architecture
             </div>
             <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
-              PayU Integration &amp; Deployment Guide
+              System Architecture &amp; Deployment Guide
             </h1>
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
               This verification guide details the architecture, demonstration workflow, temporary hosting limitations, and intended production setup for the Tap&amp;Go platform.
@@ -36,7 +36,7 @@ export function ReadmePage() {
             <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Project Purpose</h2>
           </div>
           <p className="text-slate-700 leading-relaxed text-sm sm:text-base">
-            This live deployment has been created specifically for <strong>PayU Merchant Verification</strong>. It allows the PayU integration team to test and evaluate the end-to-end user workflows including passenger and driver registration, login, wallet management, trip payment simulation, and administrative controls.
+            This live demonstration deployment showcases the end-to-end user workflows of <strong>Tap&amp;Go</strong>, including passenger and driver registration, login, wallet management, trip payment simulation, and administrative controls.
           </p>
           <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 text-xs sm:text-sm font-semibold flex items-start gap-3">
             <span className="material-symbols-outlined text-amber-600 text-xl shrink-0">info</span>
@@ -143,7 +143,7 @@ export function ReadmePage() {
               <span>Post-Approval Migration Plan</span>
             </div>
             <p className="text-slate-700 text-xs sm:text-sm leading-relaxed">
-              Once <strong>PayU Merchant Approval</strong> is granted, the temporary payment implementation will be replaced with official PayU Payment Gateway APIs (PayU Checkout &amp; Webhook Callbacks). The overall user wallet experience, transaction recording, and interface will remain completely unchanged.
+              When linked with a production <strong>Payment Gateway</strong>, the demonstration payment implementation is replaced with live Payment Gateway SDKs &amp; Webhook Callbacks. The overall user wallet experience, transaction recording, and interface will remain completely unchanged.
             </p>
           </div>
         </section>
@@ -184,7 +184,7 @@ export function ReadmePage() {
                 <tr className="hover:bg-slate-50">
                   <td className="p-4 sm:p-5 font-bold text-slate-900">Payment Gateway</td>
                   <td className="p-4 sm:p-5 text-amber-700 bg-amber-50/40">Demonstration UPI Integration</td>
-                  <td className="p-4 sm:p-5 text-emerald-700 font-bold bg-emerald-50/40">Official PayU Payment Gateway SDK &amp; Webhooks</td>
+                  <td className="p-4 sm:p-5 text-emerald-700 font-bold bg-emerald-50/40">Production Payment Gateway SDK &amp; Webhooks</td>
                 </tr>
               </tbody>
             </table>

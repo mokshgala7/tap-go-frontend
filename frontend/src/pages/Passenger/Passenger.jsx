@@ -551,230 +551,70 @@ function Passenger() {
         </p>
       </div>
 
-      {/* Always show the PayU review workflow details */}
-      {true && (
+      {/* Tap&Go Gateway-Neutral Payment Architecture Guide */}
+      <div style={{
+        marginTop: 28,
+        borderRadius: 24,
+        overflow: 'hidden',
+        background: 'var(--card)',
+        border: '1px solid rgba(99,102,241,0.18)',
+        boxShadow: '0 8px 40px rgba(16,34,51,0.10)',
+      }}>
+        {/* Header */}
         <div style={{
-          marginTop: 28,
-          borderRadius: 24,
-          overflow: 'hidden',
-          background: 'var(--card)',
-          border: '1px solid rgba(99,102,241,0.18)',
-          boxShadow: '0 8px 40px rgba(16,34,51,0.10)',
+          background: 'linear-gradient(135deg,#1C1C2E 0%,#2d2d4e 100%)',
+          padding: '22px 28px',
+          display: 'flex', alignItems: 'center', gap: 14,
         }}>
-          {/* ── Header ─────────────────────────────────────────────────── */}
           <div style={{
-            background: 'linear-gradient(135deg,#1C1C2E 0%,#2d2d4e 100%)',
-            padding: '22px 28px',
-            display: 'flex', alignItems: 'center', gap: 14,
-          }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: 12,
-              background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 22, flexShrink: 0,
-            }}>💳</div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{
-                  padding: '2px 10px', borderRadius: 20,
-                  background: 'linear-gradient(90deg,#6366f1,#8b5cf6)',
-                  color: '#fff', fontSize: 10, fontWeight: 900, letterSpacing: '0.15em',
-                }}>PAYU REVIEW TEAM</span>
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 900, color: '#fff', letterSpacing: '-0.01em' }}>
-                Current Payment Workflow (Demo)
-              </div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 2, fontWeight: 600 }}>
-                This project uses a temporary FamPay-based payment workflow for demonstration purposes while awaiting PayU merchant onboarding.
-              </div>
+            width: 44, height: 44, borderRadius: 12,
+            background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 22, flexShrink: 0,
+          }}>💳</div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{
+                padding: '2px 10px', borderRadius: 20,
+                background: 'linear-gradient(90deg,#6366f1,#8b5cf6)',
+                color: '#fff', fontSize: 10, fontWeight: 900, letterSpacing: '0.15em',
+              }}>PAYMENT ARCHITECTURE</span>
             </div>
-          </div>
-
-          {/* Gold accent bar */}
-          <div style={{ height: 3, background: 'linear-gradient(90deg,#FDD34D,#f59e0b,#6366f1)' }} />
-
-          <div style={{ padding: '28px 28px 24px' }}>
-
-            {/* ── Stepper Row ─────────────────────────────────────────── */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))',
-              gap: 20,
-              marginBottom: 28,
-            }}>
-
-              {/* Current Workflow Stepper */}
-              <div style={{
-                borderRadius: 18, overflow: 'hidden',
-                border: '1.5px solid rgba(245,158,11,0.25)',
-                background: 'rgba(245,158,11,0.03)',
-              }}>
-                <div style={{
-                  padding: '14px 18px',
-                  background: 'linear-gradient(90deg,rgba(245,158,11,0.12),rgba(245,158,11,0.04))',
-                  borderBottom: '1px solid rgba(245,158,11,0.18)',
-                  display: 'flex', alignItems: 'center', gap: 8,
-                }}>
-                  <span style={{ fontSize: 16 }}>🟡</span>
-                  <span style={{ fontSize: 12, fontWeight: 900, color: '#b45309', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Current Demo Workflow</span>
-                </div>
-                <div style={{ padding: '18px 18px 14px' }}>
-                  {[
-                    ['🧑‍💼', 'Passenger', '#92400e'],
-                    ['📲', 'Enter Wallet Top-up Amount', 'var(--text)'],
-                    ['📱', 'Dynamic UPI QR Generated', 'var(--text)'],
-                    ['💸', 'Pay using any UPI App', 'var(--text)'],
-                    ['🏦', 'Payment received in Tap&Go Demo Account (FamPay)', 'var(--text)'],
-                    ['🔍', 'Backend verifies payment', 'var(--text)'],
-                    ['✅', 'Passenger Wallet Credited', '#059669'],
-                    ['📋', 'Transaction stored in Wallet History', '#059669'],
-                  ].map(([icon, label, color], i, arr) => (
-                    <div key={i}>
-                      <div style={{
-                        display: 'flex', alignItems: 'flex-start', gap: 10,
-                        padding: '7px 0',
-                      }}>
-                        <div style={{
-                          width: 32, height: 32, borderRadius: 10, flexShrink: 0,
-                          background: i === 0 ? 'rgba(245,158,11,0.15)' : color.includes('059') ? 'rgba(5,150,105,0.1)' : 'rgba(0,0,0,0.04)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 15,
-                        }}>{icon}</div>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color, paddingTop: 6, lineHeight: 1.4 }}>{label}</div>
-                      </div>
-                      {i < arr.length - 1 && (
-                        <div style={{ paddingLeft: 15, color: 'rgba(245,158,11,0.5)', fontSize: 16, lineHeight: 1, userSelect: 'none' }}>│</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Future PayU Workflow Stepper */}
-              <div style={{
-                borderRadius: 18, overflow: 'hidden',
-                border: '1.5px solid rgba(99,102,241,0.25)',
-                background: 'rgba(99,102,241,0.03)',
-              }}>
-                <div style={{
-                  padding: '14px 18px',
-                  background: 'linear-gradient(90deg,rgba(99,102,241,0.12),rgba(99,102,241,0.04))',
-                  borderBottom: '1px solid rgba(99,102,241,0.18)',
-                  display: 'flex', alignItems: 'center', gap: 8,
-                }}>
-                  <span style={{ fontSize: 16 }}>🔵</span>
-                  <span style={{ fontSize: 12, fontWeight: 900, color: '#4338ca', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Future PayU Workflow</span>
-                </div>
-                <div style={{ padding: '18px 18px 14px' }}>
-                  {[
-                    ['🧑‍💼', 'Passenger', '#4338ca'],
-                    ['📲', 'Enter Wallet Top-up Amount', 'var(--text)'],
-                    ['🏛️', 'Official PayU Checkout', '#6366f1'],
-                    ['💳', 'Payment Processed by PayU', 'var(--text)'],
-                    ['🔐', 'Secure Payment Success Callback', 'var(--text)'],
-                    ['🔍', 'Backend Verification', 'var(--text)'],
-                    ['⚡', 'Wallet Updated Instantly', '#059669'],
-                    ['📋', 'Transaction Stored', '#059669'],
-                    ['✅', 'Success Confirmation', '#059669'],
-                  ].map(([icon, label, color], i, arr) => (
-                    <div key={i}>
-                      <div style={{
-                        display: 'flex', alignItems: 'flex-start', gap: 10,
-                        padding: '7px 0',
-                      }}>
-                        <div style={{
-                          width: 32, height: 32, borderRadius: 10, flexShrink: 0,
-                          background: i === 0 ? 'rgba(99,102,241,0.15)' : color.includes('4338') || color.includes('6366') ? 'rgba(99,102,241,0.1)' : color.includes('059') ? 'rgba(5,150,105,0.1)' : 'rgba(0,0,0,0.04)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 15,
-                        }}>{icon}</div>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color, paddingTop: 6, lineHeight: 1.4 }}>{label}</div>
-                      </div>
-                      {i < arr.length - 1 && (
-                        <div style={{ paddingLeft: 15, color: 'rgba(99,102,241,0.4)', fontSize: 16, lineHeight: 1, userSelect: 'none' }}>│</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: '#fff', letterSpacing: '-0.01em' }}>
+              Tap&amp;Go Wallet Payment Workflow
             </div>
-
-            {/* ── Comparison Table ────────────────────────────────────── */}
-            <div style={{ marginBottom: 24 }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14,
-              }}>
-                <span style={{ fontSize: 15 }}>📊</span>
-                <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Feature Comparison</span>
-              </div>
-              <div style={{ overflowX: 'auto', borderRadius: 14, border: '1px solid var(--line)' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 480 }}>
-                  <thead>
-                    <tr style={{ background: 'linear-gradient(90deg,rgba(99,102,241,0.08),rgba(139,92,246,0.05))' }}>
-                      {['Feature', 'Current Demo', 'After PayU Integration'].map((col, i) => (
-                        <th key={col} style={{
-                          padding: '12px 16px', textAlign: i === 0 ? 'left' : 'center',
-                          fontWeight: 900, fontSize: 11,
-                          textTransform: 'uppercase', letterSpacing: '0.08em',
-                          color: i === 2 ? '#4338ca' : 'var(--text)',
-                          borderBottom: '1px solid var(--line)',
-                          whiteSpace: 'nowrap',
-                        }}>{col}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      ['💳 Payment Method', 'Dynamic UPI QR (FamPay Demo)', 'Official PayU Payment Gateway'],
-                      ['🔐 Verification', 'Demo backend verification', 'Secure PayU Callback'],
-                      ['⚡ Wallet Update', 'Automatic', 'Instant'],
-                      ['📋 Transaction History', '✅ Yes', '✅ Yes'],
-                      ['🛡️ Security', 'Demo Implementation', 'Production-grade PayU Security'],
-                      ['🎯 Purpose', 'Evaluation & Testing', 'Live Production Payments'],
-                    ].map(([feature, demo, payu], rowIndex) => (
-                      <tr key={rowIndex} style={{
-                        background: rowIndex % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.02)',
-                        borderBottom: rowIndex < 5 ? '1px solid var(--line)' : 'none',
-                      }}>
-                        <td style={{ padding: '11px 16px', fontWeight: 700, color: 'var(--text)' }}>{feature}</td>
-                        <td style={{ padding: '11px 16px', textAlign: 'center', color: '#b45309', fontWeight: 600 }}>{demo}</td>
-                        <td style={{ padding: '11px 16px', textAlign: 'center', color: '#4338ca', fontWeight: 700 }}>{payu}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 2, fontWeight: 600 }}>
+              External payment gateways fund the wallet. Normal ride payments move directly from passenger wallet to driver wallet.
             </div>
-
-            {/* ── Important Note ──────────────────────────────────────── */}
-            <div style={{
-              borderRadius: 14,
-              background: 'linear-gradient(135deg,rgba(251,191,36,0.1),rgba(245,158,11,0.06))',
-              border: '1.5px solid rgba(251,191,36,0.35)',
-              padding: '16px 20px',
-              display: 'flex', gap: 14, alignItems: 'flex-start',
-            }}>
-              <div style={{
-                width: 40, height: 40, flexShrink: 0, borderRadius: 10,
-                background: 'rgba(251,191,36,0.2)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 20,
-              }}>⚠️</div>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 900, color: '#92400e', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 5 }}>
-                  Important Note for PayU Review Team
-                </div>
-                <div style={{ fontSize: 12.5, color: '#78350f', fontWeight: 600, lineHeight: 1.65 }}>
-                  Current payment processing uses a <strong style={{ color: '#92400e' }}>temporary FamPay-based demonstration workflow</strong> developed solely for testing and evaluation purposes.
-                  <br /><br />
-                  Upon <strong style={{ color: '#92400e' }}>PayU merchant approval</strong>, this workflow will be <strong style={{ color: '#92400e' }}>completely replaced</strong> with the official PayU Payment Gateway — without affecting the wallet, transaction history, or user experience.
-                </div>
-              </div>
-            </div>
-
           </div>
         </div>
-      )}
+
+        {/* Gold accent bar */}
+        <div style={{ height: 3, background: 'linear-gradient(90deg,#FDD34D,#f59e0b,#6366f1)' }} />
+
+        <div style={{ padding: '28px 28px 24px' }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))',
+            gap: 16,
+            marginBottom: 20,
+          }}>
+            {[
+              ['1️⃣ Add Money', 'Payment Gateway → Tap&Go Wallet', 'Fund your passenger wallet using any supported payment gateway.'],
+              ['2️⃣ Pay for Ride', 'Passenger Wallet → Driver Wallet', 'Tap NFC card or scan QR. Fares transfer instantly between wallets.'],
+              ['3️⃣ Driver Payout', 'Tap&Go Wallet → Supported Withdrawal', 'Drivers withdraw earned wallet funds to their linked account.'],
+            ].map(([title, subtitle, desc]) => (
+              <div key={title} style={{
+                padding: 16, borderRadius: 16, border: '1px solid var(--line)', background: 'rgba(255,255,255,0.03)'
+              }}>
+                <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 4 }}>{title}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', textTransform: 'uppercase', marginBottom: 6 }}>{subtitle}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <h2>Recent transactions</h2>
       {recentTxns.map(renderTxnRow)}

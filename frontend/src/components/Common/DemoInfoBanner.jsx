@@ -10,7 +10,7 @@ export function DemoInfoBanner() {
           </div>
           <div>
             <span className="font-bold text-amber-400 tracking-wide uppercase text-[11px] block sm:inline sm:mr-2">
-              PayU Verification Demo
+              Tap&amp;Go Demonstration Deployment
             </span>
             <span className="text-slate-200">
               This deployment demonstrates the complete application workflow. Certain production services are simulated due to free hosting environment limitations.
@@ -21,7 +21,7 @@ export function DemoInfoBanner() {
           href="#/readme"
           className="inline-flex items-center gap-1 text-xs font-bold text-indigo-300 hover:text-amber-400 bg-indigo-900/50 hover:bg-indigo-900 px-3 py-1.5 rounded-lg border border-indigo-500/30 transition-colors whitespace-nowrap"
         >
-          <span>Read Verification Notes</span>
+          <span>Read Technical Notes</span>
           <span className="material-symbols-outlined text-sm" aria-hidden="true">arrow_forward</span>
         </a>
       </div>

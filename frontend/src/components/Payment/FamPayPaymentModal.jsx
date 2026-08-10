@@ -138,7 +138,7 @@ export function FamPayPaymentModal({ paymentRequest, onClose, onSuccess, flash }
           onSuccess(data)
         }, 1500)
       } else {
-        setMessage(data.message || 'Payment notification email not found yet. Please make sure payment was completed in FamPay/UPI app.')
+        setMessage(data.message || 'Payment notification email not found yet. Please make sure payment was completed in your UPI app.')
         if (flash) flash(data.message || 'Payment not detected yet.')
       }
     } catch {
@@ -173,7 +173,7 @@ export function FamPayPaymentModal({ paymentRequest, onClose, onSuccess, flash }
               style={{ height: 32, width: 'auto', objectFit: 'contain' }}
             />
             <span style={{ fontSize: 12, fontWeight: 700, background: 'rgba(255,255,255,0.08)', padding: '4px 10px', borderRadius: 8, border: '1px solid var(--line)' }}>
-              FamPay Test
+              UPI Payment Gateway
             </span>
           </div>
           {status !== 'Completed' && (
@@ -220,7 +220,7 @@ export function FamPayPaymentModal({ paymentRequest, onClose, onSuccess, flash }
             >
               <canvas ref={canvasRef} style={{ width: 230, height: 230, display: 'block', borderRadius: 8 }} />
               <div style={{ color: '#0f172a', marginTop: 10, fontWeight: 800, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                <span>Scan with FamPay or any UPI App</span>
+                <span>Scan with any UPI App</span>
               </div>
             </div>
 

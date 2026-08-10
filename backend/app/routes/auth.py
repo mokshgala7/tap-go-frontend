@@ -276,7 +276,7 @@ async def register(
             "success": True,
             "review_demo": True,
             "message": (
-                "Registration completed in the PayU review environment. "
+                "Registration completed in the demonstration environment. "
                 "This demo resets automatically, so please sign in with one of the supplied tester accounts."
             ),
         }

@@ -19,7 +19,7 @@ export function DemoInfoCard({ type = 'database', className = '' }) {
               This deployment uses <strong>Render Free Tier hosting</strong>. The backend database is <strong>REAL and fully functional</strong> while the server is live. All registrations, profile edits, wallet transactions, and other operations are saved normally in the active database.
             </p>
             <p className="text-slate-700">
-              However, Render Free Tier stores its active database inside temporary server storage. Whenever the Render server rebuilds or restarts, a <strong>clean seeded database snapshot is automatically restored</strong>. This behaviour is intentional so every PayU reviewer always starts with a clean demonstration environment. Newly created accounts should be treated as temporary demonstration accounts.
+              However, Render Free Tier stores its active database inside temporary server storage. Whenever the Render server rebuilds or restarts, a <strong>clean seeded database snapshot is automatically restored</strong>. This behaviour is intentional so every reviewer always starts with a clean demonstration environment. Newly created accounts should be treated as temporary demonstration accounts.
             </p>
             <div className="mt-3 rounded-xl border border-blue-200 bg-white/80 p-3">
               <span className="font-bold text-blue-900 text-xs block mb-1">Production Version:</span>
@@ -107,14 +107,14 @@ export function DemoInfoCard({ type = 'database', className = '' }) {
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-2.5">
               <div>
                 <span className="font-black text-amber-400 text-base block tracking-tight">Demo Environment Information</span>
-                <span className="text-slate-400 text-xs font-medium">Prepared for PayU Merchant Verification</span>
+                <span className="text-slate-400 text-xs font-medium">Prepared for Technical Review &amp; Demonstration</span>
               </div>
               <span className="rounded-full bg-amber-400/20 border border-amber-400/30 px-3 py-1 text-xs font-bold text-amber-300">
                 Reviewer Access Active
               </span>
             </div>
             <p className="text-slate-300">
-              This deployment has been created specifically for <strong>PayU Merchant Verification</strong>. The application's complete business workflow is fully operational.
+              This demonstration deployment showcases the Tap&amp;Go platform. The application's complete business workflow is fully operational.
             </p>
             <div className="rounded-xl bg-slate-800/80 border border-slate-700 p-3">
               <span className="font-bold text-slate-200 text-xs block mb-1">Simulated Production Services (Render Free Tier Hosting):</span>

@@ -7,11 +7,21 @@ import Passenger from '../pages/Passenger/Passenger.jsx'
 import Register from '../pages/Register/Register.jsx'
 import RegistrationReview from '../pages/RegistrationReview.jsx'
 import ReadmePage from '../pages/ReadmePage.jsx'
+
+// Compliance & Informational Pages
+import AboutUs from '../pages/AboutUs.jsx'
+import ContactUs from '../pages/ContactUs.jsx'
+import PrivacyPolicy from '../pages/PrivacyPolicy.jsx'
+import TermsConditions from '../pages/TermsConditions.jsx'
+import RefundPolicy from '../pages/RefundPolicy.jsx'
+import ShippingPolicy from '../pages/ShippingPolicy.jsx'
+import PricingInfo from '../pages/PricingInfo.jsx'
+import PaymentInfo from '../pages/PaymentInfo.jsx'
+import LostCardSupport from '../pages/LostCardSupport.jsx'
+import FaqSupport from '../pages/FaqSupport.jsx'
+
 import { useCurrentView } from './navigation.jsx'
 
-// Tap&Go is a single-page app: this is the only place that decides what's
-// on screen. There is no browser routing and no other URL ever works -
-// swapping "view" in NavProvider is the only way the visible page changes.
 function AppRoutes() {
   const view = useCurrentView()
 
@@ -26,6 +36,26 @@ function AppRoutes() {
       return <ForgotPassword />
     case 'readme':
       return <ReadmePage />
+    case 'about':
+      return <AboutUs />
+    case 'contact':
+      return <ContactUs />
+    case 'privacy':
+      return <PrivacyPolicy />
+    case 'terms':
+      return <TermsConditions />
+    case 'refund-policy':
+      return <RefundPolicy />
+    case 'shipping-policy':
+      return <ShippingPolicy />
+    case 'pricing':
+      return <PricingInfo />
+    case 'payments':
+      return <PaymentInfo />
+    case 'lost-card':
+      return <LostCardSupport />
+    case 'faq':
+      return <FaqSupport />
     case 'passenger':
       return <Passenger />
     case 'driver':

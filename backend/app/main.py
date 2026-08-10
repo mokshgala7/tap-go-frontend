@@ -23,29 +23,29 @@ def ensure_demo_users(db):
     from app.utils.security import hash_password
 
     # ── Demo Admin ────────────────────────────────────────────────────────────
-    admin_email = "payuadmin@tapandgo.com"
-    if not db.query(Admin).filter(Admin.email == admin_email).first():
-        demo_admin = Admin(
-            email=admin_email,
-            password_hash=hash_password("123"),
-            name="PayU Demo Admin",
-        )
-        db.add(demo_admin)
-        db.commit()
-        print(f"[Demo] Created admin in Admin table: {admin_email}")
+    for admin_email in ["admin@tapandgo.com", "payuadmin@tapandgo.com"]:
+        if not db.query(Admin).filter(Admin.email == admin_email).first():
+            demo_admin = Admin(
+                email=admin_email,
+                password_hash=hash_password("123"),
+                name="Tap&Go Demo Admin",
+            )
+            db.add(demo_admin)
+            db.commit()
+            print(f"[Demo] Created admin in Admin table: {admin_email}")
 
-    if not db.query(User).filter(User.email == admin_email).first():
-        demo_admin_user = User(
-            account_type="admin",
-            name="PayU Demo Admin",
-            email=admin_email,
-            phone="9000000000",
-            password_hash=hash_password("123"),
-            status="active",
-        )
-        db.add(demo_admin_user)
-        db.commit()
-        print(f"[Demo] Created admin in User table: {admin_email}")
+        if not db.query(User).filter(User.email == admin_email).first():
+            demo_admin_user = User(
+                account_type="admin",
+                name="Tap&Go Demo Admin",
+                email=admin_email,
+                phone="9000000000",
+                password_hash=hash_password("123"),
+                status="active",
+            )
+            db.add(demo_admin_user)
+            db.commit()
+            print(f"[Demo] Created admin in User table: {admin_email}")
 
     # ── Helper: create user + wallet ──────────────────────────────────────────
     def _create_demo_user(email, phone, name, account_type, password="123", **details):
