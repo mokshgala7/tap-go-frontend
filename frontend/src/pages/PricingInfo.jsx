@@ -21,7 +21,7 @@ export function PricingInfo() {
               Pricing &amp; Fare Information
             </h1>
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-              Transparent information regarding ride fare processing and digital wallet transactions on Tap&amp;Go.
+              Transparent information regarding ride fare processing, digital wallet transactions, and NFC card delivery on Tap&amp;Go.
             </p>
           </div>
         </section>
@@ -60,10 +60,17 @@ export function PricingInfo() {
             </p>
           </section>
 
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">4. NFC Card &amp; Location-Based Delivery Charges</h2>
+            <p>
+              The customer-facing price of a physical Tap&amp;Go NFC card is <strong>₹50</strong>. An applicable location-based shipping fee is calculated separately based on the destination address (Local Mumbai / Maharashtra Regional / National). The exact price breakdown (Card ₹50 + Shipping ₹X = Total ₹Y) is clearly displayed before order confirmation.
+            </p>
+          </section>
+
           {/* Quick Actions */}
           <section className="pt-4 flex flex-wrap gap-4">
-            <Link to="/payments" className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-xs sm:text-sm hover:bg-indigo-700 transition-colors">
-              How Wallet Payments Work
+            <Link to="/shipping-policy" className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-xs sm:text-sm hover:bg-indigo-700 transition-colors">
+              Shipping &amp; Delivery Policy
             </Link>
             <Link to="/contact" className="px-5 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 font-bold text-xs sm:text-sm hover:bg-slate-200 transition-colors">
               Contact Support

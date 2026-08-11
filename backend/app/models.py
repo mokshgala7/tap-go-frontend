@@ -199,3 +199,36 @@ class ProjectSetting(Base):
     key = Column(String(100), primary_key=True)
     value = Column(Text, nullable=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class NFCCardOrder(Base):
+    __tablename__ = "nfc_card_orders"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    order_reference = Column(String(64), nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    card_type = Column(String(50), nullable=False, default="standard_nfc")
+    card_price = Column(Numeric(12, 2), nullable=False, default=50.00)
+    delivery_charge = Column(Numeric(12, 2), nullable=False, default=0.00)
+    total_amount = Column(Numeric(12, 2), nullable=False, default=50.00)
+    delivery_tier = Column(String(30), nullable=False, default="local")
+    
+    # Recipient & Delivery Address Details
+    recipient_name = Column(String(100), nullable=False)
+    phone = Column(String(20), nullable=False)
+    address_line1 = Column(Text, nullable=False)
+    address_line2 = Column(Text, nullable=True)
+    area = Column(String(100), nullable=False)
+    city = Column(String(100), nullable=False)
+    state = Column(String(100), nullable=False)
+    pincode = Column(String(10), nullable=False)
+
+    # Order Lifecycle & Statuses
+    order_status = Column(String(30), nullable=False, default="processing", index=True) # pending_payment, processing, dispatched, delivered, cancelled, failed
+    payment_status = Column(String(30), nullable=False, default="paid", index=True)     # pending, paid, failed, refunded
+    is_demo = Column(Boolean, nullable=False, default=True)
+    notes = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+

@@ -7,6 +7,8 @@ import { useDarkMode } from '../../hooks/useDarkMode.js'
 import { RANGE_OPTIONS, formatRelativeTime, vehicleLabel } from './format.js'
 import FamPayPaymentModal from '../../components/Payment/FamPayPaymentModal.jsx'
 import DemoInfoCard from '../../components/Common/DemoInfoCard.jsx'
+import NFCCardOrderModal from '../../components/NFC/NFCCardOrderModal.jsx'
+import NFCOrderHistoryModal from '../../components/NFC/NFCOrderHistoryModal.jsx'
 import './Passenger.css'
 
 const Icon = ({ children, className = '' }) => (
@@ -120,6 +122,10 @@ function Passenger() {
   const [topupModalAmount, setTopupModalAmount] = useState('')
   const [topupLoading, setTopupLoading] = useState(false)
   const [activePaymentRequest, setActivePaymentRequest] = useState(null)
+
+  // NFC Card Order Modal State
+  const [showNFCOrderModal, setShowNFCOrderModal] = useState(false)
+  const [showNFCHistoryModal, setShowNFCHistoryModal] = useState(false)
 
   const handleInitiateFamPay = async (amt) => {
     if (!amt || amt <= 0) {
@@ -392,13 +398,38 @@ function Passenger() {
         </button>
       </div>
 
-      <div className="wallet-note" style={{ marginBottom: 30 }}>
+      <div className="wallet-note" style={{ marginBottom: 20 }}>
         <b>
           Wallet balance: ₹{balance.toFixed(2)}{' '}
           <span className="muted" style={{ fontWeight: 500, fontSize: 14 }}>
             · protected by real-time fraud detection
           </span>
         </b>
+      </div>
+
+      {/* NFC Card Ordering Banner */}
+      <div style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)', borderRadius: 16, padding: '16px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <span style={{ fontSize: 11, fontWeight: 800, color: '#fde047', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Transit Hardware</span>
+          <h3 style={{ margin: '2px 0 4px', fontSize: 17, color: '#fff' }}>Get Your Tap&amp;Go NFC Card</h3>
+          <p style={{ margin: 0, fontSize: 13, color: '#cbd5e1' }}>Physical NFC smart card (₹50) with location-based shipping</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setShowNFCHistoryModal(true)}
+            style={{ padding: '8px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+          >
+            My Orders
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowNFCOrderModal(true)}
+            style={{ padding: '8px 16px', borderRadius: 10, background: '#fde047', color: '#0f172a', fontSize: 12, fontWeight: 900, border: 0, cursor: 'pointer' }}
+          >
+            Order Card (₹50)
+          </button>
+        </div>
       </div>
 
       <h2>Transaction History</h2>
@@ -482,6 +513,13 @@ function Passenger() {
               }}
             >
               Withdraw to Bank
+            </button>
+            <button
+              className="secondary-btn"
+              onClick={() => setShowNFCOrderModal(true)}
+              style={{ background: '#1e1b4b', color: '#fde047', border: '1px solid #312e81', fontWeight: 800 }}
+            >
+              Order NFC Card (₹50)
             </button>
           </div>
         </div>
@@ -1215,6 +1253,24 @@ function Passenger() {
             }, 800)
           }}
           flash={flash}
+        />
+      )}
+
+      {showNFCOrderModal && (
+        <NFCCardOrderModal
+          user={user}
+          onClose={() => setShowNFCOrderModal(false)}
+          onOrderSuccess={() => {
+            flash('NFC Card order created!')
+          }}
+        />
+      )}
+
+      {showNFCHistoryModal && (
+        <NFCOrderHistoryModal
+          user={user}
+          onClose={() => setShowNFCHistoryModal(false)}
+          onOrderAgain={() => setShowNFCOrderModal(true)}
         />
       )}
 

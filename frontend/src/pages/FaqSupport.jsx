@@ -15,6 +15,30 @@ export function FaqSupport() {
       a: 'Tap&Go is designed for both passengers and drivers in public transportation. Passengers use it for cashless fare payments, while drivers use it to receive payments, track earnings, and manage wallet withdrawals.',
     },
     {
+      q: 'How much does the NFC card cost?',
+      a: 'Each physical Tap&Go NFC card is priced at ₹50. Applicable shipping and delivery charges are calculated based on your delivery location (Local / Regional / National) and displayed before payment confirmation.',
+    },
+    {
+      q: 'Is delivery included in ₹50?',
+      a: 'No. The ₹50 is the physical NFC card price. Applicable delivery charges are calculated separately based on the recipient delivery location.',
+    },
+    {
+      q: 'How is delivery calculated?',
+      a: 'Delivery charges depend on the delivery location (Local Mumbai Metro, Regional Maharashtra, or Rest of India) and applicable delivery service. The exact charge is displayed on the order review screen before confirmation.',
+    },
+    {
+      q: 'Where will my NFC card be delivered?',
+      a: 'Your NFC card will be delivered via postal/courier service to the destination shipping address provided during the card ordering process.',
+    },
+    {
+      q: 'How long does NFC card delivery take?',
+      a: 'Delivery timelines vary depending on the destination address and courier logistics service. Delivery tracking details will be communicated upon dispatch where applicable.',
+    },
+    {
+      q: 'What happens if I enter the wrong address?',
+      a: 'Please ensure your delivery address is accurate and complete. Tap&Go is not responsible for shipping delays or failed delivery caused by inaccurate address details, and re-delivery may require additional delivery arrangements.',
+    },
+    {
       q: 'How do I add money to my wallet?',
       a: 'You can add funds to your Tap&Go digital wallet by clicking "Recharge" or "Add Money" inside your passenger or driver dashboard. Top-ups are processed using supported payment gateways via UPI, debit/credit card, or netbanking.',
     },
@@ -36,7 +60,7 @@ export function FaqSupport() {
     },
     {
       q: 'What should I do if I lose my Tap&Go card?',
-      a: 'If you lose your physical Tap&Go card, immediately call our dedicated lost card support helpline at 9321768503 to report the card and protect your account.',
+      a: 'If you lose your physical Tap&Go card, immediately call our dedicated lost card support helpline at 9321768503 or email tapandgosupport@gmail.com to report the card and protect your account.',
     },
     {
       q: 'How do I contact Tap&Go support?',
@@ -65,7 +89,7 @@ export function FaqSupport() {
               Frequently Asked Questions
             </h1>
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-              Find answers to common questions about Tap&amp;Go wallets, payments, NFC travel, and lost card assistance.
+              Find answers to common questions about Tap&amp;Go wallets, payments, NFC travel, card shipping, and support.
             </p>
           </div>
         </section>

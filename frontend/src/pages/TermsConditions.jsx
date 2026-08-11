@@ -58,17 +58,20 @@ export function TermsConditions() {
 
           {/* Section 4 */}
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">4. User Responsibilities &amp; Security</h2>
-            <p>
-              Users agree not to engage in fraudulent wallet top-ups, unauthorized card usage, transaction manipulation, or suspicious account activities. Tap&amp;Go incorporates automated AI fraud monitoring and OTP verification protocols to safeguard transactions.
-            </p>
+            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">4. NFC Card Terms &amp; Hardware Distinction</h2>
+            <ul className="list-disc list-inside space-y-2 pl-2 text-slate-600">
+              <li><strong>NFC User Card:</strong> The physical Tap&amp;Go NFC card is a transit access card issued to users for tap-and-go fare transfers within the platform.</li>
+              <li><strong>Delivery &amp; Shipping Charges:</strong> Users ordering an NFC card must supply an accurate shipping address. Applicable delivery fees are disclosed before checkout.</li>
+              <li><strong>Lost &amp; Damaged Cards:</strong> Users are responsible for reporting lost or damaged NFC cards immediately to support at 9321768503 or tapandgosupport@gmail.com.</li>
+              <li><strong>ESP32-S3 POS Terminal:</strong> The ESP32-S3 POS terminal is a prototype component developed for academic demonstration and is not a consumer e-commerce product.</li>
+            </ul>
           </section>
 
           {/* Section 5 */}
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">5. Lost Cards &amp; Compromised Accounts</h2>
+            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">5. User Responsibilities &amp; Security</h2>
             <p>
-              If a physical Tap&amp;Go card is lost or an account is compromised, the user must immediately contact support at <strong>9321768503</strong> or email <strong>tapandgosupport@gmail.com</strong> to request account suspension or card blocking.
+              Users agree not to engage in fraudulent wallet top-ups, unauthorized card usage, transaction manipulation, or suspicious account activities. Tap&amp;Go incorporates automated AI fraud monitoring and OTP verification protocols to safeguard transactions.
             </p>
           </section>
 
@@ -87,7 +90,7 @@ export function TermsConditions() {
               <p className="font-bold text-slate-900">Tap&amp;Go Support Team</p>
               <p>Email: <a href="mailto:tapandgosupport@gmail.com" className="text-indigo-600 font-bold">tapandgosupport@gmail.com</a></p>
               <p>General Support: 8779914564 | Lost Card Support: 9321768503</p>
-              <p>Address: 7/711, Rajni Mahal, Opp. AC Market, Tardeo, Mumbai – 400034, Maharashtra, India</p>
+              <p>Project Support Address: 7/711, Rajni Mahal, Opp. AC Market, Tardeo, Mumbai – 400034, Maharashtra, India</p>
             </div>
           </section>
         </div>

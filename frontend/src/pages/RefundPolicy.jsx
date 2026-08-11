@@ -56,11 +56,19 @@ export function RefundPolicy() {
             </p>
           </section>
 
-          {/* Section 5: Refund Request Process */}
+          {/* Section 5: NFC Card Orders */}
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">5. How to Request Support or Refund Assistance</h2>
+            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">5. NFC Card Orders &amp; Cancellations</h2>
             <p>
-              To lodge a dispute or request assistance regarding a wallet or ride transaction, please contact us with your account email, registered phone number, transaction ID, and transaction details:
+              Users may request cancellation of a physical NFC card order subject to its current processing or dispatch status. If an NFC card order has already been dispatched for shipping, cancellation may no longer be possible. Refund handling for card orders depends on the order status and payment verification. Any applicable delivery charges are disclosed prior to order confirmation. If a card shipment is returned due to an incomplete or incorrect address provided by the user, re-delivery charges may apply.
+            </p>
+          </section>
+
+          {/* Section 6: Refund Request Process */}
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">6. How to Request Support or Refund Assistance</h2>
+            <p>
+              To lodge a dispute or request assistance regarding a wallet transaction or NFC card order, please contact us with your account email, registered phone number, transaction ID, and details:
             </p>
             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-800 space-y-3 font-medium text-sm">
               <p className="font-bold text-slate-900">Tap&amp;Go Refund Support</p>

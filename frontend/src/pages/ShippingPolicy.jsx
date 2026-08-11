@@ -15,7 +15,7 @@ export function ShippingPolicy() {
             Shipping &amp; Delivery Policy
           </div>
           <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
-            Shipping &amp; Delivery Policy
+            NFC Card Shipping &amp; Delivery Policy
           </h1>
           <p className="text-slate-500 text-xs sm:text-sm">
             Last Updated: August 2026
@@ -24,42 +24,77 @@ export function ShippingPolicy() {
 
         {/* Content Body */}
         <div className="bg-white rounded-2xl p-6 sm:p-10 shadow-sm border border-slate-200 space-y-8 text-slate-700 leading-relaxed text-sm sm:text-base">
-          {/* Statement */}
+          {/* Main Platform Statement */}
           <div className="p-5 rounded-2xl bg-blue-50/80 border border-blue-200 text-blue-950 font-medium space-y-2">
-            <h2 className="text-lg font-bold text-blue-900">Digital Service Platform Disclosure</h2>
+            <h2 className="text-lg font-bold text-blue-900">Digital Mobility &amp; Card Delivery Overview</h2>
             <p className="text-sm leading-relaxed">
-              <strong>Tap&amp;Go is a digital transportation payment platform and does not operate an e-commerce shipping or physical-goods delivery service through this website.</strong>
+              Tap&amp;Go is a digital transportation payment platform. As part of our cashless mobility ecosystem, physical Tap&amp;Go NFC smart cards may be issued and shipped to users for travel convenience.
             </p>
           </div>
 
-          {/* Policy Details */}
-          <section className="space-y-4">
-            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">Policy Details</h2>
-            <ul className="list-disc list-inside space-y-3 pl-2 text-slate-600">
-              <li>
-                <strong>Digital Services Only:</strong> The Tap&amp;Go platform primarily provides digital wallet funding, cashless ride payment processing, transaction management, and driver wallet withdrawal services.
-              </li>
-              <li>
-                <strong>No Physical Goods Sold:</strong> No physical e-commerce merchandise or retail items are sold or delivered via this website.
-              </li>
-              <li>
-                <strong>No Standard Shipping Required:</strong> Since transactions represent digital wallet top-ups and fare settlements, standard postal shipping or delivery tracking protocols do not apply to website transactions.
-              </li>
-              <li>
-                <strong>Prototype Hardware Clarification:</strong> Tap&amp;Go may demonstrate prototype hardware such as an NFC card and ESP32-S3 POS terminal as part of the academic project. These prototypes are not sold as e-commerce products through this website.
-              </li>
-            </ul>
+          {/* Section 1: NFC Card Delivery */}
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">1. NFC Card Delivery</h2>
+            <p>
+              Tap&amp;Go may provide physical NFC smart cards to eligible passengers and drivers as part of the Tap&amp;Go cashless payment ecosystem. Because NFC cards are physical items, they require physical shipping and delivery to the destination address supplied by the user during the card request process.
+            </p>
           </section>
 
-          {/* Contact Section */}
+          {/* Section 2: Delivery Charges */}
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">Contact &amp; Inquiries</h2>
-            <p>For questions regarding hardware deployment or digital services, please reach out to our team:</p>
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 space-y-1 font-medium text-sm">
-              <p className="font-bold text-slate-900">Tap&amp;Go Support</p>
-              <p>Email: <a href="mailto:tapandgosupport@gmail.com" className="text-indigo-600 font-bold">tapandgosupport@gmail.com</a></p>
-              <p>General Support: 8779914564</p>
-              <p>Address: 7/711, Rajni Mahal, Opp. AC Market, Tardeo, Mumbai – 400034, Maharashtra, India</p>
+            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">2. Delivery Charges</h2>
+            <p>
+              An applicable shipping and delivery fee may apply for physical NFC card orders. The exact delivery charge will be clearly displayed on the order summary screen prior to user payment confirmation.
+            </p>
+          </section>
+
+          {/* Section 3: Delivery Address Responsibility */}
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">3. Delivery Address Responsibility</h2>
+            <p>
+              Users are responsible for ensuring that a complete, accurate, and accessible shipping address is provided during card ordering. Tap&amp;Go is not responsible for shipment delays, misdelivery, or failed delivery resulting from incomplete, inaccurate, or unreachable address details provided by the user.
+            </p>
+          </section>
+
+          {/* Section 4: Delivery Timelines */}
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">4. Delivery Timelines</h2>
+            <p>
+              Delivery timelines may vary depending on the destination address and applicable courier or logistics service. The applicable delivery status and tracking information will be communicated to the user where required upon dispatch.
+            </p>
+          </section>
+
+          {/* Section 5: Hardware Concept Distinction */}
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">5. Hardware &amp; Prototype Distinction</h2>
+            <p>
+              Please note that while the Tap&amp;Go physical NFC user card may be issued and delivered to users, the ESP32-S3 smart POS terminal is a hardware prototype developed as part of the academic project and is not offered or sold as an e-commerce retail product.
+            </p>
+          </section>
+
+          {/* Section 6: Delivery Support */}
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">6. Card Delivery Support</h2>
+            <p>For questions regarding NFC card orders, shipment status, or address updates, please reach out to our team:</p>
+            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-800 space-y-3 font-medium text-sm">
+              <p className="font-bold text-slate-900">Tap&amp;Go NFC Card Delivery Support</p>
+              <div className="flex flex-wrap gap-3 pt-1">
+                <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-colors">
+                  <span className="material-symbols-outlined text-sm">mail</span>
+                  Email Support (tapandgosupport@gmail.com)
+                </a>
+                <a href="tel:8779914564" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 transition-colors">
+                  <span className="material-symbols-outlined text-sm">call</span>
+                  General Support (8779914564)
+                </a>
+                <a href="tel:9321768503" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 transition-colors">
+                  <span className="material-symbols-outlined text-sm">phone_in_talk</span>
+                  Lost Card Helpline (9321768503)
+                </a>
+              </div>
+              <p className="text-xs text-slate-600 pt-1">
+                Project Support Address: 7/711, Rajni Mahal, Opp. AC Market, Tardeo, Mumbai – 400034, Maharashtra, India
+              </p>
             </div>
           </section>
         </div>

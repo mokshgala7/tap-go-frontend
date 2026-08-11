@@ -7,9 +7,9 @@ import './admin.css'
 
 const navigation = [
   ['dashboard', 'Overview', '▦'], ['drivers', 'Driver Management', '♙'], ['passengers', 'Passenger Management', '♟'],
-  ['documents', 'Driver Documents', '▤'], ['requests', 'Edit Requests', '✓'], ['transactions', 'Transactions', '⇄'],
-  ['wallets', 'Wallets', '◉'], ['fraud', 'Fraud Centre', '⚑'], ['logs', 'Activity Logs', '◷'],
-  ['settings', 'Settings', '⚙'], ['database', 'Database Viewer', '▤'],
+  ['nfc-orders', 'NFC Card Orders', '💳'], ['documents', 'Driver Documents', '▤'], ['requests', 'Edit Requests', '✓'],
+  ['transactions', 'Transactions', '⇄'], ['wallets', 'Wallets', '◉'], ['fraud', 'Fraud Centre', '⚑'],
+  ['logs', 'Activity Logs', '◷'], ['settings', 'Settings', '⚙'], ['database', 'Database Viewer', '▤'],
 ]
 const resourceConfig = {
   documents: ['Driver Documents', '/documents'], requests: ['Edit Requests', '/edit-requests'], transactions: ['Transactions', '/transactions'],
@@ -157,6 +157,115 @@ function Settings({ adminId }) {
   )
 }
 
+function NFCOrdersAdmin({ adminId }) {
+  const [orders, setOrders] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const load = () => {
+    setLoading(true)
+    adminRequest('/card-order/admin/all', adminId)
+      .then((data) => {
+        setOrders(data?.orders || [])
+        setLoading(false)
+      })
+      .catch((err) => {
+        setError(err.message)
+        setLoading(false)
+      })
+  }
+
+  useEffect(() => { load() }, [adminId])
+
+  const updateStatus = async (orderId, newStatus) => {
+    try {
+      await adminRequest(`/card-order/admin/${orderId}/status`, adminId, {
+        method: 'PATCH',
+        body: JSON.stringify({ order_status: newStatus }),
+      })
+      load()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  return (
+    <section className="admin-section">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">Physical transit cards</span>
+          <h2>NFC Card Orders</h2>
+          <p>Inspect, update status, and manage physical NFC card shipments.</p>
+        </div>
+      </div>
+
+      <LoadState error={error}>
+        {loading ? (
+          <Empty text="Loading NFC card orders…" />
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Order Ref</th>
+                  <th>Recipient</th>
+                  <th>Delivery Address</th>
+                  <th>Tier</th>
+                  <th>Breakdown</th>
+                  <th>Total</th>
+                  <th>Order Status</th>
+                  <th>Payment</th>
+                  <th>Date</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.length ? (
+                  orders.map((o) => (
+                    <tr key={o.id}>
+                      <td><strong>{o.order_reference}</strong>{o.is_demo && <small style={{ display: 'block', color: '#8b6400', fontWeight: 700 }}>DEMO</small>}</td>
+                      <td>{o.recipient_name}<br /><small>{o.phone}</small></td>
+                      <td>{o.address_line1}, {o.area}, {o.city}, {o.state} – {o.pincode}</td>
+                      <td><span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase' }}>{o.delivery_tier}</span></td>
+                      <td>Card: {money(o.card_price)} + Ship: {money(o.delivery_charge)}</td>
+                      <td><strong>{money(o.total_amount)}</strong></td>
+                      <td><Badge value={o.order_status} /></td>
+                      <td>
+                        {o.is_demo || o.payment_status === 'simulated' ? (
+                          <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 99, background: '#fff3c4', color: '#8b6400', border: '1px solid #ffe082', display: 'inline-block' }}>
+                            DEMO / SIMULATED
+                          </span>
+                        ) : (
+                          <Badge value={o.payment_status} />
+                        )}
+                      </td>
+                      <td>{date(o.created_at)}</td>
+                      <td className="actions">
+                        <select
+                          value={o.order_status}
+                          onChange={(e) => updateStatus(o.id, e.target.value)}
+                          style={{ padding: '4px 6px', fontSize: 11, borderRadius: 6 }}
+                        >
+                          <option value="processing">Processing</option>
+                          <option value="dispatched">Dispatched</option>
+                          <option value="delivered">Delivered</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr><td colSpan="10"><Empty text="No NFC card orders recorded yet." /></td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </LoadState>
+    </section>
+  )
+}
+
 function AdminShell({ admin, onLogout }) {
   const [page, setPageState] = useState(() => sessionStorage.getItem('admin_page') || 'dashboard')
   const setPage = (newPage) => {
@@ -167,6 +276,7 @@ function AdminShell({ admin, onLogout }) {
     const props = { adminId: admin.id }
     if (page === 'dashboard') return <Dashboard {...props} />
     if (page === 'drivers' || page === 'passengers') return <UserDirectory {...props} type={page === 'drivers' ? 'driver' : 'passenger'} />
+    if (page === 'nfc-orders') return <NFCOrderAdmin {...props} />
     if (page === 'database') return <DatabaseViewer {...props} />
     if (page === 'settings') return <Settings {...props} />
     return <SimpleResource {...props} kind={page} />

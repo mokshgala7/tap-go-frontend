@@ -192,4 +192,24 @@ class Settings:
     def DEMO_MODE(self) -> bool:
         return os.getenv("DEMO_MODE", "true").lower() in ("1", "true", "yes")
 
+    @property
+    def NFC_CARD_PRICE(self) -> float:
+        """Standard customer-facing price of one Tap&Go NFC card (₹50)."""
+        return float(os.getenv("NFC_CARD_PRICE", "50.0"))
+
+    @property
+    def LOCAL_DELIVERY_CHARGE(self) -> float:
+        """Delivery charge for Mumbai local metro region."""
+        return float(os.getenv("LOCAL_DELIVERY_CHARGE", "40.0"))
+
+    @property
+    def REGIONAL_DELIVERY_CHARGE(self) -> float:
+        """Delivery charge for Maharashtra regional area outside Mumbai."""
+        return float(os.getenv("REGIONAL_DELIVERY_CHARGE", "60.0"))
+
+    @property
+    def NATIONAL_DELIVERY_CHARGE(self) -> float:
+        """Delivery charge for Rest of India national delivery."""
+        return float(os.getenv("NATIONAL_DELIVERY_CHARGE", "90.0"))
+
 settings = Settings()

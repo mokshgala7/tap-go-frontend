@@ -6,7 +6,7 @@ from sqlalchemy import inspect, text
 
 from app.config import settings
 from app.database import engine, Base
-from app.routes import admin, auth, wallet, payment
+from app.routes import admin, auth, wallet, payment, card_order
 
 
 def ensure_demo_users(db):
@@ -312,6 +312,7 @@ app.include_router(admin.router)
 app.include_router(wallet.router)
 app.include_router(payment.router)
 app.include_router(payment.debug_router)
+app.include_router(card_order.router)
 
 @app.get("/")
 def root():

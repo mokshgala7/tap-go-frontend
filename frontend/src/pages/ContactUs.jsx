@@ -21,7 +21,7 @@ export function ContactUs() {
               Contact Tap&amp;Go Support
             </h1>
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-              We are here to assist you with any questions regarding wallet operations, card assistance, ride payments, or technical inquiries.
+              We are here to assist you with any questions regarding wallet operations, NFC card orders &amp; delivery, lost card assistance, ride payments, or technical inquiries.
             </p>
           </div>
         </section>
@@ -33,7 +33,7 @@ export function ContactUs() {
               <span className="material-symbols-outlined text-2xl">mail</span>
             </div>
             <h2 className="text-lg font-bold text-slate-900">Email Support</h2>
-            <p className="text-xs text-slate-600">Send your queries or dispute reports to our official support email.</p>
+            <p className="text-xs text-slate-600">Send your queries, NFC card delivery requests, or dispute reports to our support team.</p>
             <div>
               <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-colors">
                 <span className="material-symbols-outlined text-sm">mail</span>
@@ -46,8 +46,8 @@ export function ContactUs() {
             <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-2xl">call</span>
             </div>
-            <h2 className="text-lg font-bold text-slate-900">General Support</h2>
-            <p className="text-xs text-slate-600">For general platform inquiries and user support assistance.</p>
+            <h2 className="text-lg font-bold text-slate-900">General &amp; Card Delivery Support</h2>
+            <p className="text-xs text-slate-600">For general platform inquiries, card shipping status, and user support assistance.</p>
             <div>
               <a href="tel:8779914564" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 transition-colors">
                 <span className="material-symbols-outlined text-sm">call</span>
