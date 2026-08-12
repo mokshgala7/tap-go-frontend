@@ -64,7 +64,7 @@ export function isViewAllowed(targetView) {
         const storedUser = sessionStorage.getItem('tapgo_user')
         if (storedUser) {
           const parsed = JSON.parse(storedUser)
-          return parsed.account_type === 'admin' || parsed.role === 'admin' || parsed.email === 'admin@tapandgo.com'
+          return parsed.account_type === 'admin' || parsed.role === 'admin'
         }
         return false
       }

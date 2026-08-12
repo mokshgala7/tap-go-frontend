@@ -12,40 +12,6 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.on
 
 const trustBadges = ['🔒 Secure Login', '🛡 AI Powered', '🚖 Trusted by Taxi Drivers']
 
-// Keep demo account helper cards visible unless explicitly disabled.
-const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
-
-const DEMO_ACCOUNTS = [
-  {
-    role: 'Admin',
-    email: 'admin@tapandgo.com',
-    password: '123',
-    icon: '🛡️',
-    color: '#7c3aed',
-    bg: 'rgba(124, 58, 237, 0.08)',
-    border: 'rgba(124, 58, 237, 0.2)',
-    isAdmin: true,
-  },
-  {
-    role: 'Passenger',
-    email: 'passenger@tapandgo.com',
-    password: '123',
-    icon: '🧑‍💼',
-    color: '#0284c7',
-    bg: 'rgba(2, 132, 199, 0.08)',
-    border: 'rgba(2, 132, 199, 0.2)',
-  },
-  {
-    role: 'Driver (Punya)',
-    email: 'diymr070@gmail.com',
-    password: 'Punya@123',
-    icon: '🚖',
-    color: '#d97706',
-    bg: 'rgba(217, 119, 6, 0.08)',
-    border: 'rgba(217, 119, 6, 0.2)',
-  },
-]
-
 const initialErrors = {
   account: '',
   password: '',
@@ -106,38 +72,6 @@ function Login() {
     }
   }
 
-  const loginAsAdmin = async (account) => {
-    setIsLoading(true)
-    setErrors(initialErrors)
-    try {
-      const response = await fetch(`${API_BASE}/api/admin/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: account.email, password: account.password }),
-      })
-      const data = await response.json()
-      if (data.success && data.admin) {
-        sessionStorage.setItem('tapgo_admin_session', JSON.stringify(data.admin))
-        navigate('/admin')
-      } else {
-        setErrors((current) => ({ ...current, password: data.detail || 'Admin login failed.' }))
-      }
-    } catch {
-      setErrors((current) => ({ ...current, password: 'Backend unavailable.' }))
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const fillDemo = (account) => {
-    if (account.isAdmin) {
-      loginAsAdmin(account)
-      return
-    }
-    setFormData({ account: account.email, password: account.password })
-    setErrors(initialErrors)
-  }
-
   const handleSubmit = async (event) => {
     event.preventDefault()
     setSuccessMessage('')
@@ -157,7 +91,7 @@ function Login() {
     if (res.success && res.user) {
       setSuccessMessage(rememberMe ? 'Login validated. This device will be remembered.' : 'Login validated securely.')
       const targetRole = (res.user.account_type || res.user.role || '').toLowerCase()
-      if (targetRole === 'admin' || res.user.email === 'admin@tapandgo.com') {
+      if (targetRole === 'admin') {
         sessionStorage.setItem('tapgo_admin_session', JSON.stringify({ email: res.user.email, name: res.user.name || 'Admin', id: res.user.id }))
         navigate('/admin')
       } else if (targetRole === 'driver') {
