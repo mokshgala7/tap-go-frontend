@@ -888,9 +888,7 @@ function Passenger() {
         <PassengerDocCard title="Digital Signature" path={user?.signature_document} />
       </div>
 
-      <div style={{ marginTop: 14 }}>
-        <DemoInfoCard type="documents" />
-      </div>
+
 
       <div style={{ marginTop: 12 }}>
         {user?.doc_request_status === 'requested' ? (
