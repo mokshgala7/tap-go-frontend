@@ -49,8 +49,8 @@ export function WithdrawModal({ user, balance, onClose, onSuccess }) {
         setStep(2)
         setTargetDestination(
           hasBank
-            ? `Bank Account (ending in XXXX ${user.bank_account_number.slice(-4)})`
-            : `UPI ID (${user.bank_upi_id})`
+            ? `Bank Account (ending in XXXX ${user?.bank_account_number ? user.bank_account_number.slice(-4) : '****'})`
+            : `UPI ID (${user?.bank_upi_id || ''})`
         )
         setSuccessMessage(`Security OTP sent to ${user.email}. Enter code below to confirm.`)
       } else {
@@ -159,7 +159,7 @@ export function WithdrawModal({ user, balance, onClose, onSuccess }) {
                   {hasBank && (
                     <div className="flex justify-between">
                       <span className="text-slate-500">Bank Account:</span>
-                      <span className="font-bold">XXXX XXXX {user.bank_account_number.slice(-4)}</span>
+                      <span className="font-bold">XXXX XXXX {user?.bank_account_number ? user.bank_account_number.slice(-4) : '****'}</span>
                     </div>
                   )}
                   {hasUpi && (
@@ -244,7 +244,7 @@ export function WithdrawModal({ user, balance, onClose, onSuccess }) {
                   className="w-full text-center tracking-[0.5em] font-mono text-2xl py-3 rounded-xl border border-slate-300 focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 text-slate-900 outline-none transition-all"
                 />
                 <p className="text-[11px] text-slate-500 mt-1 text-center">
-                  OTP sent to <span className="font-bold">{user.email}</span>. Valid for 10 minutes.
+                  OTP sent to <span className="font-bold">{user?.email || 'your email'}</span>. Valid for 10 minutes.
                 </p>
               </div>
 
