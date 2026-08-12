@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from '../../routes/navigation.jsx'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.onrender.com'
 const IS_DEMO = import.meta.env.VITE_DEMO_MODE !== 'false'
 
 export function NFCCardOrderModal({ user, onClose, onOrderSuccess }) {

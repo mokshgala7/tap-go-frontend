@@ -453,8 +453,7 @@ function Passenger() {
                   flash('Your wallet is frozen. Adding funds is disabled.')
                   return
                 }
-                setTopupModalAmount(amountInput ? String(amountInput) : '')
-                setShowTopupModal(true)
+                setShowRazorpayModal(true)
               }}
               disabled={isFrozen}
             >
@@ -463,19 +462,10 @@ function Passenger() {
             <button
               className="secondary-btn"
               onClick={() => {
-                if (!user?.bank_account_number) {
-                  flash('Please save your bank details in Profile first.')
-                  return
-                }
-                if (balance <= 0) {
-                  flash('Available wallet balance is ₹0.00.')
-                  return
-                }
                 if (isFrozen) {
                   flash('Your wallet is frozen. Withdrawals are disabled.')
                   return
                 }
-                setWithdrawAmount(String(balance))
                 setShowWithdrawModal(true)
               }}
             >
