@@ -1,5 +1,7 @@
 from decimal import Decimal
 import uuid
+import random
+from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -7,7 +9,8 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Transaction, User, Wallet
+from app.models import Transaction, User, Wallet, EmailOTP
+from app.utils.email_service import send_otp_email
 
 router = APIRouter(prefix="/api/wallet", tags=["Wallet"])
 
@@ -15,13 +18,19 @@ router = APIRouter(prefix="/api/wallet", tags=["Wallet"])
 class TopupRequest(BaseModel):
     user_id: int
     amount: float
-    payment_method: Optional[str] = "upi"
+    payment_method: Optional[str] = "razorpay"
     idempotency_key: Optional[str] = None
+
+
+class WithdrawOTPRequest(BaseModel):
+    user_id: int
+    amount: float
 
 
 class WithdrawRequest(BaseModel):
     user_id: int
     amount: float
+    otp: Optional[str] = None
     idempotency_key: Optional[str] = None
 
 
@@ -70,9 +79,9 @@ def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
-    
+
     wallet = get_or_create_wallet(user_id, db)
-    
+
     txns = db.query(Transaction).filter(
         or_(
             Transaction.passenger_id == user_id,
@@ -81,14 +90,13 @@ def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
         )
     ).order_by(Transaction.created_at.asc(), Transaction.id.asc()).all()
 
-    # Pre-fetch user names for clean display
     user_ids = set()
     for t in txns:
         if t.passenger_id:
             user_ids.add(t.passenger_id)
         if t.driver_id:
             user_ids.add(t.driver_id)
-    
+
     user_map = {}
     if user_ids:
         users = db.query(User).filter(User.id.in_(user_ids)).all()
@@ -101,12 +109,12 @@ def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
         amount_dec = Decimal(str(t.amount))
         is_credit = False
         change = amount_dec
-        
+
         if t.passenger_id == user_id:
-            if t.payment_method in ("topup", "payment_gateway", "deposit", "upi") or t.transaction_type == "deposit" or t.amount < 0:
+            if t.payment_method in ("razorpay", "topup", "payment_gateway", "deposit", "upi") or t.transaction_type == "deposit" or t.amount < 0:
                 is_credit = True
                 change = abs(amount_dec)
-                type_label = "Deposit"
+                type_label = "Add Money (Razorpay)" if t.payment_method == "razorpay" or t.provider == "RAZORPAY" else "Deposit"
                 description = t.description or f"₹{float(change):.2f} credited to wallet"
             elif t.payment_method == "bank_transfer" or t.transaction_type == "withdrawal":
                 is_credit = False
@@ -142,11 +150,10 @@ def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
         else:
             running_balance -= change
 
-        # Use stored balance_after if present, otherwise use exact computed running balance
         final_balance_after = float(t.balance_after) if t.balance_after is not None else float(running_balance)
 
         formatted_txns.append({
-            "id": t.id,
+            "id": t.reference or f"TXN-{t.id}",
             "reference": t.reference,
             "type": type_label,
             "description": description,
@@ -164,7 +171,6 @@ def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
             "passenger": user_map.get(t.passenger_id, "Passenger"),
         })
 
-    # Return newest first
     formatted_txns.reverse()
 
     return {
@@ -173,76 +179,73 @@ def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/topup")
-def topup_wallet(data: TopupRequest, db: Session = Depends(get_db)):
-    if data.idempotency_key:
-        existing = db.query(Transaction).filter(Transaction.idempotency_key == data.idempotency_key).first()
-        if existing:
-            wallet = get_or_create_wallet(data.user_id, db)
-            return {
-                "success": True,
-                "message": f"Successfully processed top-up of ₹{data.amount:.2f}.",
-                "wallet": wallet_to_dict(wallet),
-            }
-
+@router.post("/withdraw/request-otp")
+def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_db)):
+    """
+    Generates and emails a single-use OTP for withdrawal confirmation.
+    Validates user, bank details, and wallet balance before sending.
+    """
     if data.amount <= 0:
-        raise HTTPException(status_code=400, detail="Top-up amount must be greater than zero.")
-    
+        raise HTTPException(status_code=400, detail="Withdrawal amount must be greater than zero.")
+
     user = db.get(User, data.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
-    
-    wallet = get_or_create_wallet(data.user_id, db)
-    if wallet.is_frozen:
-        raise HTTPException(status_code=400, detail="Your wallet is frozen by an administrator. Adding funds is disabled.")
 
-    if not settings.DEMO_MODE:
+    if not (user.bank_account_number and user.bank_account_number.strip()) and not (user.bank_upi_id and user.bank_upi_id.strip()):
         raise HTTPException(
             status_code=400,
-            detail="Payment gateway is not configured. Direct wallet funding is disabled in production mode until live gateway integration."
+            detail="No saved payout destination found (Bank account or UPI ID). Please update your bank details in profile first."
         )
 
-    topup_dec = Decimal(str(round(data.amount, 2)))
-    wallet.balance += topup_dec
+    wallet = get_or_create_wallet(user.id, db)
+    if wallet.is_frozen:
+        raise HTTPException(status_code=400, detail="Your wallet is frozen. Withdrawals are disabled.")
 
-    ref_code = f"TXN{uuid.uuid4().hex[:10].upper()}"
-    desc = f"₹{data.amount:.2f} credited to wallet (Demo Mode)"
-    txn = Transaction(
-        reference=ref_code,
-        passenger_id=user.id if user.account_type == "passenger" else None,
-        driver_id=user.id if user.account_type == "driver" else None,
-        wallet_id=wallet.id,
-        amount=topup_dec,
-        payment_method=data.payment_method or "deposit",
-        status="completed",
-        otp_verified=True,
-        fraud_status="clear",
-        transaction_type="deposit",
-        description=desc,
-        balance_after=wallet.balance,
-        idempotency_key=data.idempotency_key,
-    )
-    db.add(txn)
+    withdraw_dec = Decimal(str(round(data.amount, 2)))
+    if wallet.balance < withdraw_dec:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient wallet balance (Available: ₹{float(wallet.balance):.2f})."
+        )
+
+    # Generate 6-digit OTP
+    otp_code = f"{random.randint(100000, 999999)}"
+    expires_at = datetime.utcnow() + timedelta(minutes=10)
+
+    # Clear previous pending OTPs for this email
+    db.query(EmailOTP).filter(EmailOTP.email == user.email).delete()
+
+    new_otp = EmailOTP(email=user.email, otp=otp_code, expires_at=expires_at)
+    db.add(new_otp)
     db.commit()
-    db.refresh(wallet)
-    db.refresh(txn)
+
+    # Send Email
+    email_sent = send_otp_email(to_email=user.email, otp=otp_code, account_type=user.account_type)
+
+    dest_str = f"Bank Account (ending in {user.bank_account_number.strip()[-4:]})" if user.bank_account_number else f"UPI ID ({user.bank_upi_id})"
 
     return {
         "success": True,
-        "message": f"Demo Mode: Successfully added ₹{data.amount:.2f} to your demonstration wallet.",
-        "wallet": wallet_to_dict(wallet),
+        "message": f"Withdrawal OTP has been sent to {user.email}. Target destination: {dest_str}",
+        "otp_required": True,
+        "email_sent": email_sent
     }
 
 
 @router.post("/withdraw")
 def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
+    """
+    Submits a withdrawal request using server-side Email OTP verification.
+    Deducts balance atomically and records a pending/processing transaction.
+    """
     if data.idempotency_key:
         existing = db.query(Transaction).filter(Transaction.idempotency_key == data.idempotency_key).first()
         if existing:
             wallet = get_or_create_wallet(data.user_id, db)
             return {
                 "success": True,
-                "message": f"Successfully processed withdrawal of ₹{data.amount:.2f}.",
+                "message": f"Successfully submitted withdrawal of ₹{data.amount:.2f}.",
                 "wallet": wallet_to_dict(wallet),
             }
 
@@ -253,18 +256,34 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    if not user.bank_account_number or not user.bank_account_number.strip():
+    has_bank = user.bank_account_number and user.bank_account_number.strip()
+    has_upi = user.bank_upi_id and user.bank_upi_id.strip()
+
+    if not has_bank and not has_upi:
         raise HTTPException(
             status_code=400,
-            detail="No saved bank account details found. Please add bank details in your Profile first."
+            detail="No saved payout destination found. Please add bank or UPI details in your Profile first."
         )
+
+    # Validate OTP
+    if not data.otp or not data.otp.strip():
+        raise HTTPException(status_code=400, detail="Email OTP is required for withdrawal confirmation.")
+
+    db_otp = db.query(EmailOTP).filter(EmailOTP.email == user.email).first()
+    if not db_otp or db_otp.otp != data.otp.strip():
+        raise HTTPException(status_code=400, detail="Invalid OTP code. Please enter the correct 6-digit OTP sent to your email.")
+
+    if datetime.utcnow() > db_otp.expires_at:
+        db.query(EmailOTP).filter(EmailOTP.email == user.email).delete()
+        db.commit()
+        raise HTTPException(status_code=400, detail="OTP has expired. Please request a new OTP.")
+
+    # Single-use OTP: delete after successful verification
+    db.query(EmailOTP).filter(EmailOTP.email == user.email).delete()
 
     wallet = get_or_create_wallet(data.user_id, db)
     if wallet.is_frozen:
-        raise HTTPException(
-            status_code=400,
-            detail="Your wallet is frozen by an administrator. Withdrawals are currently disabled."
-        )
+        raise HTTPException(status_code=400, detail="Your wallet is frozen. Withdrawals are disabled.")
 
     withdraw_dec = Decimal(str(round(data.amount, 2)))
     if wallet.balance < withdraw_dec:
@@ -273,18 +292,12 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
             detail=f"Insufficient wallet balance. Available balance is ₹{float(wallet.balance):.2f}."
         )
 
-    if not settings.DEMO_MODE:
-        raise HTTPException(
-            status_code=400,
-            detail="Withdrawal service is not configured in production mode."
-        )
-
     # Atomic reduction
     wallet.balance -= withdraw_dec
 
-    masked_acc = f"XXXX XXXX {user.bank_account_number.strip()[-4:]}"
+    dest_desc = f"Bank Account (XXXX XXXX {user.bank_account_number.strip()[-4:]})" if has_bank else f"UPI ID ({user.bank_upi_id})"
     ref_code = f"WD-{uuid.uuid4().hex[:10].upper()}"
-    desc = f"₹{data.amount:.2f} transferred to bank account ({masked_acc}) (Demo Mode)"
+    desc = f"₹{data.amount:.2f} withdrawal requested to {dest_desc}"
 
     txn = Transaction(
         reference=ref_code,
@@ -293,7 +306,7 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
         wallet_id=wallet.id,
         amount=withdraw_dec,
         payment_method="bank_transfer",
-        status="completed",
+        status="pending",
         otp_verified=True,
         fraud_status="clear",
         transaction_type="withdrawal",
@@ -308,13 +321,18 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
 
     return {
         "success": True,
-        "message": f"Demo Mode: Simulated withdrawal of ₹{data.amount:.2f} to bank account ({masked_acc}) completed.",
+        "message": f"Withdrawal request of ₹{data.amount:.2f} submitted to {dest_desc}. Status: Pending processing.",
         "wallet": wallet_to_dict(wallet),
     }
 
 
 @router.post("/pay")
 def pay_fare(data: PayRequest, db: Session = Depends(get_db)):
+    """
+    Normal Tap & Go Ride Payment Flow.
+    Passenger Wallet -> Internal Tap & Go Ledger -> Driver Wallet.
+    RAZORPAY IS NOT USED FOR NORMAL RIDES.
+    """
     if data.idempotency_key:
         existing = db.query(Transaction).filter(Transaction.idempotency_key == data.idempotency_key).first()
         if existing:
@@ -343,7 +361,6 @@ def pay_fare(data: PayRequest, db: Session = Depends(get_db)):
             detail=f"Insufficient wallet balance (₹{float(p_wallet.balance):.2f}). Please add funds first."
         )
 
-    # Link driver
     driver_id = data.driver_id
     driver_name = data.driver_name
     if not driver_id:

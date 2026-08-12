@@ -38,11 +38,11 @@ export function WalletProvider({ children }) {
         // Format transactions for frontend consistency
         const formatted = tData.transactions.map((t) => ({
           id: t.reference || `TXN-${t.id}`,
-          driver: t.driver_id ? `Driver #${t.driver_id}` : t.payment_method === 'bank_transfer' ? 'Withdrawal to Bank' : 'Wallet Top-up',
+          driver: t.driver_id ? `Driver #${t.driver_id}` : t.payment_method === 'bank_transfer' ? 'Withdrawal to Bank' : t.payment_method === 'razorpay' ? 'Razorpay Top-up' : 'Wallet Top-up',
           vehicleType: t.payment_method === 'bank_transfer' ? 'withdraw' : 'topup',
           vehicleNumber: null,
           fare: t.is_credit ? -t.amount : t.amount,
-          route: t.payment_method === 'bank_transfer' ? 'Bank Transfer' : t.payment_method === 'topup' ? 'Added via UPI' : 'Ride payment',
+          route: t.payment_method === 'bank_transfer' ? 'Bank Transfer' : t.payment_method === 'razorpay' ? 'Razorpay Gateway' : 'Ride payment',
           method: t.payment_method,
           timestamp: t.timestamp || Date.now(),
           status: t.status,

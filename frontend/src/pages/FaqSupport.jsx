@@ -78,7 +78,7 @@ export function FaqSupport() {
 
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
         {/* Header */}
-        <section className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden">
+        <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 rounded-full blur-3xl pointer-events-none"></div>
           <div className="relative z-10 space-y-4 max-w-3xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-bold uppercase tracking-wider">
@@ -106,7 +106,7 @@ export function FaqSupport() {
                   className="w-full text-left p-5 sm:p-6 flex items-center justify-between gap-4 focus:outline-none"
                 >
                   <span className="font-bold text-slate-900 text-base sm:text-lg">{faq.q}</span>
-                  <span className="material-symbols-outlined text-indigo-600 shrink-0">
+                  <span className="material-symbols-outlined text-slate-900 shrink-0">
                     {isOpen ? 'expand_less' : 'expand_more'}
                   </span>
                 </button>
@@ -123,7 +123,7 @@ export function FaqSupport() {
         {/* Support Contact Box */}
         <section className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-200 space-y-4">
           <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-            <span className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg">
+            <span className="w-9 h-9 rounded-xl bg-slate-100 text-slate-900 flex items-center justify-center text-lg">
               📞
             </span>
             Still Need Help?
@@ -131,7 +131,7 @@ export function FaqSupport() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs sm:text-sm text-slate-700">
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
               <span className="font-bold block text-slate-900">Email Support</span>
-              <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-1.5 text-indigo-600 font-bold break-all hover:underline">
+              <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-1.5 text-slate-900 font-bold break-all hover:underline">
                 <span className="material-symbols-outlined text-sm">mail</span>
                 tapandgosupport@gmail.com
               </a>

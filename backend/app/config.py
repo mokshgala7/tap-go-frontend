@@ -165,28 +165,25 @@ class Settings:
         return self.GMAIL_APP_PASSWORD
 
     @property
-    def FAMPAY_UPI_ID(self) -> str:
-        return os.getenv("FAMPAY_UPI_ID", "mokshsaysthanks@fam")
+    def RAZORPAY_KEY_ID(self) -> str:
+        return os.getenv("RAZORPAY_KEY_ID", "")
 
     @property
-    def FAMPAY_MERCHANT_NAME(self) -> str:
-        return os.getenv("FAMPAY_MERCHANT_NAME", "Moksh Gala")
+    def RAZORPAY_KEY_SECRET(self) -> str:
+        return os.getenv("RAZORPAY_KEY_SECRET", "")
+
+    @property
+    def RAZORPAY_WEBHOOK_SECRET(self) -> str:
+        return os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
 
     @property
     def PAYMENT_PROVIDER(self) -> str:
-        return os.getenv("PAYMENT_PROVIDER", "FAMPAY_TEST")
-
-    @property
-    def PAYMENT_CHECK_INTERVAL(self) -> int:
-        return int(os.getenv("PAYMENT_CHECK_INTERVAL", "5"))
-
-    @property
-    def PAYMENT_TIMEOUT(self) -> int:
-        return int(os.getenv("PAYMENT_TIMEOUT", "30"))
+        return os.getenv("PAYMENT_PROVIDER", "RAZORPAY")
 
     @property
     def PAYMENT_GATEWAY_PROVIDER(self) -> str:
-        return os.getenv("PAYMENT_GATEWAY_PROVIDER", "GENERIC_GATEWAY")
+        return os.getenv("PAYMENT_GATEWAY_PROVIDER", "RAZORPAY")
+
 
     @property
     def DEMO_MODE(self) -> bool:

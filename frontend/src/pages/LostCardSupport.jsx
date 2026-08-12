@@ -56,7 +56,7 @@ export function LostCardSupport() {
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs sm:text-sm max-w-2xl mx-auto space-y-1">
             <p className="font-bold text-slate-900">Email Support Backup:</p>
             <p>
-              Send an urgent report to <a href="mailto:tapandgosupport@gmail.com" className="text-indigo-600 font-bold">tapandgosupport@gmail.com</a> with your registered phone number and account email.
+              Send an urgent report to <a href="mailto:tapandgosupport@gmail.com" className="text-slate-900 font-bold hover:underline">tapandgosupport@gmail.com</a> with your registered phone number and account email.
             </p>
           </div>
         </section>
@@ -79,7 +79,7 @@ export function LostCardSupport() {
             </div>
 
             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-              <span className="font-extrabold text-indigo-600 text-base block">2. Lock Account Session</span>
+              <span className="font-extrabold text-slate-900 text-base block">2. Lock Account Session</span>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Log into your Tap&amp;Go portal and update your password or lock your active browser session.
               </p>

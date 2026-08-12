@@ -9,9 +9,9 @@ export function PaymentInfo() {
       num: '1',
       title: 'Step 1 — Add Money (Wallet Top-Up)',
       icon: 'account_balance_wallet',
-      color: 'bg-indigo-50 border-indigo-200 text-indigo-700',
-      badge: 'External Payment Gateway',
-      desc: 'Passengers and drivers can add funds to their Tap&Go digital wallet using any supported payment gateway (UPI, card, or netbanking).',
+      color: 'bg-slate-100 border-slate-300 text-slate-900',
+      badge: 'Razorpay Gateway',
+      desc: 'Passengers and drivers can add funds to their Tap&Go digital wallet using Razorpay Standard Checkout (UPI, cards, netbanking).',
     },
     {
       num: '2',
@@ -19,7 +19,7 @@ export function PaymentInfo() {
       icon: 'verified',
       color: 'bg-blue-50 border-blue-200 text-blue-700',
       badge: 'Balance Credit Confirmation',
-      desc: 'Once the payment gateway confirms the transaction, the corresponding wallet balance is updated according to the payment confirmation received by Tap&Go.',
+      desc: 'Once Razorpay confirms the transaction signature, the corresponding wallet balance is updated automatically.',
     },
     {
       num: '3',
@@ -41,9 +41,9 @@ export function PaymentInfo() {
       num: '5',
       title: 'Step 5 — Funds Withdrawal',
       icon: 'account_balance',
-      color: 'bg-purple-50 border-purple-200 text-purple-700',
-      badge: 'Supported Withdrawal Mechanism',
-      desc: 'Where supported, drivers and users can withdraw accumulated wallet funds to their linked bank account or payout mechanism.',
+      color: 'bg-slate-100 border-slate-300 text-slate-900',
+      badge: 'Email OTP Protected Withdrawal',
+      desc: 'Drivers and passengers can submit withdrawal requests for accumulated wallet funds to their linked bank account or UPI ID with Email OTP verification.',
     },
   ]
 
@@ -53,7 +53,7 @@ export function PaymentInfo() {
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8 sm:space-y-12">
         {/* Header */}
-        <section className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden">
+        <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 rounded-full blur-3xl pointer-events-none"></div>
           <div className="relative z-10 space-y-4 max-w-3xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-bold uppercase tracking-wider">
@@ -72,7 +72,7 @@ export function PaymentInfo() {
         {/* Architecture Explanation Banner */}
         <section className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-200 space-y-4">
           <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-            <span className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg">
+            <span className="w-9 h-9 rounded-xl bg-slate-100 text-slate-900 flex items-center justify-center text-lg">
               💡
             </span>
             Wallet-Based Architecture Overview
@@ -80,8 +80,8 @@ export function PaymentInfo() {
           <p className="text-slate-700 leading-relaxed text-sm sm:text-base">
             Tap&amp;Go uses a specialized <strong>wallet-based payment architecture</strong> to ensure smooth ride payments without dependency on active payment gateway sessions during travel.
           </p>
-          <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 text-xs sm:text-sm font-semibold leading-relaxed">
-            <strong>Key Distinction:</strong> External payment gateways are utilized exclusively for <strong>wallet funding</strong> and <strong>withdrawals</strong>. Individual passenger-to-driver ride payments are executed as internal wallet-to-wallet transfers within the Tap&amp;Go system.
+          <div className="p-4 rounded-xl bg-slate-100 border border-slate-200 text-slate-900 text-xs sm:text-sm font-semibold leading-relaxed">
+            <strong>Key Distinction:</strong> Razorpay is utilized exclusively for <strong>wallet funding (Add Money)</strong> and <strong>withdrawals</strong>. Individual passenger-to-driver ride payments are executed as internal wallet-to-wallet transfers within the Tap&amp;Go system.
           </div>
         </section>
 
@@ -118,13 +118,12 @@ export function PaymentInfo() {
 
         {/* Support Buttons Section */}
         <section className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-200 space-y-4">
-          <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <span className="material-symbols-outlined text-indigo-600">headset_mic</span>
-            Need Payment Assistance?
-          </h3>
-          <p className="text-xs sm:text-sm text-slate-600">Our support team is available to assist with wallet recharges, transaction status, or account questions.</p>
-          <div className="flex flex-wrap gap-3 pt-2">
-            <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-xs sm:text-sm hover:bg-indigo-700 transition-colors">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-slate-900">headset_mic</span>
+            <span className="font-bold text-slate-900 text-sm">Have Questions About Payments?</span>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-yellow-400 font-bold text-xs sm:text-sm hover:bg-slate-800 transition-colors">
               <span className="material-symbols-outlined text-base">mail</span>
               Email Support
             </a>

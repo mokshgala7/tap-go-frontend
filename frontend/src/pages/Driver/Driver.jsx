@@ -7,6 +7,8 @@ import DriverDashboard from './DriverDashboard.jsx'
 import DriverEarnings from './DriverEarnings.jsx'
 import DriverAccount from './DriverAccount.jsx'
 import { inr } from './format.js'
+import DevBanner from '../../components/Common/DevBanner.jsx'
+import WithdrawModal from '../../components/Payment/WithdrawModal.jsx'
 import '../Passenger/Passenger.css'
 import './Driver.css'
 
@@ -16,63 +18,7 @@ const Icon = ({ children, className = '' }) => (
   </span>
 )
 
-function WithdrawModal({ onClose, flash }) {
-  const { walletBalance, isFrozen, withdraw } = useDriverData()
-  const { user } = useAuth()
-  const [amount, setAmount] = useState(String(walletBalance))
-  const [loading, setLoading] = useState(false)
-  const valid = Number(amount) > 0 && Number(amount) <= walletBalance
 
-  const handleConfirm = async () => {
-    if (!user?.bank_account_number) {
-      flash('Please add bank details first.')
-      return
-    }
-    if (isFrozen) {
-      flash('Wallet is frozen by administrator.')
-      return
-    }
-    setLoading(true)
-    const res = await withdraw(Number(amount))
-    setLoading(false)
-    if (res.success) {
-      onClose()
-      flash(res.message || 'Withdrawal to bank account successful.')
-    } else {
-      flash(res.message || 'Withdrawal failed.')
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <h3>Withdraw to Bank</h3>
-        <p className="muted">Available balance: {inr(walletBalance)}</p>
-        <div style={{ background: '#FFF3C4', border: '1px solid #FFE082', borderRadius: 10, padding: '10px 12px', margin: '10px 0 14px', fontSize: 12, color: '#664d03', fontWeight: 600 }}>
-          <strong>DEMO MODE:</strong> Wallet withdrawal in this demonstration environment is simulated for academic evaluation.
-        </div>
-        {isFrozen && <p style={{ color: '#9f1730', fontWeight: 700 }}>⚠️ Wallet is frozen by administrator.</p>}
-        <label htmlFor="withdraw-amount">Amount (₹)</label>
-        <input
-          id="withdraw-amount"
-          type="number"
-          min="1"
-          max={walletBalance}
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
-        <div className="modal-actions">
-          <button className="secondary-btn" onClick={onClose} disabled={loading}>
-            Cancel
-          </button>
-          <button className="primary" disabled={!valid || loading || isFrozen} onClick={handleConfirm}>
-            {loading ? 'Processing...' : 'Withdraw'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function BankModal({ onClose, flash }) {
   const { user, saveProfileToDb, requestAdminAccess } = useAuth()
@@ -245,6 +191,7 @@ function Driver() {
 
   return (
     <div className="driver">
+      <DevBanner />
       <header>
         <button className="logo" onClick={goHome} aria-label="Tap&Go home">
           Tap<span>&amp;</span>Go
@@ -279,8 +226,12 @@ function Driver() {
 
       {modal === 'withdraw' && (
         <WithdrawModal
+          user={user}
+          balance={user?.wallet?.balance || 0}
           onClose={() => setModal(null)}
-          flash={flash}
+          onSuccess={async () => {
+            flash('Withdrawal request submitted.')
+          }}
         />
       )}
 

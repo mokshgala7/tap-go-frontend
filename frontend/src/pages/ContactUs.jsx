@@ -10,18 +10,18 @@ export function ContactUs() {
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8 sm:space-y-12">
         {/* Header */}
-        <section className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden">
+        <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 rounded-full blur-3xl pointer-events-none"></div>
           <div className="relative z-10 space-y-4 max-w-3xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-bold uppercase tracking-wider">
-              <span className="material-symbols-outlined text-sm">support_agent</span>
-              Get in Touch
+              <span className="material-symbols-outlined text-sm">headset_mic</span>
+              Customer Care
             </div>
             <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
               Contact Tap&amp;Go Support
             </h1>
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-              We are here to assist you with any questions regarding wallet operations, NFC card orders &amp; delivery, lost card assistance, ride payments, or technical inquiries.
+              We are here to assist with wallet balance inquiries, card orders, driver onboarding, and payment support.
             </p>
           </div>
         </section>
@@ -29,13 +29,13 @@ export function ContactUs() {
         {/* Contact Cards Grid */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-200 space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 text-slate-900 flex items-center justify-center">
               <span className="material-symbols-outlined text-2xl">mail</span>
             </div>
             <h2 className="text-lg font-bold text-slate-900">Email Support</h2>
             <p className="text-xs text-slate-600">Send your queries, NFC card delivery requests, or dispute reports to our support team.</p>
             <div>
-              <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-colors">
+              <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-yellow-400 font-bold text-xs hover:bg-slate-800 transition-colors">
                 <span className="material-symbols-outlined text-sm">mail</span>
                 tapandgosupport@gmail.com
               </a>

@@ -5,8 +5,9 @@ import { useAuth, resolveFileUrl } from '../../context/AuthContext.jsx'
 import { useWallet } from '../../context/WalletContext.jsx'
 import { useDarkMode } from '../../hooks/useDarkMode.js'
 import { RANGE_OPTIONS, formatRelativeTime, vehicleLabel } from './format.js'
-import FamPayPaymentModal from '../../components/Payment/FamPayPaymentModal.jsx'
-import DemoInfoCard from '../../components/Common/DemoInfoCard.jsx'
+import RazorpayAddMoneyModal from '../../components/Payment/RazorpayAddMoneyModal.jsx'
+import WithdrawModal from '../../components/Payment/WithdrawModal.jsx'
+import DevBanner from '../../components/Common/DevBanner.jsx'
 import NFCCardOrderModal from '../../components/NFC/NFCCardOrderModal.jsx'
 import NFCOrderHistoryModal from '../../components/NFC/NFCOrderHistoryModal.jsx'
 import './Passenger.css'
@@ -112,47 +113,13 @@ function Passenger() {
   const [requestingDoc, setRequestingDoc] = useState(false)
   const [requestingPhone, setRequestingPhone] = useState(false)
 
-  // Withdrawal Modal State
+  // Razorpay & Withdrawal Modal State
+  const [showRazorpayModal, setShowRazorpayModal] = useState(false)
   const [showWithdrawModal, setShowWithdrawModal] = useState(false)
-  const [withdrawAmount, setWithdrawAmount] = useState('')
-  const [withdrawLoading, setWithdrawLoading] = useState(false)
-
-  // Top-up Modal State
-  const [showTopupModal, setShowTopupModal] = useState(false)
-  const [topupModalAmount, setTopupModalAmount] = useState('')
-  const [topupLoading, setTopupLoading] = useState(false)
-  const [activePaymentRequest, setActivePaymentRequest] = useState(null)
 
   // NFC Card Order Modal State
   const [showNFCOrderModal, setShowNFCOrderModal] = useState(false)
   const [showNFCHistoryModal, setShowNFCHistoryModal] = useState(false)
-
-  const handleInitiateFamPay = async (amt) => {
-    if (!amt || amt <= 0) {
-      flash('Please enter a valid top-up amount.')
-      return
-    }
-    setTopupLoading(true)
-    try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.onrender.com'}/api/payment/create-request`, {
-
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, amount: amt, payment_method: 'fampay' }),
-      })
-      const data = await res.json()
-      setTopupLoading(false)
-      if (res.ok && data.success) {
-        setShowTopupModal(false)
-        setActivePaymentRequest(data)
-      } else {
-        flash(data.detail || 'Could not create payment request.')
-      }
-    } catch {
-      setTopupLoading(false)
-      flash('Backend error creating payment request.')
-    }
-  }
 
   const [form, setForm] = useState({
     name: '',
@@ -567,16 +534,11 @@ function Passenger() {
             <button
               className="primary"
               onClick={() => {
-                const amt = Number(amountInput)
-                if (!amt || amt <= 0) {
-                  flash('Please enter how much you want to add.')
-                  return
-                }
-                handleInitiateFamPay(amt)
+                setShowRazorpayModal(true)
               }}
-              disabled={isFrozen || topupLoading}
+              disabled={isFrozen}
             >
-              {topupLoading ? 'Loading...' : 'Add'}
+              Add Funds
             </button>
           </div>
         </div>
@@ -1041,6 +1003,7 @@ function Passenger() {
 
   return (
     <div className="passenger">
+      <DevBanner />
       <header>
         <button className="logo" onClick={goHome} aria-label="Tap&Go home">
           Tap<span>&amp;</span>Go
@@ -1151,108 +1114,28 @@ function Passenger() {
         </div>
       )}
 
-      {showTopupModal && (
-        <div className="modal-overlay" onClick={() => !topupLoading && setShowTopupModal(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-            <h3 style={{ margin: '0 0 8px' }}>Add Money to Wallet</h3>
-            <p className="muted" style={{ margin: '0 0 12px', fontSize: 14 }}>
-              Enter the exact amount you want to top up into your Tap&amp;Go wallet.
-            </p>
 
-            <div style={{ background: '#FFF3C4', border: '1px solid #FFE082', borderRadius: 10, padding: '10px 12px', marginBottom: 16, fontSize: 12, color: '#664d03', fontWeight: 600, leadingHeight: 1.4 }}>
-              <strong>DEMO MODE:</strong> Wallet funding in this demonstration environment is simulated for academic evaluation. No real payment is processed.
-            </div>
 
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-              {[100, 200, 500, 1000].map((val) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => setTopupModalAmount(String(val))}
-                  style={{
-                    border: '1px solid var(--line)',
-                    borderRadius: 10,
-                    padding: '8px 14px',
-                    background: topupModalAmount === String(val) ? 'var(--yellow)' : 'var(--card)',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    color: 'var(--text)',
-                  }}
-                >
-                  ₹{val}
-                </button>
-              ))}
-            </div>
-
-            <label htmlFor="topup-amount-input" style={{ fontWeight: 700, display: 'block', marginBottom: 6, fontSize: 14 }}>
-              Top-up Amount (₹)
-            </label>
-            <input
-              id="topup-amount-input"
-              type="number"
-              min="1"
-              placeholder="Enter amount e.g. 500"
-              value={topupModalAmount}
-              onChange={(e) => setTopupModalAmount(e.target.value)}
-              style={{
-                width: '100%',
-                border: '1px solid var(--line)',
-                borderRadius: 10,
-                padding: '12px 14px',
-                fontSize: 16,
-                background: 'var(--card)',
-                color: 'var(--text)',
-                marginBottom: 20,
-                boxSizing: 'border-box',
-              }}
-              autoFocus
-            />
-
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                type="button"
-                className="secondary-btn"
-                style={{ flex: 1, padding: '12px 16px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--bg)', color: 'var(--text)', fontWeight: 700, cursor: 'pointer' }}
-                onClick={() => setShowTopupModal(false)}
-                disabled={topupLoading}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="primary"
-                style={{ flex: 1, padding: '12px 16px', borderRadius: 10, fontWeight: 800, cursor: 'pointer' }}
-                disabled={!topupModalAmount || Number(topupModalAmount) <= 0 || topupLoading}
-                onClick={async () => {
-                  const amt = Number(topupModalAmount)
-                  if (!amt || amt <= 0) {
-                    flash('Please enter a valid top-up amount.')
-                    return
-                  }
-                  await handleInitiateFamPay(amt)
-                }}
-              >
-                {topupLoading ? 'Generating QR...' : topupModalAmount ? `Proceed (₹${topupModalAmount})` : 'Proceed to Pay'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {showRazorpayModal && (
+        <RazorpayAddMoneyModal
+          user={user}
+          onClose={() => setShowRazorpayModal(false)}
+          onSuccess={async (newBalance) => {
+            flash(`Wallet credited successfully! Current Balance: ₹${Number(newBalance || 0).toFixed(2)}`)
+            await refreshWallet?.()
+          }}
+        />
       )}
 
-      {activePaymentRequest && (
-        <FamPayPaymentModal
-          paymentRequest={activePaymentRequest}
-          onClose={() => setActivePaymentRequest(null)}
-          onSuccess={async (res) => {
-            setActivePaymentRequest(null)
-            setTopupModalAmount('')
-            setAmountInput('')
-            flash(res.message || '₹' + (activePaymentRequest.amount || 0) + ' added successfully!')
-            setTimeout(() => {
-              window.location.reload()
-            }, 800)
+      {showWithdrawModal && (
+        <WithdrawModal
+          user={user}
+          balance={balance}
+          onClose={() => setShowWithdrawModal(false)}
+          onSuccess={async () => {
+            flash('Withdrawal request submitted successfully.')
+            await refreshWallet?.()
           }}
-          flash={flash}
         />
       )}
 

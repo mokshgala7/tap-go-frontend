@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '../../routes/navigation.jsx'
-import DemoInfoCard from '../../components/Common/DemoInfoCard.jsx'
 import logo from '../../assets/images/logio.png'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.onrender.com'
@@ -424,9 +423,6 @@ function ForgotPassword() {
                   <span className="relative z-10">{loading === 'otp' ? 'Authenticating...' : 'Verify Identity'}</span>
                   {loading === 'otp' && <div className="w-5 h-5 border-2 border-gray-900 border-t-transparent rounded-full animate-spin relative z-10"></div>}
                 </button>
-                <div className="pt-2">
-                  <DemoInfoCard type="otp" />
-                </div>
               </form>
             </div>
           )}

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from '../../routes/navigation.jsx'
 import { adminRequest, API_BASE, fileUrl } from './api.js'
 import DatabaseViewer from './database/DatabaseViewer.jsx'
-import DemoInfoCard from '../../components/Common/DemoInfoCard.jsx'
 import './admin.css'
 
 const navigation = [
@@ -25,8 +24,8 @@ function Badge({ value }) { return <span className={`status status-${String(valu
 function Empty({ text = 'No live records yet.' }) { return <div className="empty-state">{text}</div> }
 
 function AdminLogin({ onLogin }) {
-  const [email, setEmail] = useState('admin@example.com')
-  const [password, setPassword] = useState('admin123')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [working, setWorking] = useState(false)
   const submit = async (event) => {
@@ -35,7 +34,7 @@ function AdminLogin({ onLogin }) {
     catch (loginError) { setError(loginError.message) }
     finally { setWorking(false) }
   }
-  return <main className="admin-login"><section className="admin-login-card"><div className="admin-mark">T&G</div><span className="eyebrow">Tap&Go control centre</span><h1>Administrator sign in</h1><p>Use the administrator account configured in the backend environment.</p><form onSubmit={submit}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="admin-error">{error}</p>}<button className="primary-button" disabled={working}>{working ? 'Signing in…' : 'Sign in securely'}</button></form><small>Default development credentials are set in the backend environment.</small></section></main>
+  return <main className="admin-login"><section className="admin-login-card"><div className="admin-mark">T&G</div><span className="eyebrow">Tap&Go control centre</span><h1>Administrator sign in</h1><p>Use the administrator account configured in the backend environment.</p><form onSubmit={submit}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="admin-error">{error}</p>}<button className="primary-button" disabled={working}>{working ? 'Signing in…' : 'Sign in securely'}</button></form></section></main>
 }
 
 function Dashboard({ adminId }) {
@@ -46,7 +45,7 @@ function Dashboard({ adminId }) {
     ['Total Passengers', stats.total_passengers, `${stats.active_passengers} active`], ['Transactions', stats.total_transactions, `${stats.today_transactions} today`], ['Wallet Balance', money(stats.wallet_balance), 'Across live wallets'],
     ['Revenue', money(stats.revenue), 'Completed transactions'], ['Fraud Alerts', stats.fraud_alerts, 'Awaiting review'], ['Edit Requests', stats.pending_edit_requests, 'Awaiting action'],
   ]
-  return <section className="admin-section"><DemoInfoCard type="admin_dashboard" className="mb-6" /><div className="section-heading"><div><span className="eyebrow">Operations at a glance</span><h2>Dashboard Overview</h2><p>Live counts from the Tap&Go backend database.</p></div></div><LoadState error={error}>{!stats ? <Empty text="Loading live operations…" /> : <div className="metric-grid">{cards.map(([label, value, hint]) => <article className="metric-card" key={label}><div className="metric-icon">◈</div><p>{label}</p><strong>{typeof value === 'number' ? number(value) : value}</strong><small>{hint}</small></article>)}</div>}</LoadState></section>
+  return <section className="admin-section"><div className="section-heading"><div><span className="eyebrow">Operations at a glance</span><h2>Dashboard Overview</h2><p>Live counts from the Tap&Go backend database.</p></div></div><LoadState error={error}>{!stats ? <Empty text="Loading live operations…" /> : <div className="metric-grid">{cards.map(([label, value, hint]) => <article className="metric-card" key={label}><div className="metric-icon">◈</div><p>{label}</p><strong>{typeof value === 'number' ? number(value) : value}</strong><small>{hint}</small></article>)}</div>}</LoadState></section>
 }
 
 function UserDirectory({ adminId, type }) {

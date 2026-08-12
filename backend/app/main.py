@@ -148,16 +148,17 @@ def ensure_demo_users(db):
             from decimal import Decimal
             sample_txns = [
                 Transaction(
-                    reference="FAM-DEMO-500",
+                    reference="RZP-DEMO-500",
                     passenger_id=demo_p.id,
                     wallet_id=demo_w.id,
                     amount=Decimal("500.00"),
-                    payment_method="FamPay Test",
+                    payment_method="razorpay",
                     status="completed",
                     otp_verified=True,
                     fraud_status="clear",
                     transaction_type="deposit",
-                    description="₹500.00 credited via FamPay Test UPI",
+                    description="₹500.00 credited via Razorpay",
+                    provider="RAZORPAY",
                     balance_after=Decimal("500.00"),
                 ),
                 Transaction(
@@ -174,16 +175,17 @@ def ensure_demo_users(db):
                     balance_after=Decimal("442.00"),
                 ),
                 Transaction(
-                    reference="FAM-DEMO-100",
+                    reference="RZP-DEMO-100",
                     passenger_id=demo_p.id,
                     wallet_id=demo_w.id,
                     amount=Decimal("100.00"),
-                    payment_method="FamPay Test",
+                    payment_method="razorpay",
                     status="completed",
                     otp_verified=True,
                     fraud_status="clear",
                     transaction_type="deposit",
-                    description="₹100.00 credited via UPI",
+                    description="₹100.00 credited via Razorpay",
+                    provider="RAZORPAY",
                     balance_after=Decimal("542.00"),
                 ),
                 Transaction(

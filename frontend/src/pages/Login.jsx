@@ -3,8 +3,7 @@ import { Link, useNavigate } from '../routes/navigation.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import Footer from '../components/Common/Footer.jsx'
 import Navbar from '../components/Common/Navbar.jsx'
-import DemoInfoBanner from '../components/Common/DemoInfoBanner.jsx'
-import DemoInfoCard from '../components/Common/DemoInfoCard.jsx'
+import DevBanner from '../components/Common/DevBanner.jsx'
 import illustration from '../assets/images/login-fintech-taxi.svg'
 import logo from '../assets/images/logio.png'
 import '../styles/Login.css'
@@ -195,7 +194,7 @@ function Login() {
   return (
     <div className="tapgo-login tapgo-shell font-body-lg antialiased selection:bg-secondary-container selection:text-on-secondary-container">
       <Navbar />
-      <DemoInfoBanner />
+      <DevBanner />
 
       <main className="login-main">
         <div className="login-background" aria-hidden="true">
@@ -336,43 +335,7 @@ function Login() {
               </div>
             </article>
 
-            <div className="mt-6">
-              <DemoInfoCard type="database" />
-            </div>
 
-            {DEMO_MODE && (
-              <div className="demo-accounts-card" aria-label="Demo accounts for testing">
-                <div className="demo-accounts-header">
-                  <div className="demo-accounts-badge">DEMO</div>
-                  <div>
-                    <div className="demo-accounts-title">Demo Accounts</div>
-                    <div className="demo-accounts-subtitle">For Testing &amp; Evaluation</div>
-                  </div>
-                </div>
-                <div className="demo-accounts-list">
-                  {DEMO_ACCOUNTS.map((account) => (
-                    <div key={account.role} className="demo-account-row" style={{ borderColor: account.border, background: account.bg }}>
-                      <div className="demo-account-info">
-                        <span className="demo-account-icon">{account.icon}</span>
-                        <div className="demo-account-details">
-                          <span className="demo-account-role" style={{ color: account.color }}>{account.role}</span>
-                          <span className="demo-account-email">{account.email}</span>
-                          <span className="demo-account-pass">Password: <strong>{account.password}</strong></span>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="demo-use-btn"
-                        style={{ color: account.color, borderColor: account.border, background: account.bg }}
-                        onClick={() => fillDemo(account)}
-                      >
-                        Use ↗
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <div className="login-trust" aria-label="Security badges">
               {trustBadges.map((badge, index) => (

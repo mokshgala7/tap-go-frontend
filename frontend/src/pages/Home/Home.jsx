@@ -1,7 +1,6 @@
 import { Link } from '../../routes/navigation.jsx'
 import Footer from '../../components/Common/Footer.jsx'
 import Navbar from '../../components/Common/Navbar.jsx'
-import DemoInfoBanner from '../../components/Common/DemoInfoBanner.jsx'
 import logo from '../../assets/images/logio.png'
 import './Home.css'
 
@@ -83,7 +82,6 @@ function Home() {
   return (
     <div className="tapgo-home tapgo-shell bg-surface text-on-surface font-body-lg antialiased selection:bg-secondary-container selection:text-on-secondary-container">
       <Navbar />
-      <DemoInfoBanner />
 
       <main className="min-h-screen flex flex-col items-center justify-center pb-section-gap pt-8">
         <section className="mx-auto flex w-full max-w-7xl flex-col items-center space-y-12 px-container-padding text-center">

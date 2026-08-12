@@ -9,8 +9,7 @@ export function PricingInfo() {
       <Navbar />
 
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
-        {/* Header */}
-        <section className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden">
+        <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 rounded-full blur-3xl pointer-events-none"></div>
           <div className="relative z-10 space-y-4 max-w-3xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-bold uppercase tracking-wider">
@@ -69,7 +68,7 @@ export function PricingInfo() {
 
           {/* Quick Actions */}
           <section className="pt-4 flex flex-wrap gap-4">
-            <Link to="/shipping-policy" className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-xs sm:text-sm hover:bg-indigo-700 transition-colors">
+            <Link to="/shipping-policy" className="px-5 py-2.5 rounded-xl bg-slate-900 text-yellow-400 font-bold text-xs sm:text-sm hover:bg-slate-800 transition-colors">
               Shipping &amp; Delivery Policy
             </Link>
             <Link to="/contact" className="px-5 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 font-bold text-xs sm:text-sm hover:bg-slate-200 transition-colors">

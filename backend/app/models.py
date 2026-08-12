@@ -95,7 +95,7 @@ class PaymentRequest(Base):
     amount = Column(Numeric(12, 2), nullable=False)
     upi_uri = Column(Text, nullable=False)
     status = Column(String(20), nullable=False, default="Pending", index=True)  # Pending, Completed, Expired, Failed
-    provider = Column(String(30), nullable=False, default="FAMPAY_TEST")
+    provider = Column(String(30), nullable=False, default="RAZORPAY")
     provider_transaction_id = Column(String(128), nullable=True)
     utr = Column(String(128), nullable=True, index=True)
     payer_name = Column(String(120), nullable=True)
@@ -127,7 +127,7 @@ class Transaction(Base):
     idempotency_key = Column(String(128), nullable=True, unique=True, index=True)
     related_transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
 
-    # FamPay / Provider Audit Fields
+    # Razorpay / Provider Audit Fields
     provider = Column(String(30), nullable=True)
     provider_transaction_id = Column(String(128), nullable=True)
     utr = Column(String(128), nullable=True)

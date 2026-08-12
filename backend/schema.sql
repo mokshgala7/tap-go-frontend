@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS payment_requests (
     amount DECIMAL(12,2) NOT NULL,
     upi_uri TEXT NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'Pending',
-    provider VARCHAR(30) NOT NULL DEFAULT 'FAMPAY_TEST',
+    provider VARCHAR(30) NOT NULL DEFAULT 'RAZORPAY',
     provider_transaction_id VARCHAR(128) NULL,
     utr VARCHAR(128) NULL,
     payer_name VARCHAR(120) NULL,

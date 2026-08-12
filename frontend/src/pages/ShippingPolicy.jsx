@@ -79,7 +79,7 @@ export function ShippingPolicy() {
             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-800 space-y-3 font-medium text-sm">
               <p className="font-bold text-slate-900">Tap&amp;Go NFC Card Delivery Support</p>
               <div className="flex flex-wrap gap-3 pt-1">
-                <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-colors">
+                <a href="mailto:tapandgosupport@gmail.com" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-yellow-400 font-bold text-xs hover:bg-slate-800 transition-colors">
                   <span className="material-symbols-outlined text-sm">mail</span>
                   Email Support (tapandgosupport@gmail.com)
                 </a>

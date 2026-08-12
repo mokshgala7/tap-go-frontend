@@ -10,7 +10,7 @@ export function TermsConditions() {
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
         {/* Header */}
         <section className="bg-white rounded-2xl p-6 sm:p-10 shadow-sm border border-slate-200 space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold uppercase tracking-wider">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-900 text-xs font-bold uppercase tracking-wider">
             <span className="material-symbols-outlined text-sm">gavel</span>
             Terms &amp; Conditions
           </div>
@@ -88,7 +88,7 @@ export function TermsConditions() {
             <h2 className="text-xl font-bold text-slate-900 border-b border-slate-100 pb-2">7. Support &amp; Contact</h2>
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 space-y-1 font-medium text-sm">
               <p className="font-bold text-slate-900">Tap&amp;Go Support Team</p>
-              <p>Email: <a href="mailto:tapandgosupport@gmail.com" className="text-indigo-600 font-bold">tapandgosupport@gmail.com</a></p>
+              <p>Email: <a href="mailto:tapandgosupport@gmail.com" className="text-slate-900 font-bold hover:underline">tapandgosupport@gmail.com</a></p>
               <p>General Support: 8779914564 | Lost Card Support: 9321768503</p>
               <p>Project Support Address: 7/711, Rajni Mahal, Opp. AC Market, Tardeo, Mumbai – 400034, Maharashtra, India</p>
             </div>

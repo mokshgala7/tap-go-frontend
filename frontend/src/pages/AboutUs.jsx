@@ -10,7 +10,7 @@ export function AboutUs() {
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8 sm:space-y-12">
         {/* Header */}
-        <section className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden">
+        <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 rounded-full blur-3xl pointer-events-none"></div>
           <div className="relative z-10 space-y-4 max-w-3xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-bold uppercase tracking-wider">
@@ -29,7 +29,7 @@ export function AboutUs() {
         {/* Core Vision & Overview */}
         <section className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-200 space-y-4">
           <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-            <span className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg">
+            <span className="w-9 h-9 rounded-xl bg-slate-100 text-slate-900 flex items-center justify-center text-lg">
               🎯
             </span>
             Platform Overview
@@ -50,7 +50,7 @@ export function AboutUs() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2">
-              <span className="material-symbols-outlined text-indigo-600 text-2xl">account_balance_wallet</span>
+              <span className="material-symbols-outlined text-slate-900 text-2xl">account_balance_wallet</span>
               <h3 className="font-bold text-slate-900 text-lg">Passenger &amp; Driver Wallets</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Dedicated digital wallet accounts for passengers and drivers with real-time balance tracking and instant wallet-to-wallet fare settlements.
@@ -58,7 +58,7 @@ export function AboutUs() {
             </div>
 
             <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2">
-              <span className="material-symbols-outlined text-indigo-600 text-2xl">contactless</span>
+              <span className="material-symbols-outlined text-slate-900 text-2xl">contactless</span>
               <h3 className="font-bold text-slate-900 text-lg">NFC &amp; QR Interaction</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Dual payment support featuring instant tap-and-go NFC card scanning alongside dynamic UPI/QR code payment options.
@@ -66,7 +66,7 @@ export function AboutUs() {
             </div>
 
             <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2">
-              <span className="material-symbols-outlined text-indigo-600 text-2xl">hardware</span>
+              <span className="material-symbols-outlined text-slate-900 text-2xl">hardware</span>
               <h3 className="font-bold text-slate-900 text-lg">Smart POS Terminal</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Custom ESP32-S3 based hardware POS concept designed specifically for vehicle dashboard deployment and driver convenience.
@@ -74,7 +74,7 @@ export function AboutUs() {
             </div>
 
             <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2">
-              <span className="material-symbols-outlined text-indigo-600 text-2xl">security</span>
+              <span className="material-symbols-outlined text-slate-900 text-2xl">security</span>
               <h3 className="font-bold text-slate-900 text-lg">AI Fraud Detection</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Automated risk scoring and intelligent transaction analysis to detect anomaly patterns and protect user balances.
@@ -82,7 +82,7 @@ export function AboutUs() {
             </div>
 
             <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2">
-              <span className="material-symbols-outlined text-indigo-600 text-2xl">lock_reset</span>
+              <span className="material-symbols-outlined text-slate-900 text-2xl">lock_reset</span>
               <h3 className="font-bold text-slate-900 text-lg">OTP Security Verification</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Multi-factor OTP verification step for suspicious transactions, profile edits, and high-value wallet actions.
@@ -90,7 +90,7 @@ export function AboutUs() {
             </div>
 
             <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2">
-              <span className="material-symbols-outlined text-indigo-600 text-2xl">dns</span>
+              <span className="material-symbols-outlined text-slate-900 text-2xl">dns</span>
               <h3 className="font-bold text-slate-900 text-lg">FastAPI Backend</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
                 High-performance Python FastAPI REST architecture backed by database transaction recording and administrative management tools.
