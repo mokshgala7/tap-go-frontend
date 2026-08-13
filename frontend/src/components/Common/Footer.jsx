@@ -61,11 +61,7 @@ function Footer() {
                   FAQ / Support
                 </Link>
               </li>
-              <li>
-                <Link to="/readme" className="hover:text-amber-300 transition-colors">
-                  Technical README
-                </Link>
-              </li>
+              
             </ul>
           </div>
 
