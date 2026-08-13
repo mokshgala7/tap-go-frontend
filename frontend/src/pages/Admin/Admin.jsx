@@ -40,11 +40,11 @@ function AdminLogin({ onLogin }) {
         <div className="admin-mark">T&G</div>
         <span className="eyebrow">Tap&Go control centre</span>
         <h1>Administrator sign in</h1>
-        <p>Use the administrator account configured in the backend environment.</p>
+        <p>Sign in to access the administrator control centre.</p>
         <form onSubmit={submit}>
           <label>
             Email
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@example.com" required />
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" required />
           </label>
           <label>
             Password

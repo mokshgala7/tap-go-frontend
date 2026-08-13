@@ -49,7 +49,7 @@ class Settings:
 
     @property
     def ADMIN_PASSWORD(self) -> str:
-        return os.getenv("ADMIN_PASSWORD", "admin123")
+        return os.getenv("ADMIN_PASSWORD", "admin@123")
 
     @property
     def ALLOWED_ORIGINS(self) -> list[str]:
