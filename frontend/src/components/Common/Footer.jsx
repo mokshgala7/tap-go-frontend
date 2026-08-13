@@ -61,7 +61,7 @@ function Footer() {
                   FAQ / Support
                 </Link>
               </li>
-              
+
             </ul>
           </div>
 
