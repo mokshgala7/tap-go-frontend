@@ -149,9 +149,32 @@ def log(db: Session, admin: Admin, action: str, entity_type: str, entity_id: Opt
 @router.post("/login")
 def login(payload: AdminLogin, db: Session = Depends(get_db)):
     ensure_default_admin(db)
-    admin = db.query(Admin).filter(Admin.email == payload.email.strip().lower()).first()
+    input_email = payload.email.strip().lower()
+    admin = db.query(Admin).filter(Admin.email == input_email).first()
+    
     if not admin or not admin.is_active or not verify_password(payload.password, admin.password_hash):
+        # Also check User table in case admin was created in User table
+        user_admin = db.query(User).filter(
+            (User.email == input_email) | (User.phone == input_email),
+            User.account_type == "admin"
+        ).first()
+        if user_admin and verify_password(payload.password, user_admin.password_hash):
+            if not admin:
+                admin = Admin(
+                    email=user_admin.email,
+                    password_hash=user_admin.password_hash,
+                    name=user_admin.name or "Tap&Go Administrator"
+                )
+                db.add(admin)
+                db.flush()
+            else:
+                admin.password_hash = user_admin.password_hash
+            db.commit()
+            log(db, admin, "login", "admin", admin.id, "Administrator signed in")
+            db.commit()
+            return {"success": True, "admin": {"id": admin.id, "name": admin.name, "email": admin.email}}
         raise HTTPException(status_code=401, detail="Invalid administrator credentials.")
+    
     log(db, admin, "login", "admin", admin.id, "Administrator signed in")
     db.commit()
     return {"success": True, "admin": {"id": admin.id, "name": admin.name, "email": admin.email}}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from '../../routes/navigation.jsx'
+import { Link, useNavigate } from '../../routes/navigation.jsx'
 import { adminRequest, API_BASE, fileUrl } from './api.js'
 import DatabaseViewer from './database/DatabaseViewer.jsx'
 import './admin.css'
@@ -30,11 +30,39 @@ function AdminLogin({ onLogin }) {
   const [working, setWorking] = useState(false)
   const submit = async (event) => {
     event.preventDefault(); setError(''); setWorking(true)
-    try { onLogin(await adminRequest('/login', null, { method: 'POST', body: JSON.stringify({ email, password }) })) }
+    try { onLogin(await adminRequest('/login', null, { method: 'POST', body: JSON.stringify({ email: email.trim(), password }) })) }
     catch (loginError) { setError(loginError.message) }
     finally { setWorking(false) }
   }
-  return <main className="admin-login"><section className="admin-login-card"><div className="admin-mark">T&G</div><span className="eyebrow">Tap&Go control centre</span><h1>Administrator sign in</h1><p>Use the administrator account configured in the backend environment.</p><form onSubmit={submit}><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="admin-error">{error}</p>}<button className="primary-button" disabled={working}>{working ? 'Signing in…' : 'Sign in securely'}</button></form></section></main>
+  return (
+    <main className="admin-login">
+      <section className="admin-login-card">
+        <div className="admin-mark">T&G</div>
+        <span className="eyebrow">Tap&Go control centre</span>
+        <h1>Administrator sign in</h1>
+        <p>Use the administrator account configured in the backend environment.</p>
+        <form onSubmit={submit}>
+          <label>
+            Email
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@example.com" required />
+          </label>
+          <label>
+            Password
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" required />
+          </label>
+          {error && <p className="admin-error">{error}</p>}
+          <button className="primary-button" disabled={working}>
+            {working ? 'Signing in…' : 'Sign in securely'}
+          </button>
+          <div style={{ marginTop: '16px', textAlign: 'center' }}>
+            <Link to="/login" style={{ color: 'var(--admin-muted)', textDecoration: 'underline', fontSize: '13px' }}>
+              ← Return to User Login
+            </Link>
+          </div>
+        </form>
+      </section>
+    </main>
+  )
 }
 
 function Dashboard({ adminId }) {

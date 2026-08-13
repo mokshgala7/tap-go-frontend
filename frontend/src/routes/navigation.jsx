@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 
 // Views that require authentication
-const PROTECTED_VIEWS = new Set(['passenger', 'driver', 'admin'])
+const PROTECTED_VIEWS = new Set(['passenger', 'driver'])
 
 // Views that are public
 const PUBLIC_VIEWS = new Set([
@@ -20,6 +20,7 @@ const PUBLIC_VIEWS = new Set([
   'payments',
   'lost-card',
   'faq',
+  'admin',
 ])
 
 const ROUTE_TO_VIEW = {
@@ -57,17 +58,6 @@ export function isViewAllowed(targetView) {
   if (PROTECTED_VIEWS.has(targetView)) {
     try {
       if (typeof window === 'undefined') return false
-
-      if (targetView === 'admin') {
-        const adminSession = sessionStorage.getItem('tapgo_admin_session')
-        if (adminSession) return true
-        const storedUser = sessionStorage.getItem('tapgo_user')
-        if (storedUser) {
-          const parsed = JSON.parse(storedUser)
-          return parsed.account_type === 'admin' || parsed.role === 'admin'
-        }
-        return false
-      }
 
       const storedUser = sessionStorage.getItem('tapgo_user')
       if (!storedUser) return false
