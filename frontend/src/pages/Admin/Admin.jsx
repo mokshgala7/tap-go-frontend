@@ -1,8 +1,39 @@
-import { useEffect, useState } from 'react'
+import { Component, useEffect, useState } from 'react'
 import { Link, useNavigate } from '../../routes/navigation.jsx'
 import { adminRequest, API_BASE, fileUrl } from './api.js'
 import DatabaseViewer from './database/DatabaseViewer.jsx'
 import './admin.css'
+
+class AdminErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('Admin shell error caught:', error, errorInfo)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <section className="admin-section" style={{ padding: '30px' }}>
+          <div style={{ padding: '24px', background: '#fff', borderRadius: '12px', border: '1px solid #fed7aa' }}>
+            <h3 style={{ color: '#c2410c', margin: '0 0 8px' }}>Unable to load view</h3>
+            <p style={{ color: '#687187', margin: '0 0 16px', fontSize: '14px' }}>
+              {this.state.error?.message || 'An error occurred while loading this section.'}
+            </p>
+            <button className="primary-button" onClick={() => this.setState({ hasError: false, error: null })}>
+              Reload section
+            </button>
+          </div>
+        </section>
+      )
+    }
+    return this.props.children
+  }
+}
 
 const navigation = [
   ['dashboard', 'Overview', '▦'], ['drivers', 'Driver Management', '♙'], ['passengers', 'Passenger Management', '♟'],
@@ -303,12 +334,46 @@ function AdminShell({ admin, onLogout }) {
     const props = { adminId: admin.id }
     if (page === 'dashboard') return <Dashboard {...props} />
     if (page === 'drivers' || page === 'passengers') return <UserDirectory {...props} type={page === 'drivers' ? 'driver' : 'passenger'} />
-    if (page === 'nfc-orders') return <NFCOrderAdmin {...props} />
+    if (page === 'nfc-orders') return <NFCOrdersAdmin {...props} />
     if (page === 'database') return <DatabaseViewer {...props} />
     if (page === 'settings') return <Settings {...props} />
     return <SimpleResource {...props} kind={page} />
   }
-  return <div className="admin-shell"><aside className="admin-sidebar"><div className="admin-brand"><span>T&G</span><div><b>Tap & Go</b><small>ADMIN CONSOLE</small></div></div><nav>{navigation.map(([id, label, icon]) => <button key={id} className={page === id ? 'active' : ''} onClick={() => setPage(id)}><i>{icon}</i>{label}</button>)}</nav><button className="logout-button" onClick={onLogout}>⇥ Sign out</button></aside><main className="admin-content"><header className="admin-topbar"><div><span className="eyebrow">Signed in as</span><strong>{admin.name}</strong></div><span className="admin-avatar">{admin.name.charAt(0)}</span></header>{render()}</main></div>
+  return (
+    <div className="admin-shell">
+      <aside className="admin-sidebar">
+        <div className="admin-brand">
+          <span>T&G</span>
+          <div>
+            <b>Tap &amp; Go</b>
+            <small>ADMIN CONSOLE</small>
+          </div>
+        </div>
+        <nav>
+          {navigation.map(([id, label, icon]) => (
+            <button key={id} className={page === id ? 'active' : ''} onClick={() => setPage(id)}>
+              <i>{icon}</i>{label}
+            </button>
+          ))}
+        </nav>
+        <button className="logout-button" onClick={onLogout}>
+          ⇥ Sign out
+        </button>
+      </aside>
+      <main className="admin-content">
+        <header className="admin-topbar">
+          <div>
+            <span className="eyebrow">Signed in as</span>
+            <strong>{admin.name}</strong>
+          </div>
+          <span className="admin-avatar">{admin.name ? admin.name.charAt(0) : 'A'}</span>
+        </header>
+        <AdminErrorBoundary key={page}>
+          {render()}
+        </AdminErrorBoundary>
+      </main>
+    </div>
+  )
 }
 
 function Admin() {
