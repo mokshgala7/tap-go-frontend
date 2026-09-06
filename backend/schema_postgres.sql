@@ -1,0 +1,241 @@
+-- PostgreSQL Schema for Tap&Go Database (Supabase compatible)
+-- Reference schema covering all 12 application tables.
+
+-- 1. USERS
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    account_type VARCHAR(20) NOT NULL DEFAULT 'passenger',
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(120) NOT NULL UNIQUE,
+    phone VARCHAR(20) NOT NULL UNIQUE,
+    address TEXT NULL,
+    city VARCHAR(100) NULL,
+    pincode VARCHAR(10) NULL,
+    aadhaar VARCHAR(20) NULL,
+    pan VARCHAR(20) NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    profile_photo VARCHAR(255) NULL,
+    vehicle_type VARCHAR(50) NULL,
+    vehicle_registration VARCHAR(50) NULL,
+    vehicle_make VARCHAR(100) NULL,
+    vehicle_model VARCHAR(100) NULL,
+    driving_licence_number VARCHAR(50) NULL,
+    rc_document VARCHAR(255) NULL,
+    licence_document VARCHAR(255) NULL,
+    insurance_document VARCHAR(255) NULL,
+    signature_document VARCHAR(255) NULL,
+    id_document VARCHAR(255) NULL,
+    state VARCHAR(100) NULL,
+    emergency_contact_name VARCHAR(100) NULL,
+    emergency_contact_phone VARCHAR(20) NULL,
+    bank_account_holder VARCHAR(100) NULL,
+    bank_account_number VARCHAR(50) NULL,
+    bank_ifsc VARCHAR(20) NULL,
+    bank_upi_id VARCHAR(50) NULL,
+    bank_locked INTEGER DEFAULT 0,
+    bank_request_status VARCHAR(20) DEFAULT 'none',
+    doc_request_status VARCHAR(20) DEFAULT 'none',
+    phone_request_status VARCHAR(20) DEFAULT 'none',
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    qr_identifier VARCHAR(128) NULL,
+    nfc_identifier VARCHAR(128) NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
+
+-- 2. EMAIL OTPS
+CREATE TABLE IF NOT EXISTS email_otps (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(120) NOT NULL,
+    otp VARCHAR(10) NOT NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps(email);
+
+-- 3. ADMINS
+CREATE TABLE IF NOT EXISTS admins (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL DEFAULT 'Tap&Go Administrator',
+    email VARCHAR(120) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_admins_email ON admins(email);
+
+-- 4. WALLETS
+CREATE TABLE IF NOT EXISTS wallets (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    balance NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    is_frozen BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallets_user_id ON wallets(user_id);
+
+-- 5. PAYMENT REQUESTS
+CREATE TABLE IF NOT EXISTS payment_requests (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    wallet_id INTEGER NOT NULL REFERENCES wallets(id),
+    amount NUMERIC(12, 2) NOT NULL,
+    upi_uri TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+    provider VARCHAR(30) NOT NULL DEFAULT 'RAZORPAY',
+    provider_transaction_id VARCHAR(128) NULL,
+    utr VARCHAR(128) NULL,
+    payer_name VARCHAR(120) NULL,
+    raw_email_id VARCHAR(255) NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITHOUT TIME ZONE NULL,
+    verified_at TIMESTAMP WITHOUT TIME ZONE NULL,
+    last_checked_at TIMESTAMP WITHOUT TIME ZONE NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_requests_user_id ON payment_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_payment_requests_status ON payment_requests(status);
+CREATE INDEX IF NOT EXISTS idx_payment_requests_utr ON payment_requests(utr);
+
+-- 6. TRANSACTIONS
+CREATE TABLE IF NOT EXISTS transactions (
+    id SERIAL PRIMARY KEY,
+    reference VARCHAR(64) NOT NULL UNIQUE,
+    passenger_id INTEGER NULL REFERENCES users(id),
+    driver_id INTEGER NULL REFERENCES users(id),
+    wallet_id INTEGER NULL REFERENCES wallets(id),
+    amount NUMERIC(12, 2) NOT NULL,
+    payment_method VARCHAR(20) NOT NULL DEFAULT 'wallet',
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    otp_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    fraud_status VARCHAR(20) NOT NULL DEFAULT 'clear',
+    transaction_type VARCHAR(30) NULL,
+    description TEXT NULL,
+    balance_after NUMERIC(12, 2) NULL,
+    idempotency_key VARCHAR(128) NULL UNIQUE,
+    related_transaction_id INTEGER NULL REFERENCES transactions(id),
+    provider VARCHAR(30) NULL,
+    provider_transaction_id VARCHAR(128) NULL,
+    utr VARCHAR(128) NULL,
+    payer_name VARCHAR(120) NULL,
+    payment_request_id INTEGER NULL REFERENCES payment_requests(id),
+    payment_source VARCHAR(50) NULL,
+    email_received_at TIMESTAMP WITHOUT TIME ZONE NULL,
+    raw_email_id VARCHAR(255) NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_reference ON transactions(reference);
+CREATE INDEX IF NOT EXISTS idx_transactions_passenger_id ON transactions(passenger_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_driver_id ON transactions(driver_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_idempotency_key ON transactions(idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at);
+
+-- 7. USER DOCUMENTS
+CREATE TABLE IF NOT EXISTS user_documents (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    document_type VARCHAR(80) NOT NULL,
+    file_path VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_documents_user_id ON user_documents(user_id);
+
+-- 8. EDIT REQUESTS
+CREATE TABLE IF NOT EXISTS edit_requests (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    field_name VARCHAR(100) NOT NULL,
+    previous_value TEXT NULL,
+    new_value TEXT NULL,
+    proof_path VARCHAR(255) NULL,
+    reason TEXT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    reviewed_by INTEGER NULL REFERENCES admins(id),
+    reviewed_at TIMESTAMP WITHOUT TIME ZONE NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_edit_requests_user_id ON edit_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_edit_requests_status ON edit_requests(status);
+
+-- 9. FRAUD ALERTS
+CREATE TABLE IF NOT EXISTS fraud_alerts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NULL REFERENCES users(id),
+    transaction_id INTEGER NULL REFERENCES transactions(id),
+    risk_score INTEGER NOT NULL DEFAULT 0,
+    reason TEXT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'open',
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at TIMESTAMP WITHOUT TIME ZONE NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_fraud_alerts_user_id ON fraud_alerts(user_id);
+CREATE INDEX IF NOT EXISTS idx_fraud_alerts_transaction_id ON fraud_alerts(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_fraud_alerts_status ON fraud_alerts(status);
+
+-- 10. ACTIVITY LOGS
+CREATE TABLE IF NOT EXISTS activity_logs (
+    id SERIAL PRIMARY KEY,
+    admin_id INTEGER NULL REFERENCES admins(id),
+    user_id INTEGER NULL REFERENCES users(id),
+    action VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id INTEGER NULL,
+    details TEXT NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_logs_admin_id ON activity_logs(admin_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);
+
+-- 11. PROJECT SETTINGS (note the quoted "key" identifier)
+CREATE TABLE IF NOT EXISTS project_settings (
+    "key" VARCHAR(100) PRIMARY KEY,
+    value TEXT NULL,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 12. NFC CARD ORDERS
+CREATE TABLE IF NOT EXISTS nfc_card_orders (
+    id SERIAL PRIMARY KEY,
+    order_reference VARCHAR(64) NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    card_type VARCHAR(50) NOT NULL DEFAULT 'standard_nfc',
+    card_price NUMERIC(12, 2) NOT NULL DEFAULT 50.00,
+    delivery_charge NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    total_amount NUMERIC(12, 2) NOT NULL DEFAULT 50.00,
+    delivery_tier VARCHAR(30) NOT NULL DEFAULT 'local',
+    recipient_name VARCHAR(100) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    address_line1 TEXT NOT NULL,
+    address_line2 TEXT NULL,
+    area VARCHAR(100) NOT NULL,
+    city VARCHAR(100) NOT NULL,
+    state VARCHAR(100) NOT NULL,
+    pincode VARCHAR(10) NOT NULL,
+    order_status VARCHAR(30) NOT NULL DEFAULT 'processing',
+    payment_status VARCHAR(30) NOT NULL DEFAULT 'paid',
+    is_demo BOOLEAN NOT NULL DEFAULT TRUE,
+    notes TEXT NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_nfc_card_orders_reference ON nfc_card_orders(order_reference);
+CREATE INDEX IF NOT EXISTS idx_nfc_card_orders_user_id ON nfc_card_orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_nfc_card_orders_order_status ON nfc_card_orders(order_status);
+CREATE INDEX IF NOT EXISTS idx_nfc_card_orders_payment_status ON nfc_card_orders(payment_status);
+CREATE INDEX IF NOT EXISTS idx_nfc_card_orders_created_at ON nfc_card_orders(created_at);

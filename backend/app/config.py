@@ -86,18 +86,28 @@ class Settings:
 
     @property
     def DATABASE_URL(self) -> str:
-        # Allow Railway or any platform to inject a full DATABASE_URL directly.
-        # Supports both mysql:// and mysql+pymysql:// formats.
-        raw = os.getenv("DATABASE_URL", "")
+        """Database connection URI supporting Supabase PostgreSQL and fallback drivers."""
+        raw = (os.getenv("DATABASE_URL") or "").strip()
         if raw:
-            # Normalise mysql:// -> mysql+pymysql://
+            # Handle PostgreSQL schemes:
+            # SQLAlchemy 2.x requires a specific driver prefix (postgresql+psycopg2://)
+            if raw.startswith("postgres://"):
+                return "postgresql+psycopg2://" + raw[len("postgres://"):]
+            if raw.startswith("postgresql://"):
+                return "postgresql+psycopg2://" + raw[len("postgresql://"):]
             if raw.startswith("mysql://"):
-                raw = "mysql+pymysql://" + raw[len("mysql://"):]
+                return "mysql+pymysql://" + raw[len("mysql://"):]
             return raw
+
         # Fallback: build from individual DB_* components
-        if self.DB_PASSWORD:
-            return f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
-        return f"mysql+pymysql://{self.DB_USER}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        is_postgres = (
+            self.DB_PORT in (5432, 6543)
+            or self.DB_USER == "postgres"
+            or os.getenv("DB_DIALECT", "").lower() in ("postgres", "postgresql")
+        )
+        driver = "postgresql+psycopg2" if is_postgres else "mysql+pymysql"
+        auth = f"{self.DB_USER}:{self.DB_PASSWORD}" if self.DB_PASSWORD else self.DB_USER
+        return f"{driver}://{auth}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
     @property
     def OUTLOOK_CLIENT_ID(self) -> str:

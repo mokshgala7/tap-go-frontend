@@ -63,7 +63,7 @@ class SettingUpdate(BaseModel):
 
 def ensure_default_admin(db: Session) -> Admin:
     """Provision the documented temporary account once, as a database record."""
-    admin = db.query(Admin).filter(Admin.email == settings.ADMIN_EMAIL).first()
+    admin = db.query(Admin).filter(func.lower(Admin.email) == settings.ADMIN_EMAIL.strip().lower()).first()
     if not admin:
         admin = Admin(
             email=settings.ADMIN_EMAIL,
@@ -151,7 +151,7 @@ def login(payload: AdminLogin, db: Session = Depends(get_db)):
     ensure_default_admin(db)
     input_email = payload.email.strip().lower()
     input_password = payload.password
-    admin = db.query(Admin).filter(Admin.email == input_email).first()
+    admin = db.query(Admin).filter(func.lower(Admin.email) == input_email).first()
     
     valid = False
     if admin and admin.is_active:
@@ -165,7 +165,7 @@ def login(payload: AdminLogin, db: Session = Depends(get_db)):
     if not valid:
         # Also check User table in case admin was created in User table
         user_admin = db.query(User).filter(
-            (User.email == input_email) | (User.phone == input_email),
+            (func.lower(User.email) == input_email) | (User.phone == input_email),
             User.account_type == "admin"
         ).first()
         if user_admin:

@@ -14,64 +14,68 @@ from app.routes import admin, auth, wallet, payment, card_order
 # but the original schema.sql may not include.
 try:
     Base.metadata.create_all(bind=engine)
-    inspector = inspect(engine)
-    if "users" in inspector.get_table_names():
-        columns = {column["name"] for column in inspector.get_columns("users")}
-        # Every (column_name, SQL_definition) pair is tried independently so
-        # pre-existing columns are silently skipped.
-        migrations = [
-            ("status", "VARCHAR(20) NOT NULL DEFAULT 'active'"),
-            ("qr_identifier", "VARCHAR(128) NULL"),
-            ("nfc_identifier", "VARCHAR(128) NULL"),
-            ("signature_document", "VARCHAR(255) NULL"),
-            ("id_document", "VARCHAR(255) NULL"),
-            ("state", "VARCHAR(100) NULL"),
-            ("emergency_contact_name", "VARCHAR(100) NULL"),
-            ("emergency_contact_phone", "VARCHAR(20) NULL"),
-            ("bank_account_holder", "VARCHAR(100) NULL"),
-            ("bank_account_number", "VARCHAR(50) NULL"),
-            ("bank_ifsc", "VARCHAR(20) NULL"),
-            ("bank_upi_id", "VARCHAR(50) NULL"),
-            ("bank_locked", "INT DEFAULT 0"),
-            ("bank_request_status", "VARCHAR(20) DEFAULT 'none'"),
-            ("doc_request_status", "VARCHAR(20) DEFAULT 'none'"),
-            ("phone_request_status", "VARCHAR(20) DEFAULT 'none'"),
-        ]
-        with engine.begin() as connection:
-            for col_name, col_def in migrations:
-                if col_name not in columns:
-                    try:
-                        connection.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"))
-                        print(f"[Migration] Added column users.{col_name}")
-                    except Exception:
-                        pass  # column may already exist from a previous partial run
 
-    if "transactions" in inspector.get_table_names():
-        txn_columns = {column["name"] for column in inspector.get_columns("transactions")}
-        txn_migrations = [
-            ("transaction_type", "VARCHAR(30) NULL"),
-            ("description", "TEXT NULL"),
-            ("balance_after", "DECIMAL(12, 2) NULL"),
-            ("idempotency_key", "VARCHAR(128) NULL"),
-            ("related_transaction_id", "INT NULL"),
-            ("provider", "VARCHAR(30) NULL"),
-            ("provider_transaction_id", "VARCHAR(128) NULL"),
-            ("utr", "VARCHAR(128) NULL"),
-            ("payer_name", "VARCHAR(120) NULL"),
-            ("payment_request_id", "INT NULL"),
-            ("payment_source", "VARCHAR(50) NULL"),
-            ("email_received_at", "DATETIME NULL"),
-            ("raw_email_id", "VARCHAR(255) NULL"),
-            ("updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
-        ]
-        with engine.begin() as connection:
-            for col_name, col_def in txn_migrations:
-                if col_name not in txn_columns:
-                    try:
-                        connection.execute(text(f"ALTER TABLE transactions ADD COLUMN {col_name} {col_def}"))
-                        print(f"[Migration] Added column transactions.{col_name}")
-                    except Exception:
-                        pass
+    # Legacy schema column migration — executed ONLY on MySQL where older schema.sql
+    # may have missed recent columns. PostgreSQL is created directly from models.py.
+    if engine.dialect.name == "mysql":
+        inspector = inspect(engine)
+        if "users" in inspector.get_table_names():
+            columns = {column["name"] for column in inspector.get_columns("users")}
+            # Every (column_name, SQL_definition) pair is tried independently so
+            # pre-existing columns are silently skipped.
+            migrations = [
+                ("status", "VARCHAR(20) NOT NULL DEFAULT 'active'"),
+                ("qr_identifier", "VARCHAR(128) NULL"),
+                ("nfc_identifier", "VARCHAR(128) NULL"),
+                ("signature_document", "VARCHAR(255) NULL"),
+                ("id_document", "VARCHAR(255) NULL"),
+                ("state", "VARCHAR(100) NULL"),
+                ("emergency_contact_name", "VARCHAR(100) NULL"),
+                ("emergency_contact_phone", "VARCHAR(20) NULL"),
+                ("bank_account_holder", "VARCHAR(100) NULL"),
+                ("bank_account_number", "VARCHAR(50) NULL"),
+                ("bank_ifsc", "VARCHAR(20) NULL"),
+                ("bank_upi_id", "VARCHAR(50) NULL"),
+                ("bank_locked", "INT DEFAULT 0"),
+                ("bank_request_status", "VARCHAR(20) DEFAULT 'none'"),
+                ("doc_request_status", "VARCHAR(20) DEFAULT 'none'"),
+                ("phone_request_status", "VARCHAR(20) DEFAULT 'none'"),
+            ]
+            with engine.begin() as connection:
+                for col_name, col_def in migrations:
+                    if col_name not in columns:
+                        try:
+                            connection.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"))
+                            print(f"[Migration] Added column users.{col_name}")
+                        except Exception:
+                            pass  # column may already exist from a previous partial run
+
+        if "transactions" in inspector.get_table_names():
+            txn_columns = {column["name"] for column in inspector.get_columns("transactions")}
+            txn_migrations = [
+                ("transaction_type", "VARCHAR(30) NULL"),
+                ("description", "TEXT NULL"),
+                ("balance_after", "DECIMAL(12, 2) NULL"),
+                ("idempotency_key", "VARCHAR(128) NULL"),
+                ("related_transaction_id", "INT NULL"),
+                ("provider", "VARCHAR(30) NULL"),
+                ("provider_transaction_id", "VARCHAR(128) NULL"),
+                ("utr", "VARCHAR(128) NULL"),
+                ("payer_name", "VARCHAR(120) NULL"),
+                ("payment_request_id", "INT NULL"),
+                ("payment_source", "VARCHAR(50) NULL"),
+                ("email_received_at", "DATETIME NULL"),
+                ("raw_email_id", "VARCHAR(255) NULL"),
+                ("updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
+            ]
+            with engine.begin() as connection:
+                for col_name, col_def in txn_migrations:
+                    if col_name not in txn_columns:
+                        try:
+                            connection.execute(text(f"ALTER TABLE transactions ADD COLUMN {col_name} {col_def}"))
+                            print(f"[Migration] Added column transactions.{col_name}")
+                        except Exception:
+                            pass
 
     from app.database import SessionLocal
     from app.routes.admin import ensure_default_admin

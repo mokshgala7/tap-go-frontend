@@ -55,13 +55,18 @@ def wallet_to_dict(wallet: Wallet):
     }
 
 
-def get_or_create_wallet(user_id: int, db: Session) -> Wallet:
-    wallet = db.query(Wallet).filter(Wallet.user_id == user_id).first()
+def get_or_create_wallet(user_id: int, db: Session, for_update: bool = False) -> Wallet:
+    query = db.query(Wallet).filter(Wallet.user_id == user_id)
+    if for_update:
+        query = query.with_for_update()
+    wallet = query.first()
     if not wallet:
         wallet = Wallet(user_id=user_id, balance=Decimal("0.00"), is_frozen=False)
         db.add(wallet)
         db.commit()
         db.refresh(wallet)
+        if for_update:
+            wallet = db.query(Wallet).filter(Wallet.user_id == user_id).with_for_update().first()
     return wallet
 
 
@@ -281,7 +286,8 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
     # Single-use OTP: delete after successful verification
     db.query(EmailOTP).filter(EmailOTP.email == user.email).delete()
 
-    wallet = get_or_create_wallet(data.user_id, db)
+    # Lock wallet row exclusively during balance deduction
+    wallet = get_or_create_wallet(data.user_id, db, for_update=True)
     if wallet.is_frozen:
         raise HTTPException(status_code=400, detail="Your wallet is frozen. Withdrawals are disabled.")
 
@@ -350,7 +356,8 @@ def pay_fare(data: PayRequest, db: Session = Depends(get_db)):
     if not passenger:
         raise HTTPException(status_code=404, detail="Passenger user not found.")
 
-    p_wallet = get_or_create_wallet(passenger.id, db)
+    # Exclusively lock passenger wallet row to prevent concurrent double-spending
+    p_wallet = get_or_create_wallet(passenger.id, db, for_update=True)
     if p_wallet.is_frozen:
         raise HTTPException(status_code=400, detail="Your passenger wallet is frozen. Payment failed.")
 
@@ -381,7 +388,8 @@ def pay_fare(data: PayRequest, db: Session = Depends(get_db)):
 
     d_wallet = None
     if driver_id:
-        d_wallet = get_or_create_wallet(driver_id, db)
+        # Exclusively lock driver wallet row during credit
+        d_wallet = get_or_create_wallet(driver_id, db, for_update=True)
         if not d_wallet.is_frozen:
             d_wallet.balance += fare_dec
 

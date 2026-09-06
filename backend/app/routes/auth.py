@@ -3,6 +3,7 @@ import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, Form, File, UploadFile, HTTPException, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -73,7 +74,8 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     In REVIEW_DEMO_MODE, if the email delivery fails (e.g. Resend sandbox restriction),
     the OTP is returned directly in the response so the tester can still complete the flow.
     """
-    existing_user = db.query(User).filter(User.email == request.email).first()
+    clean_email = request.email.strip().lower()
+    existing_user = db.query(User).filter(func.lower(User.email) == clean_email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email is already registered.")
 
@@ -81,7 +83,7 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     expires_at = datetime.utcnow() + timedelta(minutes=10)
 
     # Invalidate all old OTPs for this email
-    db.query(EmailOTP).filter(EmailOTP.email == request.email).delete()
+    db.query(EmailOTP).filter(func.lower(EmailOTP.email) == clean_email).delete()
 
     new_otp = EmailOTP(email=request.email, otp=otp, expires_at=expires_at)
     db.add(new_otp)
@@ -126,7 +128,8 @@ async def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
     Verify OTP on the spot — does NOT consume it.
     The OTP remains valid for the final registration step.
     """
-    db_otp = db.query(EmailOTP).filter(EmailOTP.email == request.email).first()
+    clean_email = request.email.strip().lower()
+    db_otp = db.query(EmailOTP).filter(func.lower(EmailOTP.email) == clean_email).first()
     if not db_otp:
         raise HTTPException(status_code=400, detail="No OTP found for this email. Please request a new OTP.")
     if db_otp.otp != request.otp:
@@ -146,8 +149,9 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
     """
     Generate and send OTP for forgot password flow.
     """
+    clean_account = request.account.strip()
     user = db.query(User).filter(
-        (User.email == request.account) | (User.phone == request.account)
+        (func.lower(User.email) == clean_account.lower()) | (User.phone == clean_account)
     ).first()
 
     if not user:
@@ -157,7 +161,7 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
     otp = f"{random.randint(100000, 999999)}"
     expires_at = datetime.utcnow() + timedelta(minutes=10)
 
-    db.query(EmailOTP).filter(EmailOTP.email == user.email).delete()
+    db.query(EmailOTP).filter(func.lower(EmailOTP.email) == user.email.strip().lower()).delete()
     new_otp = EmailOTP(email=user.email, otp=otp, expires_at=expires_at)
     db.add(new_otp)
     db.commit()
@@ -184,13 +188,14 @@ class ResetPasswordRequest(BaseModel):
 
 @router.post("/reset-password")
 async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
-    db_otp = db.query(EmailOTP).filter(EmailOTP.email == request.email).first()
+    clean_email = request.email.strip().lower()
+    db_otp = db.query(EmailOTP).filter(func.lower(EmailOTP.email) == clean_email).first()
     if not db_otp or db_otp.otp != request.otp:
         raise HTTPException(status_code=400, detail="Invalid OTP.")
     if db_otp.expires_at < datetime.utcnow():
         raise HTTPException(status_code=400, detail="OTP has expired.")
 
-    user = db.query(User).filter(User.email == request.email).first()
+    user = db.query(User).filter(func.lower(User.email) == clean_email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
@@ -256,7 +261,8 @@ async def register(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
     # 2. MANDATORY OTP verification — always required
-    db_otp = db.query(EmailOTP).filter(EmailOTP.email == validated_data.email).first()
+    clean_reg_email = validated_data.email.strip().lower()
+    db_otp = db.query(EmailOTP).filter(func.lower(EmailOTP.email) == clean_reg_email).first()
     if not db_otp:
         raise HTTPException(
             status_code=400,
@@ -282,7 +288,7 @@ async def register(
         }
 
     # 3. Check for duplicate email or phone
-    if db.query(User).filter(User.email == validated_data.email).first():
+    if db.query(User).filter(func.lower(User.email) == clean_reg_email).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This email address is already registered."
@@ -400,7 +406,7 @@ async def login(credentials: UserLoginRequest, db: Session = Depends(get_db)):
     account_input = credentials.account.strip()
 
     user = db.query(User).filter(
-        (User.email == account_input) | (User.phone == account_input)
+        (func.lower(User.email) == account_input.lower()) | (User.phone == account_input)
     ).first()
 
     if not user:

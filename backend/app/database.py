@@ -7,10 +7,11 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import settings
 
 def get_engine():
-    """Create the SQLAlchemy engine targeting MySQL, with graceful SQLite fallback.
+    """Create the SQLAlchemy engine targeting PostgreSQL (Supabase) or MySQL.
 
-    If MySQL is reachable, it uses MySQL. If MySQL is unreachable or not configured,
-    it falls back to SQLite so the server runs smoothly on any deployment.
+    If REVIEW_DEMO_MODE is true, intentionally runs from the reviewer snapshot.
+    In normal production operation (REVIEW_DEMO_MODE=false), connects to the configured
+    database and FAILS LOUDLY on connection errors — never silently falling back to SQLite.
     """
     if settings.REVIEW_DEMO_MODE:
         project_root = Path(__file__).resolve().parent.parent
@@ -33,19 +34,58 @@ def get_engine():
         )
 
     db_url = settings.DATABASE_URL
+
+    # Allow explicit SQLite only if explicitly designated in DATABASE_URL
     if db_url.startswith("sqlite"):
-        print("[Database] Using SQLite database file.")
+        print("[Database] Explicitly using SQLite database file from configuration.")
         return create_engine(db_url, connect_args={"check_same_thread": False}, echo=False)
 
+    # PostgreSQL (Supabase) Connection
+    if db_url.startswith("postgresql"):
+        connect_args = {}
+        # Apply SSL mode required by Supabase unless on localhost or already in URL
+        if "sslmode=" not in db_url and not any(h in db_url for h in ("localhost", "127.0.0.1")):
+            connect_args["sslmode"] = "require"
+
+        try:
+            eng = create_engine(
+                db_url,
+                pool_pre_ping=True,
+                pool_recycle=1800,
+                pool_size=5,
+                max_overflow=10,
+                connect_args=connect_args,
+                echo=False,
+            )
+            with eng.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            print("[Database] Connected to PostgreSQL (Supabase) successfully.")
+            return eng
+        except Exception as e:
+            print(f"[Database Error] PostgreSQL connection failed: {e}")
+            raise RuntimeError(
+                f"Failed to connect to PostgreSQL database ({e}). "
+                f"Production mode (REVIEW_DEMO_MODE=false) will not fall back to SQLite."
+            ) from e
+
+    # MySQL Connection (for local development or transition)
     try:
-        eng = create_engine(db_url, pool_pre_ping=True, pool_recycle=3600, echo=False)
+        eng = create_engine(
+            db_url,
+            pool_pre_ping=True,
+            pool_recycle=3600,
+            echo=False,
+        )
         with eng.connect() as conn:
             conn.execute(text("SELECT 1"))
-        print(f"[Database] Connected to MySQL database successfully.")
+        print("[Database] Connected to MySQL database successfully.")
         return eng
     except Exception as e:
-        print(f"[Database Warning] MySQL connection failed ({e}). Falling back to SQLite for seamless deployment.")
-        return create_engine("sqlite:///./tapgo.db", connect_args={"check_same_thread": False}, echo=False)
+        print(f"[Database Error] Database connection failed: {e}")
+        raise RuntimeError(
+            f"Failed to connect to configured database ({e}). "
+            f"Production mode (REVIEW_DEMO_MODE=false) will not fall back to SQLite."
+        ) from e
 
 engine = get_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

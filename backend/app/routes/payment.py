@@ -30,13 +30,18 @@ class VerifyPaymentRequest(BaseModel):
     amount: float  # Amount in INR Rupees
 
 
-def get_or_create_wallet(user_id: int, db: Session) -> Wallet:
-    wallet = db.query(Wallet).filter(Wallet.user_id == user_id).first()
+def get_or_create_wallet(user_id: int, db: Session, for_update: bool = False) -> Wallet:
+    query = db.query(Wallet).filter(Wallet.user_id == user_id)
+    if for_update:
+        query = query.with_for_update()
+    wallet = query.first()
     if not wallet:
         wallet = Wallet(user_id=user_id, balance=Decimal("0.00"), is_frozen=False)
         db.add(wallet)
         db.commit()
         db.refresh(wallet)
+        if for_update:
+            wallet = db.query(Wallet).filter(Wallet.user_id == user_id).with_for_update().first()
     return wallet
 
 
@@ -136,7 +141,8 @@ def verify_razorpay_payment(data: VerifyPaymentRequest, db: Session = Depends(ge
             detail="Payment verification failed due to invalid signature."
         )
 
-    # 3. Credit wallet balance atomically
+    # 3. Lock wallet row exclusively and credit balance atomically
+    wallet = get_or_create_wallet(user.id, db, for_update=True)
     credit_amount = Decimal(str(round(data.amount, 2)))
     wallet.balance += credit_amount
 
@@ -214,7 +220,8 @@ async def razorpay_webhook(
                 if not existing:
                     user = db.get(User, user_id)
                     if user:
-                        wallet = get_or_create_wallet(user.id, db)
+                        # Lock wallet row exclusively for asynchronous webhook credit
+                        wallet = get_or_create_wallet(user.id, db, for_update=True)
                         credit_amt = Decimal(str(round(amount_rupees, 2)))
                         wallet.balance += credit_amt
 
