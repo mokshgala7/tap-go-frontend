@@ -4,12 +4,6 @@ Tap&Go is a modern, secure, and instant cashless payment and payout ecosystem bu
 
 ---
 
-## 🚧 Development Notice
-
-Tap&Go is currently under active development. Some features may be unavailable while we complete development and testing.
-
----
-
 ## 📋 Technical & Operational Overview
 
 This deployment demonstrates the complete application workflow of **Tap&Go**.

@@ -3,7 +3,6 @@ import { Link, useNavigate } from '../routes/navigation.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import Footer from '../components/Common/Footer.jsx'
 import Navbar from '../components/Common/Navbar.jsx'
-import DevBanner from '../components/Common/DevBanner.jsx'
 import illustration from '../assets/images/login-fintech-taxi.svg'
 import logo from '../assets/images/logio.png'
 import '../styles/Login.css'
@@ -128,7 +127,6 @@ function Login() {
   return (
     <div className="tapgo-login tapgo-shell font-body-lg antialiased selection:bg-secondary-container selection:text-on-secondary-container">
       <Navbar />
-      <DevBanner />
 
       <main className="login-main">
         <div className="login-background" aria-hidden="true">

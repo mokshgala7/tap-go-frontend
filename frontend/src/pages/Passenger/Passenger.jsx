@@ -7,7 +7,6 @@ import { useDarkMode } from '../../hooks/useDarkMode.js'
 import { RANGE_OPTIONS, formatRelativeTime, vehicleLabel } from './format.js'
 import RazorpayAddMoneyModal from '../../components/Payment/RazorpayAddMoneyModal.jsx'
 import WithdrawModal from '../../components/Payment/WithdrawModal.jsx'
-import DevBanner from '../../components/Common/DevBanner.jsx'
 import NFCCardOrderModal from '../../components/NFC/NFCCardOrderModal.jsx'
 import NFCOrderHistoryModal from '../../components/NFC/NFCOrderHistoryModal.jsx'
 import './Passenger.css'
@@ -991,7 +990,6 @@ function Passenger() {
 
   return (
     <div className="passenger">
-      <DevBanner />
       <header>
         <button className="logo" onClick={goHome} aria-label="Tap&Go home">
           Tap<span>&amp;</span>Go

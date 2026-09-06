@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Link, useCurrentView, useNavigate } from '../../routes/navigation.jsx'
-import DevBanner from './DevBanner.jsx'
 import './Navbar.css'
 
 const contactDetails = [
@@ -52,9 +51,7 @@ function Navbar() {
   }
 
   return (
-    <>
-      <DevBanner />
-      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-3 sm:px-6 py-3 sm:py-4">
           <Link className="text-xl sm:text-2xl font-bold text-black" to="/" aria-label="Tap&Go home">
             Tap<span className="text-yellow-500">&amp;</span>Go
@@ -154,7 +151,6 @@ function Navbar() {
           </div>
         )}
       </header>
-    </>
   )
 }
 

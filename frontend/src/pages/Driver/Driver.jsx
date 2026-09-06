@@ -7,7 +7,6 @@ import DriverDashboard from './DriverDashboard.jsx'
 import DriverEarnings from './DriverEarnings.jsx'
 import DriverAccount from './DriverAccount.jsx'
 import { inr } from './format.js'
-import DevBanner from '../../components/Common/DevBanner.jsx'
 import WithdrawModal from '../../components/Payment/WithdrawModal.jsx'
 import '../Passenger/Passenger.css'
 import './Driver.css'
@@ -191,7 +190,6 @@ function Driver() {
 
   return (
     <div className="driver">
-      <DevBanner />
       <header>
         <button className="logo" onClick={goHome} aria-label="Tap&Go home">
           Tap<span>&amp;</span>Go
