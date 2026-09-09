@@ -325,6 +325,76 @@ def send_password_reset_otp(to_email: str, otp: str) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 2b. WITHDRAWAL CONFIRMATION OTP EMAIL
+# ─────────────────────────────────────────────────────────────────────────────
+
+def send_withdrawal_otp(to_email: str, otp: str, amount: Optional[float] = None) -> bool:
+    """
+    Sends distinct withdrawal authorization OTP email.
+    Subject: 'Tap & Go - Authorize Withdrawal'
+    Expires in 5 minutes.
+    """
+    otp_cells = "".join([
+        f'''<td align="center" style="padding:0 3px;">
+            <div style="width:44px;height:54px;line-height:54px;text-align:center;
+            background-color:#1C1C1E;color:#6366F1;font-size:26px;font-weight:900;
+            border-radius:10px;font-family:'Courier New',monospace;">{d}</div>
+        </td>'''
+        for d in otp
+    ])
+
+    amount_str = f" of <strong>₹{amount:.2f}</strong>" if amount and amount > 0 else ""
+
+    body = f"""
+    <h2 style="margin:0 0 10px;font-size:22px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;">
+        Authorize Withdrawal
+    </h2>
+    <p style="margin:0 0 22px;color:#4B5563;font-size:14px;line-height:1.6;">
+        We received a request to withdraw funds{amount_str} from your Tap &amp; Go wallet to your designated payout account. Use the 6-digit authorization code below to confirm this transaction.
+    </p>
+
+    <!-- OTP Card -->
+    <div style="background-color:#EEF2FF;border:1px solid #C7D2FE;border-radius:14px;padding:22px 14px;text-align:center;margin-bottom:22px;">
+        <div style="font-size:11px;font-weight:800;color:#4338CA;letter-spacing:2.5px;text-transform:uppercase;margin-bottom:12px;">
+            WITHDRAWAL AUTHORIZATION CODE
+        </div>
+        <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto;">
+            <tr>{otp_cells}</tr>
+        </table>
+        <div style="font-size:12px;color:#DC2626;font-weight:700;margin-top:14px;">
+            ⏰ This code expires in 5 minutes
+        </div>
+    </div>
+
+    <!-- Security Warning -->
+    <div style="border-left:4px solid #EF4444;background-color:#FEF2F2;border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:14px;">
+        <div style="font-size:12px;color:#991B1B;font-weight:600;line-height:1.6;">
+            ⚠️ <strong>Didn't request this payout?</strong> If you did not initiate this withdrawal, please secure your account immediately and contact Tap &amp; Go Support. Never share this code with anyone.
+        </div>
+    </div>
+    <p style="margin:0;color:#9CA3AF;font-size:12px;line-height:1.5;">
+        Tap &amp; Go staff will never ask for your authorization code.
+    </p>
+    """
+
+    html = _render_email_shell(
+        badge="SECURITY &bull; WITHDRAWAL AUTHORIZATION",
+        badge_bg="#1E1B4B",
+        badge_color="#A5B4FC",
+        title="Authorize Withdrawal",
+        body_html=body,
+        accent_bar_gradient="linear-gradient(90deg,#6366F1,#4F46E5)",
+    )
+    return send_email(
+        to_email=to_email,
+        subject="Tap & Go - Authorize Withdrawal",
+        html_content=html,
+        email_type="withdrawal_otp",
+    )
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 3. WALLET TOP-UP EMAIL (Add Money: Initiated / Successful / Failed)
 # ─────────────────────────────────────────────────────────────────────────────
 

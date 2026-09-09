@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Transaction, User, Wallet, EmailOTP
 from app.utils.email_service import (
-    send_registration_otp,
+    send_withdrawal_otp,
     send_withdrawal_email,
     send_ride_passenger_email,
     send_ride_driver_email,
@@ -264,7 +264,7 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
     db.commit()
 
     # Deliver via real Gmail SMTP
-    email_sent = send_registration_otp(to_email=user.email, otp=otp_code, account_type=user.account_type)
+    email_sent = send_withdrawal_otp(to_email=user.email, otp=otp_code, amount=data.amount)
 
     dest_str = f"Bank Account (ending in {user.bank_account_number.strip()[-4:]})" if user.bank_account_number else f"UPI ID ({user.bank_upi_id})"
 
