@@ -8,6 +8,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import NFCCardOrder, User, Admin
+from app.utils.email_service import send_nfc_card_order_email, send_nfc_status_update_email
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/card-order", tags=["nfc_card_orders"])
 
@@ -184,6 +188,21 @@ def create_card_order(data: CardOrderCreateRequest, db: Session = Depends(get_db
         db.commit()
         db.refresh(order)
 
+        # Dispatch NFC order confirmation email safely (never fail order on email error)
+        if user and user.email:
+            try:
+                full_address = f"{data.address_line1}, {data.area}, {data.city}, {data.state} - {clean_pin}"
+                send_nfc_card_order_email(
+                    to_email=user.email,
+                    user_name=user.name,
+                    order_reference=order_ref,
+                    total_amount=float(total_dec),
+                    delivery_address=full_address,
+                    status="Order Placed",
+                )
+            except Exception as e:
+                logger.warning(f"[NFCEmail] Order confirmation email delivery failed: {e}")
+
         return {
             "success": True,
             "is_demo": True,
@@ -269,6 +288,19 @@ def update_card_order_status(
 
     db.commit()
     db.refresh(order)
+
+    # Safely dispatch status update email to customer
+    customer = db.get(User, order.user_id)
+    if customer and customer.email:
+        try:
+            send_nfc_status_update_email(
+                to_email=customer.email,
+                user_name=customer.name,
+                order_reference=order.order_reference,
+                order_status=data.order_status,
+            )
+        except Exception as e:
+            logger.warning(f"[NFCEmail] Status update email failed: {e}")
 
     return {
         "success": True,

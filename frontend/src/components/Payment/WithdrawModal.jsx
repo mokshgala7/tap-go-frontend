@@ -238,13 +238,13 @@ export function WithdrawModal({ user, balance, onClose, onSuccess }) {
                   maxLength={6}
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
-                  placeholder="123456"
+                  placeholder="••••••"
                   required
                   disabled={loading}
                   className="w-full text-center tracking-[0.5em] font-mono text-2xl py-3 rounded-xl border border-slate-300 focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 text-slate-900 outline-none transition-all"
                 />
                 <p className="text-[11px] text-slate-500 mt-1 text-center">
-                  OTP sent to <span className="font-bold">{user?.email || 'your email'}</span>. Valid for 10 minutes.
+                  OTP sent to <span className="font-bold">{user?.email || 'your email'}</span>. Valid for 5 minutes.
                 </p>
               </div>
 

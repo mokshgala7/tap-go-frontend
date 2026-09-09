@@ -162,23 +162,17 @@ function ForgotPassword() {
       const data = await res.json()
       
       setLoading('')
-      if (res.ok) {
+      if (res.ok && data.success) {
         if (data.email) setResolvedEmail(data.email)
         setStep(2)
         setTimer(60)
         window.setTimeout(() => otpRefs.current[0]?.focus(), 20)
-        // Demo mode: email delivery restricted, OTP returned in response — auto-fill it
-        if (data.demo_mode && data.otp) {
-          const digits = data.otp.split('')
-          setOtp(digits.slice(0, 6))
-          setOtpError(`📋 Demo Mode — OTP auto-filled: ${data.otp}`)
-        }
       } else {
-        alert(data.detail || "Failed to process request.")
+        setOtpError(data.detail || "Failed to process request. Please check your account details.")
       }
     } catch (err) {
       setLoading('')
-      alert("Error processing request.")
+      setOtpError("Error connecting to server. Please try again.")
     }
   }
 
@@ -215,7 +209,8 @@ function ForgotPassword() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           email: resolvedEmail || account, 
-          otp: otp.join('') 
+          otp: otp.join(''),
+          purpose: "forgot_password"
         })
       })
       const data = await res.json()
@@ -224,7 +219,7 @@ function ForgotPassword() {
       if (res.ok && data.success) {
         setStep(3)
       } else {
-        setOtpError(data.detail || "Invalid OTP. Please enter the correct code sent to your email.")
+        setOtpError(data.detail || "Invalid verification code. Please check and try again.")
       }
     } catch (err) {
       setLoading('')
@@ -233,17 +228,27 @@ function ForgotPassword() {
   }
 
   const resendOtp = async () => {
+    if (timer > 0) return
     setOtp(['', '', '', '', '', ''])
-    setTimer(60)
-    window.setTimeout(() => otpRefs.current[0]?.focus(), 20)
+    setOtpError('')
+    setLoading('resend')
     try {
-      await fetch(`${API_BASE}/api/auth/forgot-password-otp`, {
+      const res = await fetch(`${API_BASE}/api/auth/forgot-password-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ account })
       })
+      const data = await res.json()
+      setLoading('')
+      if (res.ok && data.success) {
+        setTimer(60)
+        window.setTimeout(() => otpRefs.current[0]?.focus(), 20)
+      } else {
+        setOtpError(data.detail || "Failed to resend verification code.")
+      }
     } catch (e) {
-      console.error(e)
+      setLoading('')
+      setOtpError("Error connecting to server.")
     }
   }
 

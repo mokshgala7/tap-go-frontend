@@ -59,6 +59,9 @@ class EmailOTP(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     email = Column(String(120), nullable=False, index=True)
     otp = Column(String(10), nullable=False)
+    purpose = Column(String(32), nullable=False, default="registration")
+    attempts = Column(Integer, nullable=False, default=0)
+    is_verified = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, server_default=func.now())
     expires_at = Column(DateTime, nullable=False)
 
@@ -231,4 +234,16 @@ class NFCCardOrder(Base):
 
     created_at = Column(DateTime, server_default=func.now(), index=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class EmailLog(Base):
+    __tablename__ = "email_logs"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    email_type = Column(String(50), nullable=False, index=True)
+    recipient = Column(String(120), nullable=False, index=True)
+    reference = Column(String(64), nullable=True, index=True)
+    status = Column(String(20), nullable=False, default="SENT")  # SENT, FAILED
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
 

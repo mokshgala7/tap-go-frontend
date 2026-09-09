@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Transaction, User, Wallet
 from app.services.payment.razorpay_service import razorpay_service
+from app.utils.email_service import send_wallet_topup_email
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,18 @@ def verify_razorpay_payment(data: VerifyPaymentRequest, db: Session = Depends(ge
 
     if not is_valid:
         logger.warning(f"[Payment] Invalid signature for payment {data.razorpay_payment_id}")
+        if user and user.email:
+            try:
+                send_wallet_topup_email(
+                    to_email=user.email,
+                    user_name=user.name,
+                    amount=data.amount,
+                    reference=data.razorpay_order_id,
+                    status="Failed",
+                    provider="Razorpay",
+                )
+            except Exception:
+                pass
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Payment verification failed due to invalid signature."
@@ -173,6 +186,20 @@ def verify_razorpay_payment(data: VerifyPaymentRequest, db: Session = Depends(ge
     db.refresh(wallet)
 
     logger.info(f"[Payment] Successfully credited ₹{data.amount} to user {user.id} (Wallet {wallet.id}) via Razorpay.")
+
+    # Safely dispatch topup confirmation email (financial transaction is already committed)
+    if user and user.email:
+        try:
+            send_wallet_topup_email(
+                to_email=user.email,
+                user_name=user.name,
+                amount=data.amount,
+                reference=ref_code,
+                status="Successful",
+                provider="Razorpay",
+            )
+        except Exception as e:
+            logger.warning(f"[PaymentEmail] Topup email delivery failed: {e}")
 
     return {
         "success": True,
@@ -244,6 +271,19 @@ async def razorpay_webhook(
                         )
                         db.add(txn)
                         db.commit()
+
+                        if user.email:
+                            try:
+                                send_wallet_topup_email(
+                                    to_email=user.email,
+                                    user_name=user.name,
+                                    amount=amount_rupees,
+                                    reference=txn.reference,
+                                    status="Successful",
+                                    provider="Razorpay",
+                                )
+                            except Exception as e:
+                                logger.warning(f"[PaymentEmail] Webhook topup email delivery failed: {e}")
 
         return {"status": "ok"}
     except Exception as e:

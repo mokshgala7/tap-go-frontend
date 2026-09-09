@@ -199,7 +199,25 @@ CREATE TABLE IF NOT EXISTS email_otps (
     id INT AUTO_INCREMENT PRIMARY KEY,
     email VARCHAR(120) NOT NULL,
     otp VARCHAR(10) NOT NULL,
+    purpose VARCHAR(32) NOT NULL DEFAULT 'registration',
+    attempts INT NOT NULL DEFAULT 0,
+    is_verified TINYINT(1) NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     expires_at DATETIME NOT NULL,
-    INDEX (email)
+    INDEX (email),
+    INDEX (purpose)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS email_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email_type VARCHAR(50) NOT NULL,
+    recipient VARCHAR(120) NOT NULL,
+    reference VARCHAR(64) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'SENT',
+    error_message TEXT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX (recipient),
+    INDEX (email_type),
+    INDEX (reference),
+    INDEX (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

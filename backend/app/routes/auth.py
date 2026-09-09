@@ -11,7 +11,12 @@ from app.models import EditRequest, User, EmailOTP
 from app.schemas import UserRegisterForm, UserLoginRequest, SendOTPRequest, EMAIL_REGEX, PHONE_REGEX
 from pydantic import BaseModel
 from app.utils.security import hash_password, verify_password
-from app.utils.email_service import send_otp_email, send_welcome_email
+from app.utils.email_service import (
+    send_registration_otp,
+    send_password_reset_otp,
+    send_welcome_email,
+    send_security_alert_email,
+)
 from app.config import settings
 import random
 from datetime import datetime, timedelta
@@ -69,75 +74,138 @@ def save_uploaded_file(file: UploadFile, folder: str, allowed_extensions=None) -
 @router.post("/send-otp")
 async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     """
-    Generate a 6-digit OTP and send it via email.
-    The OTP is stored in DB and expires in 10 minutes.
-    In REVIEW_DEMO_MODE, if the email delivery fails (e.g. Resend sandbox restriction),
-    the OTP is returned directly in the response so the tester can still complete the flow.
+    Generate a 6-digit OTP and send it via Gmail SMTP for account registration.
+    - 5-minute expiration
+    - 60-second resend cooldown
+    - Server-side storage in email_otps
+    - No OTP returned in API response
     """
     clean_email = request.email.strip().lower()
     existing_user = db.query(User).filter(func.lower(User.email) == clean_email).first()
     if existing_user:
-        raise HTTPException(status_code=400, detail="Email is already registered.")
+        raise HTTPException(status_code=400, detail="This email address is already registered.")
 
+    # 60-second cooldown check for registration OTP
+    existing_otp = db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        EmailOTP.purpose == "registration"
+    ).order_by(EmailOTP.created_at.desc()).first()
+
+    if existing_otp and existing_otp.created_at:
+        elapsed = (datetime.utcnow() - existing_otp.created_at).total_seconds()
+        if elapsed < 60:
+            remaining_seconds = int(60 - elapsed)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Please wait {remaining_seconds} seconds before requesting another code."
+            )
+
+    # Generate random 6-digit OTP with 5-minute validity
     otp = f"{random.randint(100000, 999999)}"
-    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    expires_at = datetime.utcnow() + timedelta(minutes=5)
 
-    # Invalidate all old OTPs for this email
-    db.query(EmailOTP).filter(func.lower(EmailOTP.email) == clean_email).delete()
+    # Invalidate all prior registration OTPs for this email
+    db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        EmailOTP.purpose == "registration"
+    ).delete()
 
-    new_otp = EmailOTP(email=request.email, otp=otp, expires_at=expires_at)
+    new_otp = EmailOTP(
+        email=clean_email,
+        otp=otp,
+        purpose="registration",
+        attempts=0,
+        is_verified=False,
+        expires_at=expires_at,
+    )
     db.add(new_otp)
     db.commit()
 
-    success = send_otp_email(request.email, otp, request.account_type)
+    # Deliver via real Gmail SMTP
+    success = send_registration_otp(clean_email, otp, request.account_type)
     if not success:
-        if settings.REVIEW_DEMO_MODE:
-            # In review/demo mode, Resend sandbox may restrict delivery to unverified emails.
-            # Return the OTP directly in the response so the reviewer can still test the full flow.
-            import logging
-            logging.getLogger(__name__).warning(
-                "[REVIEW_DEMO] Email delivery failed for %s. Returning OTP in response for demo purposes.",
-                request.email,
-            )
-            return {
-                "success": True,
-                "demo_mode": True,
-                "otp": otp,
-                "message": (
-                    "Demo mode: Email delivery is restricted to verified addresses on the free plan. "
-                    f"Your OTP is: {otp} — please enter this code to continue."
-                ),
-            }
-        # Rollback OTP so user can retry
-        db.query(EmailOTP).filter(EmailOTP.email == request.email).delete()
+        # Rollback so user can retry cleanly
+        db.delete(new_otp)
         db.commit()
-        raise HTTPException(status_code=500, detail="Failed to send OTP email. Please check your email address and try again.")
+        raise HTTPException(
+            status_code=500,
+            detail="We couldn't send the verification email. Please check your email address and try again."
+        )
 
-    return {"success": True, "message": "OTP sent to your email. Please check your inbox (and spam folder)."}
+    return {
+        "success": True,
+        "message": "Verification code sent to your email. Please check your inbox (and spam folder)."
+    }
 
 
 
 class VerifyOTPRequest(BaseModel):
     email: str
     otp: str
+    purpose: Optional[str] = "registration"
 
 
 @router.post("/verify-otp")
 async def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
     """
-    Verify OTP on the spot — does NOT consume it.
-    The OTP remains valid for the final registration step.
+    Verify OTP on the spot.
+    Validates email, purpose, attempt count (max 5), and 5-minute expiry.
+    Marks is_verified = True so the registration or reset step can proceed.
     """
     clean_email = request.email.strip().lower()
-    db_otp = db.query(EmailOTP).filter(func.lower(EmailOTP.email) == clean_email).first()
-    if not db_otp:
-        raise HTTPException(status_code=400, detail="No OTP found for this email. Please request a new OTP.")
-    if db_otp.otp != request.otp:
-        raise HTTPException(status_code=400, detail="Incorrect OTP. Please try again.")
-    if db_otp.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="OTP has expired. Please request a new OTP.")
+    clean_purpose = (request.purpose or "registration").strip().lower()
 
-    return {"success": True, "message": "OTP verified successfully!"}
+    db_otp = db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        EmailOTP.purpose == clean_purpose
+    ).first()
+
+    if not db_otp:
+        raise HTTPException(
+            status_code=400,
+            detail="No verification code found for this email. Please request a new code."
+        )
+
+    # Max 5 attempts check
+    if db_otp.attempts >= 5:
+        db.delete(db_otp)
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail="Too many incorrect attempts. Please request a new code."
+        )
+
+    # Expiry check
+    if db_otp.expires_at < datetime.utcnow():
+        db.delete(db_otp)
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail="This code has expired. Please request a new code."
+        )
+
+    # Code mismatch check
+    if db_otp.otp != request.otp.strip():
+        db_otp.attempts += 1
+        db.commit()
+        remaining = max(0, 5 - db_otp.attempts)
+        if remaining == 0:
+            db.delete(db_otp)
+            db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail="Too many incorrect attempts. Please request a new code."
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid verification code. Please try again. ({remaining} attempts remaining)"
+        )
+
+    # Success
+    db_otp.is_verified = True
+    db.commit()
+
+    return {"success": True, "message": "Email verified successfully!"}
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -147,37 +215,78 @@ class ForgotPasswordRequest(BaseModel):
 @router.post("/forgot-password-otp")
 async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """
-    Generate and send OTP for forgot password flow.
+    Generate and send OTP for forgot password flow via Gmail SMTP.
+    - 5-minute expiration
+    - 60-second cooldown
+    - Purpose distinct from registration
+    - No OTP returned in API response
     """
     clean_account = request.account.strip()
     user = db.query(User).filter(
         (func.lower(User.email) == clean_account.lower()) | (User.phone == clean_account)
     ).first()
 
-    if not user:
+    if not user or not user.email:
         # Security: don't reveal if email/phone exists
-        return {"success": True, "message": "If the account exists, an OTP will be sent."}
+        return {"success": True, "message": "If the account exists, a verification code will be sent."}
 
+    clean_email = user.email.strip().lower()
+
+    # 60-second cooldown check
+    existing_otp = db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        EmailOTP.purpose == "forgot_password"
+    ).order_by(EmailOTP.created_at.desc()).first()
+
+    if existing_otp and existing_otp.created_at:
+        elapsed = (datetime.utcnow() - existing_otp.created_at).total_seconds()
+        if elapsed < 60:
+            remaining_seconds = int(60 - elapsed)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Please wait {remaining_seconds} seconds before requesting another code."
+            )
+
+    # Generate 6-digit random OTP
     otp = f"{random.randint(100000, 999999)}"
-    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    expires_at = datetime.utcnow() + timedelta(minutes=5)
 
-    db.query(EmailOTP).filter(func.lower(EmailOTP.email) == user.email.strip().lower()).delete()
-    new_otp = EmailOTP(email=user.email, otp=otp, expires_at=expires_at)
+    # Invalidate previous password-reset OTPs
+    db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        EmailOTP.purpose == "forgot_password"
+    ).delete()
+
+    new_otp = EmailOTP(
+        email=user.email,
+        otp=otp,
+        purpose="forgot_password",
+        attempts=0,
+        is_verified=False,
+        expires_at=expires_at,
+    )
     db.add(new_otp)
     db.commit()
 
-    email_sent = send_otp_email(user.email, otp, user.account_type)
-    if not email_sent and settings.REVIEW_DEMO_MODE:
-        return {
-            "success": True,
-            "demo_mode": True,
-            "otp": otp,
-            "email": user.email,
-            "message": (
-                f"Demo mode: Email delivery restricted. Your OTP is: {otp} — use it to reset your password."
-            ),
-        }
-    return {"success": True, "message": "If the account exists, an OTP will be sent.", "email": user.email}
+    email_sent = send_password_reset_otp(user.email, otp)
+    if not email_sent:
+        db.delete(new_otp)
+        db.commit()
+        raise HTTPException(
+            status_code=500,
+            detail="We couldn't send the password reset email. Please try again."
+        )
+
+    # Mask email for UI display: m****@gmail.com
+    parts = user.email.split("@")
+    masked_email = f"{parts[0][:1]}****@{parts[1]}" if len(parts) == 2 else user.email
+
+    return {
+        "success": True,
+        "message": "Verification code sent to your email. Please check your inbox.",
+        "email": user.email,
+        "masked_email": masked_email,
+    }
 
 
 class ResetPasswordRequest(BaseModel):
@@ -188,22 +297,84 @@ class ResetPasswordRequest(BaseModel):
 
 @router.post("/reset-password")
 async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Reset user password after OTP verification.
+    - Requires verified forgot_password OTP
+    - Hashes password using bcrypt
+    - Invalidates OTP immediately
+    - Sends security alert notification
+    """
     clean_email = request.email.strip().lower()
-    db_otp = db.query(EmailOTP).filter(func.lower(EmailOTP.email) == clean_email).first()
-    if not db_otp or db_otp.otp != request.otp:
-        raise HTTPException(status_code=400, detail="Invalid OTP.")
+    db_otp = db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        EmailOTP.purpose == "forgot_password"
+    ).first()
+
+    if not db_otp:
+        raise HTTPException(
+            status_code=400,
+            detail="No password reset request found. Please request a new code."
+        )
+
+    if db_otp.attempts >= 5:
+        db.delete(db_otp)
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail="Too many incorrect attempts. Please request a new code."
+        )
+
     if db_otp.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="OTP has expired.")
+        db.delete(db_otp)
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail="This code has expired. Please request a new code."
+        )
+
+    if db_otp.otp != request.otp.strip():
+        db_otp.attempts += 1
+        db.commit()
+        remaining = max(0, 5 - db_otp.attempts)
+        if remaining == 0:
+            db.delete(db_otp)
+            db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail="Too many incorrect attempts. Please request a new code."
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid verification code. ({remaining} attempts remaining)"
+        )
 
     user = db.query(User).filter(func.lower(User.email) == clean_email).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
+        raise HTTPException(status_code=404, detail="User account not found.")
 
+    # Update password using bcrypt
     user.password_hash = hash_password(request.new_password)
+
+    # Invalidate OTP immediately
     db.delete(db_otp)
     db.commit()
 
-    return {"success": True, "message": "Password reset successfully."}
+    # Dispatch security notification email safely
+    try:
+        send_security_alert_email(
+            to_email=user.email,
+            user_name=user.name,
+            title="Password Changed Successfully",
+            details="Your Tap & Go password has been reset successfully. You can now sign in using your new credentials.",
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"[SecurityAlert] Password reset email notice failed: {e}")
+
+    return {
+        "success": True,
+        "message": "Password reset successfully. You can now sign in with your new password."
+    }
 
 
 @router.post("/register")
@@ -216,7 +387,7 @@ async def register(
     city: Optional[str] = Form(None),
     pincode: Optional[str] = Form(None),
     aadhaar: Optional[str] = Form(None),
-    email_otp: str = Form(...),            # REQUIRED — must provide OTP
+    email_otp: str = Form(...),            # REQUIRED — must provide verified OTP
     pan: Optional[str] = Form(None),
     password: str = Form(...),
     vehicle_type: Optional[str] = Form(None),
@@ -238,37 +409,44 @@ async def register(
     OTP is mandatory — the email must be verified before account creation.
     """
     # 1. Validate form data via Pydantic schema
+    def _clean_str(v):
+        return v if isinstance(v, str) else None
+
     try:
         validated_data = UserRegisterForm(
-            account_type=account_type,
-            name=name,
-            email=email,
-            phone=phone,
-            address=address,
-            city=city,
-            pincode=pincode,
-            aadhaar=aadhaar,
-            email_otp=email_otp,
-            pan=pan,
-            password=password,
-            vehicle_type=vehicle_type,
-            vehicle_registration=vehicle_registration,
-            vehicle_make=vehicle_make,
-            vehicle_model=vehicle_model,
-            driving_licence_number=driving_licence_number
+            account_type=str(account_type) if account_type else "passenger",
+            name=str(name),
+            email=str(email),
+            phone=str(phone),
+            address=_clean_str(address),
+            city=_clean_str(city),
+            pincode=_clean_str(pincode),
+            aadhaar=_clean_str(aadhaar),
+            email_otp=str(email_otp),
+            pan=_clean_str(pan),
+            password=str(password),
+            vehicle_type=_clean_str(vehicle_type),
+            vehicle_registration=_clean_str(vehicle_registration),
+            vehicle_make=_clean_str(vehicle_make),
+            vehicle_model=_clean_str(vehicle_model),
+            driving_licence_number=_clean_str(driving_licence_number),
         )
     except ValueError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
-    # 2. MANDATORY OTP verification — always required
+    # 2. MANDATORY OTP verification — verified OTP matching purpose='registration'
     clean_reg_email = validated_data.email.strip().lower()
-    db_otp = db.query(EmailOTP).filter(func.lower(EmailOTP.email) == clean_reg_email).first()
+    db_otp = db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_reg_email,
+        EmailOTP.purpose == "registration"
+    ).first()
+
     if not db_otp:
         raise HTTPException(
             status_code=400,
             detail="Email OTP not found. Please click 'Send OTP' and verify your email first."
         )
-    if db_otp.otp != validated_data.email_otp:
+    if db_otp.otp != validated_data.email_otp.strip():
         raise HTTPException(status_code=400, detail="Invalid Email OTP. Please check and try again.")
     if db_otp.expires_at < datetime.utcnow():
         raise HTTPException(status_code=400, detail="Email OTP has expired. Please request a new OTP.")
@@ -277,15 +455,6 @@ async def register(
     db.delete(db_otp)
     db.commit()
 
-    if settings.REVIEW_DEMO_MODE:
-        return {
-            "success": True,
-            "review_demo": True,
-            "message": (
-                "Registration completed in the demonstration environment. "
-                "This demo resets automatically, so please sign in with one of the supplied tester accounts."
-            ),
-        }
 
     # 3. Check for duplicate email or phone
     if db.query(User).filter(func.lower(User.email) == clean_reg_email).first():
@@ -300,12 +469,12 @@ async def register(
         )
 
     # 4. Handle file uploads
-    photo_path = save_uploaded_file(photo, "profile", ALLOWED_IMAGE_EXTENSIONS) if photo and photo.filename else None
-    id_doc_path = save_uploaded_file(id_doc, "id_documents") if id_doc and id_doc.filename else None
-    signature_path = save_uploaded_file(signature, "signatures", ALLOWED_IMAGE_EXTENSIONS) if signature and signature.filename else None
-    rc_path = save_uploaded_file(rc, "rc") if rc and rc.filename else None
-    licence_path = save_uploaded_file(licence, "licence") if licence and licence.filename else None
-    insurance_path = save_uploaded_file(insurance, "insurance") if insurance and insurance.filename else None
+    photo_path = save_uploaded_file(photo, "profile", ALLOWED_IMAGE_EXTENSIONS) if photo and hasattr(photo, "filename") and photo.filename else None
+    id_doc_path = save_uploaded_file(id_doc, "id_documents") if id_doc and hasattr(id_doc, "filename") and id_doc.filename else None
+    signature_path = save_uploaded_file(signature, "signatures", ALLOWED_IMAGE_EXTENSIONS) if signature and hasattr(signature, "filename") and signature.filename else None
+    rc_path = save_uploaded_file(rc, "rc") if rc and hasattr(rc, "filename") and rc.filename else None
+    licence_path = save_uploaded_file(licence, "licence") if licence and hasattr(licence, "filename") and licence.filename else None
+    insurance_path = save_uploaded_file(insurance, "insurance") if insurance and hasattr(insurance, "filename") and insurance.filename else None
 
     # 5. Hash password
     hashed_pwd = hash_password(validated_data.password)

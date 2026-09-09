@@ -10,7 +10,16 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Transaction, User, Wallet, EmailOTP
-from app.utils.email_service import send_otp_email
+from app.utils.email_service import (
+    send_registration_otp,
+    send_withdrawal_email,
+    send_ride_passenger_email,
+    send_ride_driver_email,
+)
+from sqlalchemy import func
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/wallet", tags=["Wallet"])
 
@@ -187,8 +196,10 @@ def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
 @router.post("/withdraw/request-otp")
 def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_db)):
     """
-    Generates and emails a single-use OTP for withdrawal confirmation.
-    Validates user, bank details, and wallet balance before sending.
+    Generates and emails a single-use OTP for withdrawal confirmation via Gmail SMTP.
+    - 5-minute expiration
+    - 60-second cooldown
+    - Purpose distinct from registration and password reset
     """
     if data.amount <= 0:
         raise HTTPException(status_code=400, detail="Withdrawal amount must be greater than zero.")
@@ -214,19 +225,46 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
             detail=f"Insufficient wallet balance (Available: ₹{float(wallet.balance):.2f})."
         )
 
-    # Generate 6-digit OTP
+    clean_email = user.email.strip().lower()
+
+    # 60-second cooldown check
+    existing_otp = db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        EmailOTP.purpose == "withdrawal"
+    ).order_by(EmailOTP.created_at.desc()).first()
+
+    if existing_otp and existing_otp.created_at:
+        elapsed = (datetime.utcnow() - existing_otp.created_at).total_seconds()
+        if elapsed < 60:
+            remaining_seconds = int(60 - elapsed)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Please wait {remaining_seconds} seconds before requesting another withdrawal OTP."
+            )
+
+    # Generate 6-digit OTP with 5-minute expiration
     otp_code = f"{random.randint(100000, 999999)}"
-    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    expires_at = datetime.utcnow() + timedelta(minutes=5)
 
-    # Clear previous pending OTPs for this email
-    db.query(EmailOTP).filter(EmailOTP.email == user.email).delete()
+    # Clear previous withdrawal OTPs for this email
+    db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        EmailOTP.purpose == "withdrawal"
+    ).delete()
 
-    new_otp = EmailOTP(email=user.email, otp=otp_code, expires_at=expires_at)
+    new_otp = EmailOTP(
+        email=user.email,
+        otp=otp_code,
+        purpose="withdrawal",
+        attempts=0,
+        is_verified=False,
+        expires_at=expires_at,
+    )
     db.add(new_otp)
     db.commit()
 
-    # Send Email
-    email_sent = send_otp_email(to_email=user.email, otp=otp_code, account_type=user.account_type)
+    # Deliver via real Gmail SMTP
+    email_sent = send_registration_otp(to_email=user.email, otp=otp_code, account_type=user.account_type)
 
     dest_str = f"Bank Account (ending in {user.bank_account_number.strip()[-4:]})" if user.bank_account_number else f"UPI ID ({user.bank_upi_id})"
 
@@ -243,6 +281,7 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
     """
     Submits a withdrawal request using server-side Email OTP verification.
     Deducts balance atomically and records a pending/processing transaction.
+    Notification email sent post-commit; email failure never rolls back the transaction.
     """
     if data.idempotency_key:
         existing = db.query(Transaction).filter(Transaction.idempotency_key == data.idempotency_key).first()
@@ -274,17 +313,37 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
     if not data.otp or not data.otp.strip():
         raise HTTPException(status_code=400, detail="Email OTP is required for withdrawal confirmation.")
 
-    db_otp = db.query(EmailOTP).filter(EmailOTP.email == user.email).first()
-    if not db_otp or db_otp.otp != data.otp.strip():
-        raise HTTPException(status_code=400, detail="Invalid OTP code. Please enter the correct 6-digit OTP sent to your email.")
+    clean_email = user.email.strip().lower()
+    db_otp = db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        EmailOTP.purpose == "withdrawal"
+    ).first()
+
+    if not db_otp:
+        raise HTTPException(status_code=400, detail="No withdrawal OTP found. Please request a new OTP.")
+
+    if db_otp.attempts >= 5:
+        db.delete(db_otp)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Too many incorrect OTP attempts. Please request a new OTP.")
 
     if datetime.utcnow() > db_otp.expires_at:
-        db.query(EmailOTP).filter(EmailOTP.email == user.email).delete()
+        db.delete(db_otp)
         db.commit()
         raise HTTPException(status_code=400, detail="OTP has expired. Please request a new OTP.")
 
+    if db_otp.otp != data.otp.strip():
+        db_otp.attempts += 1
+        db.commit()
+        remaining = max(0, 5 - db_otp.attempts)
+        if remaining == 0:
+            db.delete(db_otp)
+            db.commit()
+            raise HTTPException(status_code=400, detail="Too many incorrect OTP attempts. Please request a new OTP.")
+        raise HTTPException(status_code=400, detail=f"Invalid OTP code. ({remaining} attempts remaining)")
+
     # Single-use OTP: delete after successful verification
-    db.query(EmailOTP).filter(EmailOTP.email == user.email).delete()
+    db.delete(db_otp)
 
     # Lock wallet row exclusively during balance deduction
     wallet = get_or_create_wallet(data.user_id, db, for_update=True)
@@ -325,6 +384,19 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
     db.refresh(wallet)
     db.refresh(txn)
 
+    # Safely dispatch withdrawal notification email (never roll back transaction on failure)
+    try:
+        send_withdrawal_email(
+            to_email=user.email,
+            user_name=user.name,
+            amount=data.amount,
+            reference=ref_code,
+            destination=dest_desc,
+            status="Pending Processing",
+        )
+    except Exception as e:
+        logger.warning(f"[WithdrawalEmail] Notification delivery failed: {e}")
+
     return {
         "success": True,
         "message": f"Withdrawal request of ₹{data.amount:.2f} submitted to {dest_desc}. Status: Pending processing.",
@@ -338,6 +410,7 @@ def pay_fare(data: PayRequest, db: Session = Depends(get_db)):
     Normal Tap & Go Ride Payment Flow.
     Passenger Wallet -> Internal Tap & Go Ledger -> Driver Wallet.
     RAZORPAY IS NOT USED FOR NORMAL RIDES.
+    Transaction committed first, then email notifications dispatched safely.
     """
     if data.idempotency_key:
         existing = db.query(Transaction).filter(Transaction.idempotency_key == data.idempotency_key).first()
@@ -359,10 +432,36 @@ def pay_fare(data: PayRequest, db: Session = Depends(get_db)):
     # Exclusively lock passenger wallet row to prevent concurrent double-spending
     p_wallet = get_or_create_wallet(passenger.id, db, for_update=True)
     if p_wallet.is_frozen:
+        # Failure notification
+        try:
+            if passenger.email:
+                send_ride_passenger_email(
+                    to_email=passenger.email,
+                    passenger_name=passenger.name,
+                    fare=data.fare,
+                    driver_name=data.driver_name or "Driver",
+                    reference=f"FAIL-{uuid.uuid4().hex[:8].upper()}",
+                    status="Failed (Account Frozen)",
+                )
+        except Exception:
+            pass
         raise HTTPException(status_code=400, detail="Your passenger wallet is frozen. Payment failed.")
 
     fare_dec = Decimal(str(round(data.fare, 2)))
     if p_wallet.balance < fare_dec:
+        # Failure notification
+        try:
+            if passenger.email:
+                send_ride_passenger_email(
+                    to_email=passenger.email,
+                    passenger_name=passenger.name,
+                    fare=data.fare,
+                    driver_name=data.driver_name or "Driver",
+                    reference=f"FAIL-{uuid.uuid4().hex[:8].upper()}",
+                    status="Failed (Insufficient Balance)",
+                )
+        except Exception:
+            pass
         raise HTTPException(
             status_code=400,
             detail=f"Insufficient wallet balance (₹{float(p_wallet.balance):.2f}). Please add funds first."
@@ -370,16 +469,20 @@ def pay_fare(data: PayRequest, db: Session = Depends(get_db)):
 
     driver_id = data.driver_id
     driver_name = data.driver_name
+    driver_user = None
     if not driver_id:
         active_driver = db.query(User).filter(User.account_type == "driver", User.status == "active").first()
         if active_driver:
             driver_id = active_driver.id
+            driver_user = active_driver
             if not driver_name:
                 driver_name = active_driver.name
     elif not driver_name:
-        driver_obj = db.get(User, driver_id)
-        if driver_obj:
-            driver_name = driver_obj.name
+        driver_user = db.get(User, driver_id)
+        if driver_user:
+            driver_name = driver_user.name
+    else:
+        driver_user = db.get(User, driver_id)
 
     if not driver_name:
         driver_name = f"Driver #{driver_id}" if driver_id else "Driver"
@@ -417,6 +520,32 @@ def pay_fare(data: PayRequest, db: Session = Depends(get_db)):
     if d_wallet:
         db.refresh(d_wallet)
     db.refresh(txn)
+
+    # Post-commit notifications (financial transaction already completed safely)
+    try:
+        if passenger.email:
+            send_ride_passenger_email(
+                to_email=passenger.email,
+                passenger_name=passenger.name,
+                fare=data.fare,
+                driver_name=driver_name,
+                reference=ref_code,
+                status="Successful",
+            )
+    except Exception as e:
+        logger.warning(f"[RideEmail] Passenger receipt failed: {e}")
+
+    try:
+        if driver_user and driver_user.email:
+            send_ride_driver_email(
+                to_email=driver_user.email,
+                driver_name=driver_name,
+                fare=data.fare,
+                passenger_name=passenger.name,
+                reference=ref_code,
+            )
+    except Exception as e:
+        logger.warning(f"[RideEmail] Driver credit receipt failed: {e}")
 
     return {
         "success": True,

@@ -51,11 +51,15 @@ CREATE TABLE IF NOT EXISTS email_otps (
     id SERIAL PRIMARY KEY,
     email VARCHAR(120) NOT NULL,
     otp VARCHAR(10) NOT NULL,
+    purpose VARCHAR(32) NOT NULL DEFAULT 'registration',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps(email);
+CREATE INDEX IF NOT EXISTS idx_email_otps_purpose ON email_otps(purpose);
 
 -- 3. ADMINS
 CREATE TABLE IF NOT EXISTS admins (
@@ -239,3 +243,19 @@ CREATE INDEX IF NOT EXISTS idx_nfc_card_orders_user_id ON nfc_card_orders(user_i
 CREATE INDEX IF NOT EXISTS idx_nfc_card_orders_order_status ON nfc_card_orders(order_status);
 CREATE INDEX IF NOT EXISTS idx_nfc_card_orders_payment_status ON nfc_card_orders(payment_status);
 CREATE INDEX IF NOT EXISTS idx_nfc_card_orders_created_at ON nfc_card_orders(created_at);
+
+-- 14. EMAIL LOGS
+CREATE TABLE IF NOT EXISTS email_logs (
+    id SERIAL PRIMARY KEY,
+    email_type VARCHAR(50) NOT NULL,
+    recipient VARCHAR(120) NOT NULL,
+    reference VARCHAR(64) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'SENT',
+    error_message TEXT NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_logs_recipient ON email_logs(recipient);
+CREATE INDEX IF NOT EXISTS idx_email_logs_email_type ON email_logs(email_type);
+CREATE INDEX IF NOT EXISTS idx_email_logs_reference ON email_logs(reference);
+CREATE INDEX IF NOT EXISTS idx_email_logs_created_at ON email_logs(created_at);

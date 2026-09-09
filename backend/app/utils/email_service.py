@@ -1,69 +1,51 @@
 import smtplib
-import json
-from urllib import error, request
+import logging
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import Optional
+
 from app.config import settings
-import logging
+from app.database import SessionLocal
+from app.models import EmailLog
 
 logger = logging.getLogger(__name__)
 
 
-def _send_via_resend(to_email: str, subject: str, html_content: str) -> bool:
-    """Send email through Resend's HTTPS API for hosts that block SMTP."""
-    payload = json.dumps({
-        "from": settings.RESEND_FROM_EMAIL,
-        "to": [to_email],
-        "subject": subject,
-        "html": html_content,
-    }).encode("utf-8")
-    api_request = request.Request(
-        "https://api.resend.com/emails",
-        data=payload,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {settings.RESEND_API_KEY}",
-            "Content-Type": "application/json",
-            "User-Agent": "TapGo-Review-Demo/1.0",
-        },
-    )
-
+def log_email_delivery(
+    email_type: str,
+    recipient: str,
+    reference: Optional[str] = None,
+    status: str = "SENT",
+    error_message: Optional[str] = None,
+) -> None:
+    """Safely log email delivery attempt to database without failing the caller or storing secrets."""
     try:
-        with request.urlopen(api_request, timeout=15) as response:
-            if 200 <= response.status < 300:
-                logger.info("Email sent successfully through the HTTPS provider to %s", to_email)
-                return True
-            logger.error("HTTPS email provider returned status %s", response.status)
-    except error.HTTPError as exc:
-        body = exc.read().decode("utf-8", "replace")
-        logger.error("HTTPS email provider rejected the message: %s", body)
-        # Resend sandbox restriction: recipient must be a verified email address.
-        # Log a clear hint so the admin can troubleshoot via the Render log panel.
-        if "testing emails" in body.lower() or "can only send" in body.lower():
-            logger.error(
-                "RESEND SANDBOX RESTRICTION: Resend free plan only allows sending to verified "
-                "email addresses. Please verify the recipient email '%s' in your Resend dashboard "
-                "at https://resend.com/audiences or upgrade to a paid Resend plan / add a custom domain.",
-                to_email,
+        with SessionLocal() as db:
+            log_entry = EmailLog(
+                email_type=email_type,
+                recipient=recipient,
+                reference=reference,
+                status=status,
+                error_message=error_message[:500] if error_message else None,
             )
-    except Exception as exc:
-        logger.error("HTTPS email provider failed: %s", exc)
-    return False
+            db.add(log_entry)
+            db.commit()
+    except Exception as e:
+        logger.warning(f"[EmailLog] Could not record email log: {e}")
 
 
-def send_email(to_email: str, subject: str, html_content: str) -> bool:
+def _send_smtp_email(to_email: str, subject: str, html_content: str) -> bool:
     """
-    Sends an HTML email using the configured SMTP settings.
+    Sends an HTML email using Gmail SMTP with STARTTLS.
+    Never raises uncaught exceptions.
     Returns True on success, False on failure.
     """
-    if settings.RESEND_API_KEY:
-        return _send_via_resend(to_email, subject, html_content)
-
     if not settings.SMTP_HOST or not settings.SMTP_USER or not settings.SMTP_PASSWORD:
-        logger.warning(
-            f"SMTP settings not fully configured. Simulating email to {to_email}. Subject: {subject}"
+        logger.error(
+            f"[Email] SMTP settings not configured. Cannot send email to {to_email} (Subject: {subject})"
         )
-        return True
+        return False
 
     try:
         msg = MIMEMultipart("alternative")
@@ -74,235 +56,746 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
         part = MIMEText(html_content, "html", "utf-8")
         msg.attach(part)
 
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
             server.login(settings.SMTP_USER, settings.SMTP_PASSWORD.strip())
             server.send_message(msg)
 
-        logger.info(f"Email sent successfully to {to_email}")
+        logger.info(f"[Email] Successfully delivered email to {to_email} via Gmail SMTP. Subject: {subject}")
         return True
     except smtplib.SMTPAuthenticationError as e:
-        logger.error(f"SMTP Authentication failed for {settings.SMTP_USER}: {e}")
+        logger.error(f"[Email] SMTP Authentication failed for {settings.SMTP_USER}: {e}")
         return False
     except Exception as e:
-        logger.error(f"Failed to send email to {to_email}: {e}")
+        logger.error(f"[Email] Failed to send email to {to_email}: {e}")
         return False
 
 
-def send_otp_email(to_email: str, otp: str, account_type: str) -> bool:
+def send_email(
+    to_email: str,
+    subject: str,
+    html_content: str,
+    email_type: str = "general",
+    reference: Optional[str] = None,
+) -> bool:
     """
-    Sends a beautifully designed OTP verification email.
-    Mobile-responsive, matching the Tap&Go dark + gold theme.
+    Central email delivery dispatcher.
+    Sends email via Gmail SMTP and records delivery status in email_logs.
     """
-    role = account_type.capitalize()
-    role_badge = "PROFESSIONAL DRIVER" if account_type == "driver" else "PASSENGER"
+    success = False
+    err_msg = None
+    try:
+        success = _send_smtp_email(to_email, subject, html_content)
+        if not success:
+            err_msg = "SMTP delivery returned false"
+    except Exception as e:
+        logger.error(f"[Email] Exception during SMTP delivery to {to_email}: {e}")
+        err_msg = str(e)
+        success = False
 
-    # Build OTP digits as a single-row table for perfect alignment on mobile
-    otp_cells = ""
-    for i, d in enumerate(otp):
-        margin = "margin-right:6px;" if i < len(otp) - 1 else ""
-        otp_cells += f'''<td align="center" style="padding:0 3px;">
-            <div style="width:44px;height:56px;line-height:56px;text-align:center;
-            background-color:#1C1C1E;color:#FDD34D;font-size:26px;font-weight:900;
-            border-radius:10px;font-family:'Courier New',monospace;
-            {margin}">{d}</div>
-        </td>'''
+    try:
+        log_email_delivery(
+            email_type=email_type,
+            recipient=to_email,
+            reference=reference,
+            status="SENT" if success else "FAILED",
+            error_message=None if success else (err_msg or "SMTP delivery failed"),
+        )
+    except Exception as log_err:
+        logger.error(f"[Email] Failed to record delivery log: {log_err}")
 
-    html_content = f"""<!DOCTYPE html>
+    return success
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EMAIL TEMPLATE RENDERER (Clean, branded, responsive dark + gold theme)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _render_email_shell(
+    badge: str,
+    badge_bg: str,
+    badge_color: str,
+    title: str,
+    body_html: str,
+    accent_bar_gradient: str = "linear-gradient(90deg,#FDD34D,#F59E0B)",
+) -> str:
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Tap&amp;Go Verification</title>
+<title>{title}</title>
 <!--[if mso]>
 <style>table,td {{font-family:Arial,sans-serif !important;}}</style>
 <![endif]-->
 </head>
-<body style="margin:0;padding:0;background-color:#F5F5F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+<body style="margin:0;padding:0;background-color:#F4F4F6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;">
 
-<!-- Wrapper -->
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F5F5F5;">
-<tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F4F4F6;">
+<tr><td align="center" style="padding:28px 12px;">
 
-<!-- Main card -->
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background-color:#FFFFFF;border-radius:20px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.08);">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:500px;width:100%;background-color:#FFFFFF;border-radius:20px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.08);">
 
-<!-- Header: dark with gold accent -->
+<!-- Header -->
 <tr>
-<td style="background-color:#1C1C1E;padding:32px 28px 28px;text-align:center;">
-    <!-- Logo text -->
-    <div style="font-size:28px;font-weight:900;color:#FFFFFF;letter-spacing:-1px;margin-bottom:4px;">
+<td style="background-color:#1C1C1E;padding:30px 24px 24px;text-align:center;">
+    <div style="font-size:30px;font-weight:900;color:#FFFFFF;letter-spacing:-0.5px;margin-bottom:6px;">
         Tap<span style="color:#FDD34D;">&amp;</span>Go
     </div>
-    <div style="font-size:10px;font-weight:800;color:#FDD34D;letter-spacing:3px;text-transform:uppercase;">
-        {role_badge}
+    <div style="display:inline-block;padding:4px 14px;border-radius:20px;background-color:{badge_bg};font-size:11px;font-weight:800;color:{badge_color};letter-spacing:2px;text-transform:uppercase;">
+        {badge}
     </div>
 </td>
 </tr>
 
-<!-- Gold accent bar -->
+<!-- Accent bar -->
 <tr>
-<td style="background:linear-gradient(90deg,#FDD34D,#F59E0B);height:4px;font-size:0;line-height:0;">&nbsp;</td>
+<td style="background:{accent_bar_gradient};height:4px;font-size:0;line-height:0;">&nbsp;</td>
 </tr>
 
 <!-- Body -->
 <tr>
 <td style="padding:32px 28px 24px;">
+    {body_html}
+</td>
+</tr>
+
+<!-- Footer -->
+<tr>
+<td style="background-color:#FAFAFB;border-top:1px solid #ECECF0;padding:22px 28px;text-align:center;">
+    <div style="font-size:15px;font-weight:900;color:#1C1C1E;margin-bottom:4px;">
+        Tap<span style="color:#F59E0B;">&amp;</span>Go
+    </div>
+    <div style="font-size:12px;color:#6B7280;font-weight:500;line-height:1.5;">
+        Smart Cashless Transit Payments &bull; Fast &bull; Secure
+    </div>
+    <div style="font-size:11px;color:#9CA3AF;margin-top:8px;">
+        Need help? Contact <a href="mailto:tapandgosupport@gmail.com" style="color:#D97706;text-decoration:none;font-weight:600;">tapandgosupport@gmail.com</a>
+    </div>
+    <div style="font-size:10px;color:#D1D5DB;margin-top:10px;">
+        &copy; 2026 Tap&amp;Go Smart Payments. All rights reserved.
+    </div>
+</td>
+</tr>
+
+</table>
+
+</td></tr>
+</table>
+
+</body>
+</html>"""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. REGISTRATION OTP EMAIL
+# ─────────────────────────────────────────────────────────────────────────────
+
+def send_registration_otp(to_email: str, otp: str, account_type: str = "passenger") -> bool:
+    """
+    Sends distinct registration verification OTP email.
+    Subject: 'Tap & Go - Verify Your Email'
+    Expires in 5 minutes.
+    """
+    role = "Driver" if account_type == "driver" else "Passenger"
+
+    otp_cells = "".join([
+        f'''<td align="center" style="padding:0 3px;">
+            <div style="width:44px;height:54px;line-height:54px;text-align:center;
+            background-color:#1C1C1E;color:#FDD34D;font-size:26px;font-weight:900;
+            border-radius:10px;font-family:'Courier New',monospace;">{d}</div>
+        </td>'''
+        for d in otp
+    ])
+
+    body = f"""
     <h2 style="margin:0 0 10px;font-size:22px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;">
         Verify Your Email
     </h2>
-    <p style="margin:0 0 24px;color:#6B7280;font-size:14px;line-height:1.65;">
-        Enter the 6-digit code below to verify your <strong style="color:#1C1C1E;">{role}</strong> account. This code expires in <strong>10 minutes</strong>.
+    <p style="margin:0 0 22px;color:#4B5563;font-size:14px;line-height:1.6;">
+        Thank you for registering with Tap &amp; Go as a <strong>{role}</strong>. Please enter the 6-digit verification code below to verify your email address.
     </p>
 
-    <!-- OTP container -->
-    <div style="background-color:#F9FAFB;border:1px solid #E5E7EB;border-radius:16px;padding:24px 12px;text-align:center;margin-bottom:24px;">
-        <div style="font-size:10px;font-weight:800;color:#9CA3AF;letter-spacing:3px;text-transform:uppercase;margin-bottom:14px;">
+    <!-- OTP Card -->
+    <div style="background-color:#F9FAFB;border:1px solid #E5E7EB;border-radius:14px;padding:22px 14px;text-align:center;margin-bottom:22px;">
+        <div style="font-size:11px;font-weight:800;color:#6B7280;letter-spacing:2.5px;text-transform:uppercase;margin-bottom:12px;">
             YOUR VERIFICATION CODE
         </div>
-        <!-- OTP digits table for pixel-perfect alignment -->
         <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto;">
-            <tr>
-                {otp_cells}
-            </tr>
+            <tr>{otp_cells}</tr>
         </table>
-        <div style="font-size:11px;color:#9CA3AF;font-weight:600;margin-top:14px;">
-            Valid for 10 minutes &bull; Do not share
+        <div style="font-size:12px;color:#DC2626;font-weight:700;margin-top:14px;">
+            ⏰ This code expires in 5 minutes
         </div>
     </div>
 
-    <!-- Security alert -->
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-    <tr>
-        <td style="border-left:3px solid #FDD34D;background-color:#FFFBEB;border-radius:0 10px 10px 0;padding:14px 16px;">
-            <div style="font-size:12px;color:#92400E;font-weight:600;line-height:1.6;">
-                &#128274; <strong>Security:</strong> Tap&amp;Go will never ask for this code via phone or chat. If you didn't request this, ignore this email.
-            </div>
-        </td>
-    </tr>
+    <!-- Security Info -->
+    <div style="border-left:4px solid #FDD34D;background-color:#FFFBEB;border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:14px;">
+        <div style="font-size:12px;color:#92400E;font-weight:600;line-height:1.6;">
+            🔒 <strong>Security Notice:</strong> Never share this code with anyone. Tap &amp; Go staff will never ask for your verification code.
+        </div>
+    </div>
+    <p style="margin:0;color:#9CA3AF;font-size:12px;line-height:1.5;">
+        If you did not request this verification code, you can safely ignore this email.
+    </p>
+    """
+
+    html = _render_email_shell(
+        badge="ACCOUNT REGISTRATION",
+        badge_bg="#2E2E32",
+        badge_color="#FDD34D",
+        title="Verify Your Email",
+        body_html=body,
+    )
+    return send_email(
+        to_email=to_email,
+        subject="Tap & Go - Verify Your Email",
+        html_content=html,
+        email_type="registration_otp",
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. FORGOT PASSWORD OTP EMAIL
+# ─────────────────────────────────────────────────────────────────────────────
+
+def send_password_reset_otp(to_email: str, otp: str) -> bool:
+    """
+    Sends distinct password reset OTP email.
+    Subject: 'Tap & Go - Password Reset OTP'
+    Expires in 5 minutes.
+    """
+    otp_cells = "".join([
+        f'''<td align="center" style="padding:0 3px;">
+            <div style="width:44px;height:54px;line-height:54px;text-align:center;
+            background-color:#1C1C1E;color:#F59E0B;font-size:26px;font-weight:900;
+            border-radius:10px;font-family:'Courier New',monospace;">{d}</div>
+        </td>'''
+        for d in otp
+    ])
+
+    body = f"""
+    <h2 style="margin:0 0 10px;font-size:22px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;">
+        Reset Your Password
+    </h2>
+    <p style="margin:0 0 22px;color:#4B5563;font-size:14px;line-height:1.6;">
+        We received a request to reset your Tap &amp; Go password. Use the 6-digit verification code below to securely reset your credentials.
+    </p>
+
+    <!-- OTP Card -->
+    <div style="background-color:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:22px 14px;text-align:center;margin-bottom:22px;">
+        <div style="font-size:11px;font-weight:800;color:#B45309;letter-spacing:2.5px;text-transform:uppercase;margin-bottom:12px;">
+            PASSWORD RESET CODE
+        </div>
+        <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto;">
+            <tr>{otp_cells}</tr>
+        </table>
+        <div style="font-size:12px;color:#DC2626;font-weight:700;margin-top:14px;">
+            ⏰ This code expires in 5 minutes
+        </div>
+    </div>
+
+    <!-- Security Warning -->
+    <div style="border-left:4px solid #EF4444;background-color:#FEF2F2;border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:14px;">
+        <div style="font-size:12px;color:#991B1B;font-weight:600;line-height:1.6;">
+            ⚠️ <strong>Didn't request this?</strong> If you did not request a password reset, please ignore this email. Your password will not change unless this verification code is entered.
+        </div>
+    </div>
+    <p style="margin:0;color:#9CA3AF;font-size:12px;line-height:1.5;">
+        For your security, never share this code with anyone.
+    </p>
+    """
+
+    html = _render_email_shell(
+        badge="SECURITY &bull; PASSWORD RESET",
+        badge_bg="#382D1E",
+        badge_color="#F59E0B",
+        title="Password Reset OTP",
+        body_html=body,
+        accent_bar_gradient="linear-gradient(90deg,#F59E0B,#DC2626)",
+    )
+    return send_email(
+        to_email=to_email,
+        subject="Tap & Go - Password Reset OTP",
+        html_content=html,
+        email_type="forgot_password_otp",
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. WALLET TOP-UP EMAIL (Add Money: Initiated / Successful / Failed)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def send_wallet_topup_email(
+    to_email: str,
+    user_name: str,
+    amount: float,
+    reference: str,
+    status: str = "Successful",
+    provider: str = "Razorpay",
+) -> bool:
+    first_name = user_name.split()[0] if user_name else "User"
+    is_success = status.lower() in ("successful", "completed", "success")
+    is_pending = status.lower() in ("pending", "initiated")
+
+    badge = "ADD MONEY INITIATED" if is_pending else ("PAYMENT SUCCESSFUL" if is_success else "PAYMENT FAILED")
+    badge_bg = "#1E293B" if is_pending else ("#064E3B" if is_success else "#7F1D1D")
+    badge_color = "#38BDF8" if is_pending else ("#34D399" if is_success else "#F87171")
+    headline = "Top-Up Initiated" if is_pending else ("Payment Successful" if is_success else "Payment Failed")
+    accent_bar = "linear-gradient(90deg,#10B981,#059669)" if is_success else ("linear-gradient(90deg,#EF4444,#DC2626)" if not is_pending else "linear-gradient(90deg,#38BDF8,#0284C7)")
+
+    formatted_amount = f"₹{amount:.2f}"
+    now_str = datetime.utcnow().strftime("%d %B %Y, %I:%M %p UTC")
+
+    body = f"""
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;">
+        {headline}
+    </h2>
+    <p style="margin:0 0 20px;color:#4B5563;font-size:14px;line-height:1.6;">
+        Hi {first_name}, {'your Tap & Go wallet has been credited.' if is_success else ('your wallet top-up request has been initiated.' if is_pending else 'your top-up attempt could not be completed.')}
+    </p>
+
+    <!-- Receipt Details Table -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9FAFB;border:1px solid #E5E7EB;border-radius:14px;margin-bottom:20px;">
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Amount</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:16px;font-weight:900;">{formatted_amount}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Transaction Reference</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:12px;font-family:monospace;font-weight:700;">{reference}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Payment Gateway</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:13px;font-weight:600;">{provider}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Date &amp; Time</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:12px;font-weight:600;">{now_str}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;color:#6B7280;font-size:13px;font-weight:600;">Status</td>
+            <td align="right" style="padding:14px 18px;color:{badge_color};font-size:13px;font-weight:800;text-transform:uppercase;">{status}</td>
+        </tr>
     </table>
-</td>
-</tr>
+    """
 
-<!-- Footer -->
-<tr>
-<td style="background-color:#FAFAFA;border-top:1px solid #F3F4F6;padding:20px 28px;text-align:center;">
-    <div style="font-size:16px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;margin-bottom:4px;">
-        Tap<span style="color:#F59E0B;">&amp;</span>Go
+    html = _render_email_shell(
+        badge=badge,
+        badge_bg=badge_bg,
+        badge_color=badge_color,
+        title=f"Wallet Top-up {status}",
+        body_html=body,
+        accent_bar_gradient=accent_bar,
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Tap & Go - Wallet Top-up {status}",
+        html_content=html,
+        email_type="wallet_topup",
+        reference=reference,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. WITHDRAWAL EMAIL (Initiated / Successful / Failed)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def send_withdrawal_email(
+    to_email: str,
+    user_name: str,
+    amount: float,
+    reference: str,
+    destination: str,
+    status: str = "Initiated",
+) -> bool:
+    first_name = user_name.split()[0] if user_name else "User"
+    is_success = status.lower() in ("successful", "completed", "paid")
+    is_failed = status.lower() in ("failed", "rejected", "cancelled")
+
+    badge = "WITHDRAWAL COMPLETED" if is_success else ("WITHDRAWAL FAILED" if is_failed else "WITHDRAWAL INITIATED")
+    badge_bg = "#064E3B" if is_success else ("#7F1D1D" if is_failed else "#2E2E32")
+    badge_color = "#34D399" if is_success else ("#F87171" if is_failed else "#FDD34D")
+    accent_bar = "linear-gradient(90deg,#10B981,#059669)" if is_success else ("linear-gradient(90deg,#EF4444,#DC2626)" if is_failed else "linear-gradient(90deg,#FDD34D,#F59E0B)")
+
+    formatted_amount = f"₹{amount:.2f}"
+    now_str = datetime.utcnow().strftime("%d %B %Y, %I:%M %p UTC")
+
+    body = f"""
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;">
+        Withdrawal {status.title()}
+    </h2>
+    <p style="margin:0 0 20px;color:#4B5563;font-size:14px;line-height:1.6;">
+        Hi {first_name}, {'your withdrawal payout has been completed.' if is_success else ('your withdrawal request has been received and is being processed.' if not is_failed else 'your withdrawal request could not be completed.')}
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9FAFB;border:1px solid #E5E7EB;border-radius:14px;margin-bottom:20px;">
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Payout Amount</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:16px;font-weight:900;">{formatted_amount}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Destination</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:13px;font-weight:700;">{destination}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Reference ID</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:12px;font-family:monospace;font-weight:700;">{reference}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Date &amp; Time</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:12px;font-weight:600;">{now_str}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;color:#6B7280;font-size:13px;font-weight:600;">Status</td>
+            <td align="right" style="padding:14px 18px;color:{badge_color};font-size:13px;font-weight:800;text-transform:uppercase;">{status}</td>
+        </tr>
+    </table>
+    """
+
+    html = _render_email_shell(
+        badge=badge,
+        badge_bg=badge_bg,
+        badge_color=badge_color,
+        title=f"Withdrawal {status}",
+        body_html=body,
+        accent_bar_gradient=accent_bar,
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Tap & Go - Withdrawal Request {status}",
+        html_content=html,
+        email_type="wallet_withdrawal",
+        reference=reference,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. RIDE PAYMENT EMAILS (Passenger payment & Driver payment received)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def send_ride_passenger_email(
+    to_email: str,
+    passenger_name: str,
+    fare: float,
+    driver_name: str,
+    reference: str,
+    status: str = "Successful",
+) -> bool:
+    first_name = passenger_name.split()[0] if passenger_name else "Passenger"
+    is_success = status.lower() in ("successful", "completed", "success")
+    formatted_fare = f"₹{fare:.2f}"
+    now_str = datetime.utcnow().strftime("%d %B %Y, %I:%M %p UTC")
+
+    body = f"""
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;">
+        {'Ride Payment Successful' if is_success else 'Ride Payment Failed'}
+    </h2>
+    <p style="margin:0 0 20px;color:#4B5563;font-size:14px;line-height:1.6;">
+        Hi {first_name}, {'your ride payment has been transferred to your driver.' if is_success else 'your ride payment could not be completed.'}
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9FAFB;border:1px solid #E5E7EB;border-radius:14px;margin-bottom:20px;">
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Ride Fare</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:16px;font-weight:900;">{formatted_fare}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Paid To</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:13px;font-weight:700;">{driver_name}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Payment Method</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:13px;font-weight:600;">Tap &amp; Go Wallet (Internal)</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Transaction ID</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:12px;font-family:monospace;font-weight:700;">{reference}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;color:#6B7280;font-size:13px;font-weight:600;">Date &amp; Time</td>
+            <td align="right" style="padding:14px 18px;color:#1C1C1E;font-size:12px;font-weight:600;">{now_str}</td>
+        </tr>
+    </table>
+    """
+
+    html = _render_email_shell(
+        badge="RIDE PAYMENT" if is_success else "PAYMENT FAILED",
+        badge_bg="#064E3B" if is_success else "#7F1D1D",
+        badge_color="#34D399" if is_success else "#F87171",
+        title="Ride Payment",
+        body_html=body,
+        accent_bar_gradient="linear-gradient(90deg,#10B981,#059669)" if is_success else "linear-gradient(90deg,#EF4444,#DC2626)",
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Tap & Go - Ride Payment {status}",
+        html_content=html,
+        email_type="ride_passenger_payment",
+        reference=reference,
+    )
+
+
+def send_ride_driver_email(
+    to_email: str,
+    driver_name: str,
+    fare: float,
+    passenger_name: str,
+    reference: str,
+) -> bool:
+    first_name = driver_name.split()[0] if driver_name else "Driver"
+    formatted_fare = f"₹{fare:.2f}"
+    now_str = datetime.utcnow().strftime("%d %B %Y, %I:%M %p UTC")
+
+    body = f"""
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;">
+        Payment Received
+    </h2>
+    <p style="margin:0 0 20px;color:#4B5563;font-size:14px;line-height:1.6;">
+        Hi {first_name}, you received a ride fare payment credited directly to your Tap &amp; Go driver wallet.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9FAFB;border:1px solid #E5E7EB;border-radius:14px;margin-bottom:20px;">
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Amount Credited</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#10B981;font-size:16px;font-weight:900;">+{formatted_fare}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Passenger</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:13px;font-weight:700;">{passenger_name}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Transaction ID</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:12px;font-family:monospace;font-weight:700;">{reference}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;color:#6B7280;font-size:13px;font-weight:600;">Date &amp; Time</td>
+            <td align="right" style="padding:14px 18px;color:#1C1C1E;font-size:12px;font-weight:600;">{now_str}</td>
+        </tr>
+    </table>
+    """
+
+    html = _render_email_shell(
+        badge="DRIVER PAYMENT RECEIVED",
+        badge_bg="#064E3B",
+        badge_color="#34D399",
+        title="Payment Received",
+        body_html=body,
+        accent_bar_gradient="linear-gradient(90deg,#10B981,#059669)",
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Tap & Go - Payment Received ({formatted_fare})",
+        html_content=html,
+        email_type="ride_driver_payment",
+        reference=reference,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. NFC CARD ORDER EMAILS (Order Placed & Status Updates)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def send_nfc_card_order_email(
+    to_email: str,
+    user_name: str,
+    order_reference: str,
+    total_amount: float,
+    delivery_address: str,
+    status: str = "Order Placed",
+) -> bool:
+    first_name = user_name.split()[0] if user_name else "Customer"
+    formatted_amount = f"₹{total_amount:.2f}"
+    now_str = datetime.utcnow().strftime("%d %B %Y, %I:%M %p UTC")
+
+    body = f"""
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;">
+        NFC Card Order Placed
+    </h2>
+    <p style="margin:0 0 20px;color:#4B5563;font-size:14px;line-height:1.6;">
+        Hi {first_name}, your Tap &amp; Go contactless NFC Smart Card order has been placed successfully!
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9FAFB;border:1px solid #E5E7EB;border-radius:14px;margin-bottom:20px;">
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Order Reference</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:12px;font-family:monospace;font-weight:700;">{order_reference}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Total Amount</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:16px;font-weight:900;">{formatted_amount}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Delivery Address</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:12px;font-weight:600;max-width:200px;">{delivery_address}</td>
+        </tr>
+        <tr>
+            <td style="padding:14px 18px;color:#6B7280;font-size:13px;font-weight:600;">Order Status</td>
+            <td align="right" style="padding:14px 18px;color:#F59E0B;font-size:13px;font-weight:800;text-transform:uppercase;">{status}</td>
+        </tr>
+    </table>
+    """
+
+    html = _render_email_shell(
+        badge="NFC CARD ORDER",
+        badge_bg="#2E2E32",
+        badge_color="#FDD34D",
+        title="NFC Card Order Placed",
+        body_html=body,
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Tap & Go - NFC Card Order Placed ({order_reference})",
+        html_content=html,
+        email_type="nfc_card_order",
+        reference=order_reference,
+    )
+
+
+def send_nfc_status_update_email(
+    to_email: str,
+    user_name: str,
+    order_reference: str,
+    order_status: str,
+) -> bool:
+    first_name = user_name.split()[0] if user_name else "Customer"
+    status_clean = order_status.replace("_", " ").title()
+
+    body = f"""
+    <h2 style="margin:0 0 8px;font-size:22px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;">
+        Order Status Update
+    </h2>
+    <p style="margin:0 0 20px;color:#4B5563;font-size:14px;line-height:1.6;">
+        Hi {first_name}, the status of your Tap &amp; Go NFC Smart Card order has been updated:
+    </p>
+
+    <div style="background-color:#F9FAFB;border:1px solid #E5E7EB;border-radius:14px;padding:20px;text-align:center;margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">
+            ORDER REFERENCE: {order_reference}
+        </div>
+        <div style="font-size:22px;font-weight:900;color:#1C1C1E;margin-bottom:4px;">
+            {status_clean}
+        </div>
+        <div style="font-size:12px;color:#9CA3AF;">
+            Updated on {datetime.utcnow().strftime("%d %B %Y, %I:%M %p UTC")}
+        </div>
     </div>
-    <div style="font-size:11px;color:#9CA3AF;font-weight:500;">
-        Smart Transit Payments &bull; Secure &amp; Cashless
-    </div>
-    <div style="font-size:10px;color:#D1D5DB;margin-top:8px;">
-        &copy; 2026 Tap&amp;Go Smart Payments. All rights reserved.
-    </div>
-</td>
-</tr>
+    """
 
-</table>
-<!-- End main card -->
+    html = _render_email_shell(
+        badge=f"NFC ORDER &bull; {status_clean.upper()}",
+        badge_bg="#2E2E32",
+        badge_color="#FDD34D",
+        title="NFC Card Order Update",
+        body_html=body,
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Tap & Go - NFC Card Order {status_clean}",
+        html_content=html,
+        email_type="nfc_status_update",
+        reference=order_reference,
+    )
 
-</td></tr>
-</table>
-<!-- End wrapper -->
 
-</body>
-</html>"""
-
-    subject = f"[Tap&Go] Your verification code is {otp}"
-    return send_email(to_email, subject, html_content)
-
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. ACCOUNT SECURITY & WELCOME EMAILS
+# ─────────────────────────────────────────────────────────────────────────────
 
 def send_welcome_email(to_email: str, name: str, account_type: str) -> bool:
-    """
-    Sends a welcome email after successful account creation.
-    Mobile-responsive, matching the Tap&Go website theme.
-    """
     role_badge = "PROFESSIONAL DRIVER" if account_type == "driver" else "PASSENGER"
     first_name = name.split()[0] if name else "there"
 
-    html_content = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Welcome to Tap&amp;Go</title>
-</head>
-<body style="margin:0;padding:0;background-color:#F5F5F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;">
-
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F5F5F5;">
-<tr><td align="center" style="padding:24px 12px;">
-
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background-color:#FFFFFF;border-radius:20px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.08);">
-
-<!-- Header -->
-<tr>
-<td style="background-color:#1C1C1E;padding:36px 28px;text-align:center;">
-    <!-- Checkmark circle -->
+    body = f"""
     <div style="width:56px;height:56px;border-radius:50%;background-color:#FDD34D;margin:0 auto 16px;line-height:56px;text-align:center;font-size:28px;">
         &#10003;
     </div>
-    <div style="font-size:24px;font-weight:900;color:#FFFFFF;letter-spacing:-0.5px;margin-bottom:4px;">
-        Welcome, {first_name}!
-    </div>
-    <div style="font-size:10px;font-weight:800;color:#FDD34D;letter-spacing:3px;text-transform:uppercase;">
-        ACCOUNT CREATED
-    </div>
-</td>
-</tr>
-
-<!-- Gold bar -->
-<tr>
-<td style="background:linear-gradient(90deg,#FDD34D,#F59E0B);height:4px;font-size:0;line-height:0;">&nbsp;</td>
-</tr>
-
-<!-- Body -->
-<tr>
-<td style="padding:32px 28px;">
-    <p style="margin:0 0 20px;color:#374151;font-size:14px;line-height:1.7;">
-        Your Tap&amp;Go <strong>{role_badge}</strong> account is now active! You can log in and start using the platform immediately.
+    <h2 style="margin:0 0 10px;font-size:22px;font-weight:900;color:#1C1C1E;text-align:center;">
+        Welcome to Tap &amp; Go, {first_name}!
+    </h2>
+    <p style="margin:0 0 20px;color:#4B5563;font-size:14px;line-height:1.6;text-align:center;">
+        Your Tap &amp; Go <strong>{role_badge}</strong> account is now active and ready for fast cashless transit.
     </p>
 
-    <!-- Status checklist -->
-    <div style="background-color:#F0FDF4;border:1px solid #BBF7D0;border-radius:14px;padding:20px;margin-bottom:24px;">
+    <div style="background-color:#F0FDF4;border:1px solid #BBF7D0;border-radius:14px;padding:18px 20px;margin-bottom:20px;">
         <div style="font-size:13px;color:#166534;font-weight:700;line-height:2;">
             &#9989; Email verified<br/>
-            &#9989; Identity submitted<br/>
-            &#9989; Digital signature captured<br/>
+            &#9989; Digital wallet created<br/>
             &#9989; Account activated
         </div>
     </div>
+    """
 
-    <p style="margin:0;color:#6B7280;font-size:13px;line-height:1.6;">
-        Questions? Reply to this email or contact us at support@tapandgo.app
+    html = _render_email_shell(
+        badge="ACCOUNT CREATED",
+        badge_bg="#064E3B",
+        badge_color="#34D399",
+        title="Welcome to Tap & Go",
+        body_html=body,
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Welcome to Tap & Go, {first_name}! 🎉",
+        html_content=html,
+        email_type="welcome",
+    )
+
+
+def send_security_alert_email(
+    to_email: str,
+    user_name: str,
+    title: str,
+    details: str,
+) -> bool:
+    first_name = user_name.split()[0] if user_name else "User"
+    now_str = datetime.utcnow().strftime("%d %B %Y, %I:%M %p UTC")
+
+    body = f"""
+    <h2 style="margin:0 0 10px;font-size:22px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;">
+        {title}
+    </h2>
+    <p style="margin:0 0 16px;color:#4B5563;font-size:14px;line-height:1.6;">
+        Hi {first_name}, this is a security confirmation for your Tap &amp; Go account.
     </p>
-</td>
-</tr>
 
-<!-- Footer -->
-<tr>
-<td style="background-color:#FAFAFA;border-top:1px solid #F3F4F6;padding:20px 28px;text-align:center;">
-    <div style="font-size:16px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;margin-bottom:4px;">
-        Tap<span style="color:#F59E0B;">&amp;</span>Go
+    <div style="background-color:#F9FAFB;border:1px solid #E5E7EB;border-radius:14px;padding:18px;margin-bottom:18px;">
+        <div style="font-size:13px;color:#1C1C1E;font-weight:700;margin-bottom:4px;">
+            {title}
+        </div>
+        <div style="font-size:13px;color:#4B5563;line-height:1.6;">
+            {details}
+        </div>
+        <div style="font-size:11px;color:#9CA3AF;margin-top:10px;">
+            Recorded on: {now_str}
+        </div>
     </div>
-    <div style="font-size:11px;color:#9CA3AF;font-weight:500;">
-        Smart Transit Payments
+
+    <div style="border-left:4px solid #EF4444;background-color:#FEF2F2;border-radius:0 10px 10px 0;padding:12px 16px;">
+        <div style="font-size:12px;color:#991B1B;font-weight:600;line-height:1.6;">
+            🔒 If you did not make this change, please contact Tap &amp; Go security immediately at <a href="mailto:tapandgosupport@gmail.com" style="color:#B91C1C;font-weight:700;">tapandgosupport@gmail.com</a>.
+        </div>
     </div>
-    <div style="font-size:10px;color:#D1D5DB;margin-top:8px;">
-        &copy; 2026 Tap&amp;Go Smart Payments. All rights reserved.
-    </div>
-</td>
-</tr>
+    """
 
-</table>
+    html = _render_email_shell(
+        badge="SECURITY ALERT",
+        badge_bg="#7F1D1D",
+        badge_color="#F87171",
+        title="Security Alert",
+        body_html=body,
+        accent_bar_gradient="linear-gradient(90deg,#EF4444,#DC2626)",
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Tap & Go Security Alert: {title}",
+        html_content=html,
+        email_type="security_alert",
+    )
 
-</td></tr>
-</table>
 
-</body>
-</html>"""
+# Backward-compatibility alias
+def send_otp_email(to_email: str, otp: str, account_type: str = "passenger") -> bool:
+    return send_registration_otp(to_email, otp, account_type)
 
-    subject = f"Welcome to Tap&Go, {first_name}! 🎉"
-    return send_email(to_email, subject, html_content)

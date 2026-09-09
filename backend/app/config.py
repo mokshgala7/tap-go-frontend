@@ -65,15 +65,26 @@ class Settings:
 
     @property
     def SMTP_USER(self) -> str:
-        return os.getenv("SMTP_USER", "")
+        return (
+            os.getenv("SMTP_USER")
+            or os.getenv("GMAIL_USER")
+            or os.getenv("GMAIL_EMAIL")
+            or "tapandgosupport@gmail.com"
+        ).strip()
 
     @property
     def SMTP_PASSWORD(self) -> str:
-        return os.getenv("SMTP_PASSWORD", "")
+        return (
+            os.getenv("SMTP_PASSWORD")
+            or os.getenv("GMAIL_APP_PASSWORD")
+            or os.getenv("GMAIL_PASSWORD")
+            or ""
+        ).strip()
 
     @property
     def SMTP_FROM_EMAIL(self) -> str:
-        return os.getenv("SMTP_FROM_EMAIL", "TapAndGo <test@gmail.com>")
+        user = self.SMTP_USER or "tapandgosupport@gmail.com"
+        return os.getenv("SMTP_FROM_EMAIL") or f"Tap & Go <{user}>"
 
     @property
     def RESEND_API_KEY(self) -> str:

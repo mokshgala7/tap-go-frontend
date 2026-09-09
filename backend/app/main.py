@@ -77,6 +77,32 @@ try:
                         except Exception:
                             pass
 
+        if "email_otps" in inspector.get_table_names():
+            otp_columns = {column["name"] for column in inspector.get_columns("email_otps")}
+            otp_migrations = [
+                ("purpose", "VARCHAR(32) NOT NULL DEFAULT 'registration'"),
+                ("attempts", "INT NOT NULL DEFAULT 0" if engine.dialect.name == "mysql" else "INTEGER NOT NULL DEFAULT 0"),
+                ("is_verified", "TINYINT(1) NOT NULL DEFAULT 0" if engine.dialect.name == "mysql" else "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ]
+            with engine.begin() as connection:
+                for col_name, col_def in otp_migrations:
+                    if col_name not in otp_columns:
+                        try:
+                            connection.execute(text(f"ALTER TABLE email_otps ADD COLUMN {col_name} {col_def}"))
+                            print(f"[Migration] Added column email_otps.{col_name}")
+                        except Exception:
+                            pass
+
+    # Ensure PostgreSQL also has the email_otps columns if pre-existing
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as connection:
+            try:
+                connection.execute(text("ALTER TABLE email_otps ADD COLUMN IF NOT EXISTS purpose VARCHAR(32) DEFAULT 'registration'"))
+                connection.execute(text("ALTER TABLE email_otps ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0"))
+                connection.execute(text("ALTER TABLE email_otps ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE"))
+            except Exception:
+                pass
+
     from app.database import SessionLocal
     from app.routes.admin import ensure_default_admin
     with SessionLocal() as db:

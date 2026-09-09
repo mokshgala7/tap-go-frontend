@@ -194,6 +194,7 @@ function Register() {
   const [otpSending, setOtpSending] = useState(false)
   const [otpMessage, setOtpMessage] = useState('')       // Status message for OTP
   const [otpVerifying, setOtpVerifying] = useState(false)
+  const [otpCooldown, setOtpCooldown] = useState(0)      // 60-second resend cooldown
   const [legalModal, setLegalModal] = useState(null)     // null | 'terms' | 'privacy' | 'esign'
   const canvasRef = useRef(null)
   const [sessionId] = useState(() => Math.floor(100000 + Math.random() * 900000))
@@ -201,6 +202,15 @@ function Register() {
     const now = new Date()
     return `SECURE SESSION • ${now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • ${now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
   })
+
+  // 60s cooldown timer tick
+  useEffect(() => {
+    if (otpCooldown <= 0) return undefined
+    const interval = window.setInterval(() => {
+      setOtpCooldown((prev) => Math.max(0, prev - 1))
+    }, 1000)
+    return () => window.clearInterval(interval)
+  }, [otpCooldown])
 
   // Restore form data from sessionStorage when returning from review page
   useEffect(() => {
@@ -339,7 +349,7 @@ function Register() {
       fetch(`${API_BASE}/api/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email, otp })
+        body: JSON.stringify({ email: form.email, otp, purpose: 'registration' })
       })
         .then(res => res.json().then(data => ({ ok: res.ok, data })))
         .then(({ ok, data }) => {
@@ -349,12 +359,12 @@ function Register() {
             setOtpMessage('✓ Email verified!')
           } else {
             setOtpVerified(false)
-            setOtpMessage(data.detail || 'Invalid OTP')
+            setOtpMessage(data.detail || 'Invalid verification code. Please try again.')
           }
         })
         .catch(() => {
           setOtpVerifying(false)
-          setOtpMessage('Verification failed')
+          setOtpMessage('Verification request failed. Please check server.')
         })
     }
     if (otp.length < 6) {
@@ -682,53 +692,60 @@ function Register() {
                       <div className="flex-1">
                         <FloatingInput name="emailOtp" maxLength={6} value={form.emailOtp} onChange={updateForm} touched={touched.emailOtp} valid={otpVerified} className={`tracking-[0.5em] font-mono font-bold ${otpVerified ? 'text-[#00C853]' : 'text-brand'}`} />
                       </div>
-                      <button type="button" disabled={otpSending || !valid.email || otpVerified} onClick={async () => {
-                        if (!valid.email) return
-                        setOtpSending(true)
-                        setOtpMessage('')
-                        setOtpVerified(false)
-                        try {
-                          const res = await fetch(`${API_BASE}/api/auth/send-otp`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ email: form.email, account_type: form.accountType })
-                          })
-                          const data = await res.json()
-                          setOtpSending(false)
-                          if (res.ok && data.success) {
-                            if (data.demo_mode && data.otp) {
-                              // Demo mode: email delivery restricted, OTP returned directly
-                              setOtpMessage(`📋 Demo Mode — Your OTP is: ${data.otp} (copy & paste it above)`)
-                              // Auto-fill the OTP field for convenience
-                              updateForm({ target: { name: 'emailOtp', value: data.otp } })
+                      <button
+                        type="button"
+                        disabled={otpSending || !valid.email || otpVerified || otpCooldown > 0}
+                        onClick={async () => {
+                          if (!valid.email || otpCooldown > 0) return
+                          setOtpSending(true)
+                          setOtpMessage('')
+                          setOtpVerified(false)
+                          try {
+                            const res = await fetch(`${API_BASE}/api/auth/send-otp`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ email: form.email, account_type: form.accountType })
+                            })
+                            const data = await res.json()
+                            setOtpSending(false)
+                            if (res.ok && data.success) {
+                              setOtpCooldown(60)
+                              setOtpMessage('✓ Verification code sent to your email. Please check your inbox.')
                             } else {
-                              setOtpMessage('OTP sent! Check your inbox.')
+                              setOtpMessage(data.detail || 'Failed to send verification email. Please try again.')
                             }
-                          } else {
-                            setOtpMessage(data.detail || 'Failed to send OTP.')
+                          } catch (err) {
+                            setOtpSending(false)
+                            setOtpMessage('Error connecting to backend server.')
                           }
-                        } catch (err) {
-                          setOtpSending(false)
-                          setOtpMessage('Error connecting to server.')
-                        }
-                      }} className={`h-[60px] px-3 sm:px-5 font-black rounded-xl transition whitespace-nowrap text-xs sm:text-sm tracking-wide border-2 ${
-                        otpVerified
-                          ? 'bg-[#00C853] text-white border-[#00C853] cursor-default'
+                        }}
+                        className={`h-[60px] px-3 sm:px-5 font-black rounded-xl transition whitespace-nowrap text-xs sm:text-sm tracking-wide border-2 ${
+                          otpVerified
+                            ? 'bg-[#00C853] text-white border-[#00C853] cursor-default'
+                            : otpSending
+                              ? 'bg-gray-200 text-gray-500 border-gray-200 cursor-wait'
+                              : otpCooldown > 0
+                                ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                                : 'bg-white text-darker border-brand hover:bg-brand hover:text-darker shadow-sm'
+                        }`}
+                      >
+                        {otpVerified
+                          ? '✓ Verified'
                           : otpSending
-                            ? 'bg-gray-200 text-gray-500 border-gray-200 cursor-wait'
-                            : 'bg-white text-darker border-brand hover:bg-brand hover:text-darker shadow-sm'
-                      }`}>
-                        {otpVerified ? '✓ Verified' : otpSending ? 'Sending...' : 'Send OTP'}
+                            ? 'Sending...'
+                            : otpCooldown > 0
+                              ? `Resend in ${otpCooldown}s`
+                              : form.emailOtp ? 'Resend OTP' : 'Send OTP'}
                       </button>
                     </div>
                     {/* OTP status message */}
                     {otpMessage && (
-                      <p className={`text-xs font-bold mt-2 px-1 ${otpVerified ? 'text-[#00C853]' : otpMessage.includes('Demo Mode') ? 'text-[#d97706]' : 'text-[#FF3B30]'}`}>
-                        {otpVerifying ? '⏳ Verifying...' : otpMessage}
+                      <p className={`text-xs font-bold mt-2 px-1 ${otpVerified ? 'text-[#00C853]' : otpMessage.startsWith('✓') ? 'text-[#00C853]' : 'text-[#FF3B30]'}`}>
+                        {otpVerifying ? '⏳ Verifying code...' : otpMessage}
                       </p>
                     )}
                     {otpVerifying && !otpMessage && (
-                      <p className="text-xs font-bold mt-2 px-1 text-brand">⏳ Verifying OTP...</p>
+                      <p className="text-xs font-bold mt-2 px-1 text-brand">⏳ Verifying verification code...</p>
                     )}
                   </div>
                   <FloatingInput name="phone" type="tel" maxLength={10} value={form.phone} onChange={updateForm} touched={touched.phone} valid={valid.phone} />
