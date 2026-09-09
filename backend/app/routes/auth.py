@@ -10,7 +10,7 @@ from app.database import get_db
 from app.models import EditRequest, User, EmailOTP
 from app.schemas import UserRegisterForm, UserLoginRequest, SendOTPRequest, EMAIL_REGEX, PHONE_REGEX
 from pydantic import BaseModel
-from app.utils.security import hash_password, verify_password
+from app.utils.security import hash_password, verify_password, get_elapsed_seconds, is_otp_expired
 from app.utils.email_service import (
     send_registration_otp,
     send_password_reset_otp,
@@ -93,9 +93,9 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     ).order_by(EmailOTP.created_at.desc()).first()
 
     if existing_otp and existing_otp.created_at:
-        elapsed = (datetime.utcnow() - existing_otp.created_at).total_seconds()
+        elapsed = get_elapsed_seconds(existing_otp.created_at)
         if elapsed < 60:
-            remaining_seconds = int(60 - elapsed)
+            remaining_seconds = max(1, min(60, int(60 - elapsed)))
             raise HTTPException(
                 status_code=429,
                 detail=f"Please wait {remaining_seconds} seconds before requesting another code."
@@ -179,7 +179,7 @@ async def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
         )
 
     # Expiry check
-    if db_otp.expires_at < datetime.utcnow():
+    if is_otp_expired(db_otp.expires_at):
         db.delete(db_otp)
         db.commit()
         raise HTTPException(
@@ -242,9 +242,9 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
     ).order_by(EmailOTP.created_at.desc()).first()
 
     if existing_otp and existing_otp.created_at:
-        elapsed = (datetime.utcnow() - existing_otp.created_at).total_seconds()
+        elapsed = get_elapsed_seconds(existing_otp.created_at)
         if elapsed < 60:
-            remaining_seconds = int(60 - elapsed)
+            remaining_seconds = max(1, min(60, int(60 - elapsed)))
             raise HTTPException(
                 status_code=429,
                 detail=f"Please wait {remaining_seconds} seconds before requesting another code."
@@ -329,7 +329,7 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
             detail="Too many incorrect attempts. Please request a new code."
         )
 
-    if db_otp.expires_at < datetime.utcnow():
+    if is_otp_expired(db_otp.expires_at):
         db.delete(db_otp)
         db.commit()
         raise HTTPException(
@@ -453,7 +453,7 @@ async def register(
         )
     if db_otp.otp != validated_data.email_otp.strip():
         raise HTTPException(status_code=400, detail="Invalid Email OTP. Please check and try again.")
-    if db_otp.expires_at < datetime.utcnow():
+    if is_otp_expired(db_otp.expires_at):
         raise HTTPException(status_code=400, detail="Email OTP has expired. Please request a new OTP.")
 
     # Consume the OTP immediately

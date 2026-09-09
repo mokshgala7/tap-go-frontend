@@ -16,6 +16,7 @@ from app.utils.email_service import (
     send_ride_passenger_email,
     send_ride_driver_email,
 )
+from app.utils.security import get_elapsed_seconds, is_otp_expired
 from sqlalchemy import func
 import logging
 
@@ -234,9 +235,9 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
     ).order_by(EmailOTP.created_at.desc()).first()
 
     if existing_otp and existing_otp.created_at:
-        elapsed = (datetime.utcnow() - existing_otp.created_at).total_seconds()
+        elapsed = get_elapsed_seconds(existing_otp.created_at)
         if elapsed < 60:
-            remaining_seconds = int(60 - elapsed)
+            remaining_seconds = max(1, min(60, int(60 - elapsed)))
             raise HTTPException(
                 status_code=429,
                 detail=f"Please wait {remaining_seconds} seconds before requesting another withdrawal OTP."
@@ -327,7 +328,7 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
         db.commit()
         raise HTTPException(status_code=400, detail="Too many incorrect OTP attempts. Please request a new OTP.")
 
-    if datetime.utcnow() > db_otp.expires_at:
+    if is_otp_expired(db_otp.expires_at):
         db.delete(db_otp)
         db.commit()
         raise HTTPException(status_code=400, detail="OTP has expired. Please request a new OTP.")

@@ -47,7 +47,7 @@ def _set_last_email_error(err: Optional[str]) -> None:
     _last_email_error.value = err
 
 
-def _create_ipv4_socket(host: str, port: int, timeout: float = 12.0) -> socket.socket:
+def _create_ipv4_socket(host: str, port: int, timeout: float = 6.0) -> socket.socket:
     """Forces IPv4 socket resolution to prevent [Errno 101] Network is unreachable on Render/cloud containers."""
     last_exc = None
     for res in socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM):
@@ -68,12 +68,12 @@ def _create_ipv4_socket(host: str, port: int, timeout: float = 12.0) -> socket.s
 class IPv4SMTP(smtplib.SMTP):
     """SMTP client that strictly binds to IPv4 to prevent unreachable IPv6 route errors on cloud hosts."""
     def _get_socket(self, host, port, timeout):
-        return _create_ipv4_socket(host, port, timeout or 12.0)
+        return _create_ipv4_socket(host, port, timeout or 6.0)
 
 
 class IPv4SMTP_SSL(smtplib.SMTP_SSL):
     def _get_socket(self, host, port, timeout):
-        raw_sock = _create_ipv4_socket(host, port, timeout or 12.0)
+        raw_sock = _create_ipv4_socket(host, port, timeout or 6.0)
         return self.context.wrap_socket(raw_sock, server_hostname=self._host)
 
 
@@ -115,12 +115,13 @@ def _send_smtp_email(to_email: str, subject: str, html_content: str) -> tuple[bo
         ports_to_try.append((465, True))
 
     last_err = None
+    collected_errors = []
     for port, is_ssl in ports_to_try:
         try:
             if is_ssl:
-                server = IPv4SMTP_SSL(settings.SMTP_HOST, port, timeout=12)
+                server = IPv4SMTP_SSL(settings.SMTP_HOST, port, timeout=6)
             else:
-                server = IPv4SMTP(settings.SMTP_HOST, port, timeout=12)
+                server = IPv4SMTP(settings.SMTP_HOST, port, timeout=6)
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
@@ -134,6 +135,7 @@ def _send_smtp_email(to_email: str, subject: str, html_content: str) -> tuple[bo
                         break
                     except smtplib.SMTPAuthenticationError as auth_err:
                         last_err = f"SMTP auth failed for {settings.SMTP_USER}: {auth_err}"
+                        collected_errors.append(last_err)
                 if not authenticated:
                     continue
 
@@ -141,10 +143,16 @@ def _send_smtp_email(to_email: str, subject: str, html_content: str) -> tuple[bo
                 logger.info(f"[Email] Successfully delivered email to {to_email} via {settings.SMTP_HOST}:{port}")
                 return True, None
         except Exception as ex:
-            last_err = f"{type(ex).__name__} on port {port}: {ex}"
-            logger.warning(f"[Email] Attempt on port {port} failed: {last_err}")
+            err_msg = f"Port {port}: {type(ex).__name__} ({ex})"
+            collected_errors.append(err_msg)
+            last_err = err_msg
+            logger.warning(f"[Email] Attempt on port {port} failed: {err_msg}")
 
-    return False, last_err or "SMTP delivery failed on all attempted ports"
+    combined = "; ".join(collected_errors) if collected_errors else (last_err or "SMTP delivery failed on all attempted ports")
+    if "timed out" in combined.lower() or "timeout" in combined.lower():
+        combined += " [Render Free Tier blocks outbound SMTP ports 25, 465, and 587. Upgrade Render web service to Starter to unblock direct SMTP.]"
+
+    return False, combined
 
 
 def send_email(
