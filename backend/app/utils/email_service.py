@@ -35,6 +35,7 @@ def log_email_delivery(
         logger.warning(f"[EmailLog] Could not record email log: {e}")
 
 
+import socket
 import threading
 _last_email_error = threading.local()
 
@@ -46,9 +47,39 @@ def _set_last_email_error(err: Optional[str]) -> None:
     _last_email_error.value = err
 
 
+def _create_ipv4_socket(host: str, port: int, timeout: float = 12.0) -> socket.socket:
+    """Forces IPv4 socket resolution to prevent [Errno 101] Network is unreachable on Render/cloud containers."""
+    last_exc = None
+    for res in socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM):
+        af, socktype, proto, canonname, sa = res
+        sock = None
+        try:
+            sock = socket.socket(af, socktype, proto)
+            sock.settimeout(timeout)
+            sock.connect(sa)
+            return sock
+        except OSError as e:
+            last_exc = e
+            if sock:
+                sock.close()
+    raise OSError(f"Could not establish IPv4 connection to {host}:{port}: {last_exc}")
+
+
+class IPv4SMTP(smtplib.SMTP):
+    """SMTP client that strictly binds to IPv4 to prevent unreachable IPv6 route errors on cloud hosts."""
+    def _get_socket(self, host, port, timeout):
+        return _create_ipv4_socket(host, port, timeout or 12.0)
+
+
+class IPv4SMTP_SSL(smtplib.SMTP_SSL):
+    def _get_socket(self, host, port, timeout):
+        raw_sock = _create_ipv4_socket(host, port, timeout or 12.0)
+        return self.context.wrap_socket(raw_sock, server_hostname=self._host)
+
+
 def _send_smtp_email(to_email: str, subject: str, html_content: str) -> tuple[bool, Optional[str]]:
     """
-    Sends an HTML email using Gmail SMTP.
+    Sends an HTML email using Gmail SMTP via IPv4.
     Tries configured port (587 STARTTLS) and automatically falls back to port 465 (SSL)
     if cloud firewall blocks or times out on port 587.
     Also handles Google App Passwords with or without spaces.
@@ -87,9 +118,9 @@ def _send_smtp_email(to_email: str, subject: str, html_content: str) -> tuple[bo
     for port, is_ssl in ports_to_try:
         try:
             if is_ssl:
-                server = smtplib.SMTP_SSL(settings.SMTP_HOST, port, timeout=12)
+                server = IPv4SMTP_SSL(settings.SMTP_HOST, port, timeout=12)
             else:
-                server = smtplib.SMTP(settings.SMTP_HOST, port, timeout=12)
+                server = IPv4SMTP(settings.SMTP_HOST, port, timeout=12)
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
