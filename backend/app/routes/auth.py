@@ -16,6 +16,7 @@ from app.utils.email_service import (
     send_password_reset_otp,
     send_welcome_email,
     send_security_alert_email,
+    get_last_email_error,
 )
 from app.config import settings
 import random
@@ -127,9 +128,11 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
         # Rollback so user can retry cleanly
         db.delete(new_otp)
         db.commit()
+        last_err = get_last_email_error()
+        diag = f": {last_err}" if last_err else ""
         raise HTTPException(
             status_code=500,
-            detail="We couldn't send the verification email. Please check your email address and try again."
+            detail=f"We couldn't send the verification email{diag}. Please check your email address and try again."
         )
 
     return {
@@ -272,9 +275,11 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
     if not email_sent:
         db.delete(new_otp)
         db.commit()
+        last_err = get_last_email_error()
+        diag = f": {last_err}" if last_err else ""
         raise HTTPException(
             status_code=500,
-            detail="We couldn't send the password reset email. Please try again."
+            detail=f"We couldn't send the password reset email{diag}. Please try again."
         )
 
     # Mask email for UI display: m****@gmail.com

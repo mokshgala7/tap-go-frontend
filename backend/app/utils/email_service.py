@@ -35,17 +35,32 @@ def log_email_delivery(
         logger.warning(f"[EmailLog] Could not record email log: {e}")
 
 
-def _send_smtp_email(to_email: str, subject: str, html_content: str) -> bool:
+import threading
+_last_email_error = threading.local()
+
+def get_last_email_error() -> Optional[str]:
+    """Retrieves the last diagnostic error message from the most recent email dispatch."""
+    return getattr(_last_email_error, "value", None)
+
+def _set_last_email_error(err: Optional[str]) -> None:
+    _last_email_error.value = err
+
+
+def _send_smtp_email(to_email: str, subject: str, html_content: str) -> tuple[bool, Optional[str]]:
     """
-    Sends an HTML email using Gmail SMTP with STARTTLS.
+    Sends an HTML email using Gmail SMTP.
+    Tries configured port (587 STARTTLS) and automatically falls back to port 465 (SSL)
+    if cloud firewall blocks or times out on port 587.
+    Also handles Google App Passwords with or without spaces.
     Never raises uncaught exceptions.
-    Returns True on success, False on failure.
+    Returns (success: bool, error_message: Optional[str]).
     """
-    if not settings.SMTP_HOST or not settings.SMTP_USER or not settings.SMTP_PASSWORD:
-        logger.error(
-            f"[Email] SMTP settings not configured. Cannot send email to {to_email} (Subject: {subject})"
-        )
-        return False
+    if not settings.SMTP_HOST:
+        return False, "SMTP_HOST is not configured"
+    if not settings.SMTP_USER:
+        return False, "SMTP_USER is not configured"
+    if not settings.SMTP_PASSWORD:
+        return False, "SMTP_PASSWORD is missing in environment variables"
 
     try:
         msg = MIMEMultipart("alternative")
@@ -55,22 +70,50 @@ def _send_smtp_email(to_email: str, subject: str, html_content: str) -> bool:
 
         part = MIMEText(html_content, "html", "utf-8")
         msg.attach(part)
+    except Exception as prep_err:
+        return False, f"Failed to prepare MIME email: {prep_err}"
 
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD.strip())
-            server.send_message(msg)
+    clean_pw = settings.SMTP_PASSWORD.strip()
+    passwords_to_try = [clean_pw]
+    if " " in clean_pw:
+        passwords_to_try.append(clean_pw.replace(" ", ""))
 
-        logger.info(f"[Email] Successfully delivered email to {to_email} via Gmail SMTP. Subject: {subject}")
-        return True
-    except smtplib.SMTPAuthenticationError as e:
-        logger.error(f"[Email] SMTP Authentication failed for {settings.SMTP_USER}: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"[Email] Failed to send email to {to_email}: {e}")
-        return False
+    # Try configured port first (default 587 STARTTLS), then fallback to port 465 (SSL)
+    ports_to_try = [(settings.SMTP_PORT, settings.SMTP_PORT == 465)]
+    if settings.SMTP_PORT != 465:
+        ports_to_try.append((465, True))
+
+    last_err = None
+    for port, is_ssl in ports_to_try:
+        try:
+            if is_ssl:
+                server = smtplib.SMTP_SSL(settings.SMTP_HOST, port, timeout=12)
+            else:
+                server = smtplib.SMTP(settings.SMTP_HOST, port, timeout=12)
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+
+            with server:
+                authenticated = False
+                for pw in passwords_to_try:
+                    try:
+                        server.login(settings.SMTP_USER, pw)
+                        authenticated = True
+                        break
+                    except smtplib.SMTPAuthenticationError as auth_err:
+                        last_err = f"SMTP auth failed for {settings.SMTP_USER}: {auth_err}"
+                if not authenticated:
+                    continue
+
+                server.send_message(msg)
+                logger.info(f"[Email] Successfully delivered email to {to_email} via {settings.SMTP_HOST}:{port}")
+                return True, None
+        except Exception as ex:
+            last_err = f"{type(ex).__name__} on port {port}: {ex}"
+            logger.warning(f"[Email] Attempt on port {port} failed: {last_err}")
+
+    return False, last_err or "SMTP delivery failed on all attempted ports"
 
 
 def send_email(
@@ -84,16 +127,18 @@ def send_email(
     Central email delivery dispatcher.
     Sends email via Gmail SMTP and records delivery status in email_logs.
     """
+    _set_last_email_error(None)
     success = False
     err_msg = None
     try:
-        success = _send_smtp_email(to_email, subject, html_content)
-        if not success:
-            err_msg = "SMTP delivery returned false"
+        success, err_msg = _send_smtp_email(to_email, subject, html_content)
     except Exception as e:
         logger.error(f"[Email] Exception during SMTP delivery to {to_email}: {e}")
-        err_msg = str(e)
+        err_msg = f"{type(e).__name__}: {str(e)}"
         success = False
+
+    if not success:
+        _set_last_email_error(err_msg)
 
     try:
         log_email_delivery(

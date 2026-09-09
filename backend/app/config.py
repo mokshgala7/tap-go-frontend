@@ -69,6 +69,10 @@ class Settings:
             os.getenv("SMTP_USER")
             or os.getenv("GMAIL_USER")
             or os.getenv("GMAIL_EMAIL")
+            or os.getenv("EMAIL_USER")
+            or os.getenv("EMAIL")
+            or os.getenv("MAIL_USER")
+            or os.getenv("IMAP_USER")
             or "tapandgosupport@gmail.com"
         ).strip()
 
@@ -78,6 +82,13 @@ class Settings:
             os.getenv("SMTP_PASSWORD")
             or os.getenv("GMAIL_APP_PASSWORD")
             or os.getenv("GMAIL_PASSWORD")
+            or os.getenv("EMAIL_PASSWORD")
+            or os.getenv("EMAIL_PASS")
+            or os.getenv("SMTP_PASS")
+            or os.getenv("APP_PASSWORD")
+            or os.getenv("MAIL_PASSWORD")
+            or os.getenv("OUTLOOK_APP_PASSWORD")
+            or os.getenv("IMAP_PASSWORD")
             or ""
         ).strip()
 
