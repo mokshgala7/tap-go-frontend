@@ -9,7 +9,7 @@ const Icon = ({ children, className = '' }) => (
   </span>
 )
 
-function FieldCard({ label, value, editable, editing, onChange, placeholder, lockedReason }) {
+function FieldCard({ label, value, displayValue, editable, editing, onChange, placeholder, lockedReason }) {
   return (
     <div className="field-card">
       <div className="field-top">
@@ -19,9 +19,9 @@ function FieldCard({ label, value, editable, editing, onChange, placeholder, loc
         </span>
       </div>
       {editable && editing ? (
-        <input value={value} placeholder={placeholder || label} onChange={(e) => onChange(e.target.value)} />
+        <input value={value} placeholder={placeholder || `Enter ${label}`} onChange={(e) => onChange(e.target.value)} autoComplete="off" />
       ) : (
-        <span className="field-value">{value || '\u2014'}</span>
+        <span className="field-value">{displayValue !== undefined && displayValue !== null && displayValue !== '' ? displayValue : (value || '\u2014')}</span>
       )}
     </div>
   )
@@ -114,7 +114,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
     bank_upi_id: '',
   })
 
-  useEffect(() => {
+  const handleUseExistingDetails = () => {
     if (user) {
       setForm({
         name: user.name || '',
@@ -130,7 +130,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
         bank_upi_id: user.bank_upi_id || '',
       })
     }
-  }, [user])
+  }
 
   useEffect(() => {
     if (user?.id) {
@@ -144,23 +144,57 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
 
   const save = async () => {
     const res = await saveProfileToDb({
-      name: form.name,
-      email: form.email,
-      address: form.address,
-      city: form.city,
-      emergency_contact_name: form.emergency_contact_name,
-      emergency_contact_phone: form.emergency_contact_phone,
-      bank_account_holder: form.bank_account_holder,
-      bank_account_number: form.bank_account_number,
-      bank_ifsc: form.bank_ifsc,
-      bank_upi_id: form.bank_upi_id,
+      name: form.name.trim() ? form.name.trim() : user?.name,
+      email: form.email.trim() ? form.email.trim() : user?.email,
+      address: form.address.trim() ? form.address.trim() : user?.address,
+      city: form.city.trim() ? form.city.trim() : user?.city,
+      emergency_contact_name: form.emergency_contact_name.trim() ? form.emergency_contact_name.trim() : user?.emergency_contact_name,
+      emergency_contact_phone: form.emergency_contact_phone.trim() ? form.emergency_contact_phone.trim() : user?.emergency_contact_phone,
+      bank_account_holder: form.bank_account_holder.trim() ? form.bank_account_holder.trim() : user?.bank_account_holder,
+      bank_account_number: form.bank_account_number.trim() ? form.bank_account_number.trim() : user?.bank_account_number,
+      bank_ifsc: form.bank_ifsc.trim() ? form.bank_ifsc.trim() : user?.bank_ifsc,
+      bank_upi_id: form.bank_upi_id.trim() ? form.bank_upi_id.trim() : user?.bank_upi_id,
     })
 
     if (res.success) {
       setEditing(false)
+      setForm({
+        name: '',
+        email: '',
+        phone: '',
+        address: '',
+        city: '',
+        emergency_contact_name: '',
+        emergency_contact_phone: '',
+        bank_account_holder: '',
+        bank_account_number: '',
+        bank_ifsc: '',
+        bank_upi_id: '',
+      })
       flash('Account & profile details updated in database.')
     } else {
       flash(res.message || 'Failed to save profile.')
+    }
+  }
+
+  const handleToggleEdit = () => {
+    if (editing) {
+      save()
+    } else {
+      setForm({
+        name: '',
+        email: '',
+        phone: '',
+        address: '',
+        city: '',
+        emergency_contact_name: '',
+        emergency_contact_phone: '',
+        bank_account_holder: '',
+        bank_account_number: '',
+        bank_ifsc: '',
+        bank_upi_id: '',
+      })
+      setEditing(true)
     }
   }
 
@@ -231,16 +265,38 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
 
       <div className="section-head" style={{ marginTop: 34 }}>
         <h2 style={{ margin: 0 }}>Personal &amp; Contact</h2>
-        <button className="back" onClick={() => (editing ? save() : setEditing(true))}>
-          {editing ? 'Save changes' : 'Edit details'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {editing && (
+            <>
+              <button
+                type="button"
+                className="secondary-btn"
+                style={{ padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: 8 }}
+                onClick={handleUseExistingDetails}
+              >
+                Use existing details
+              </button>
+              <button
+                type="button"
+                className="secondary-btn"
+                style={{ padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: 8 }}
+                onClick={() => setEditing(false)}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+          <button className="back" onClick={handleToggleEdit}>
+            {editing ? 'Save changes' : 'Edit details'}
+          </button>
+        </div>
       </div>
       <div className="field-grid">
-        <FieldCard label="Full Name" value={form.name} editable editing={editing} onChange={set('name')} />
-        <FieldCard label="Mobile Number" value={form.phone} editable={false} />
-        <FieldCard label="Email" value={form.email} editable editing={editing} onChange={set('email')} />
-        <FieldCard label="Address" value={form.address} editable editing={editing} onChange={set('address')} />
-        <FieldCard label="City" value={form.city} editable editing={editing} onChange={set('city')} />
+        <FieldCard label="Full Name" value={form.name} displayValue={user?.name} editable editing={editing} onChange={set('name')} />
+        <FieldCard label="Mobile Number" value={user?.phone} displayValue={user?.phone} editable={false} />
+        <FieldCard label="Email" value={form.email} displayValue={user?.email} editable editing={editing} onChange={set('email')} />
+        <FieldCard label="Address" value={form.address} displayValue={user?.address} editable editing={editing} onChange={set('address')} />
+        <FieldCard label="City" value={form.city} displayValue={user?.city} editable editing={editing} onChange={set('city')} />
       </div>
 
       <div style={{ marginTop: 10 }}>
@@ -265,6 +321,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
         <FieldCard
           label="Contact Name"
           value={form.emergency_contact_name}
+          displayValue={user?.emergency_contact_name}
           editable
           editing={editing}
           onChange={set('emergency_contact_name')}
@@ -273,6 +330,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
         <FieldCard
           label="Contact Phone"
           value={form.emergency_contact_phone}
+          displayValue={user?.emergency_contact_phone}
           editable
           editing={editing}
           onChange={set('emergency_contact_phone')}
@@ -299,13 +357,15 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
         <FieldCard
           label="Account Holder"
           value={form.bank_account_holder}
+          displayValue={user?.bank_account_holder}
           editable={!isBankLocked || user?.bank_request_status === 'approved'}
           editing={editing}
           onChange={set('bank_account_holder')}
         />
         <FieldCard
           label="Account Number"
-          value={form.bank_account_number ? (form.bank_account_number.length > 4 ? `XXXX XXXX ${form.bank_account_number.slice(-4)}` : form.bank_account_number) : ''}
+          value={form.bank_account_number}
+          displayValue={user?.bank_account_number ? (user.bank_account_number.length > 4 ? `XXXX XXXX ${user.bank_account_number.slice(-4)}` : user.bank_account_number) : '—'}
           editable={!isBankLocked || user?.bank_request_status === 'approved'}
           editing={editing}
           onChange={set('bank_account_number')}
@@ -313,6 +373,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
         <FieldCard
           label="IFSC Code"
           value={form.bank_ifsc}
+          displayValue={user?.bank_ifsc}
           editable={!isBankLocked || user?.bank_request_status === 'approved'}
           editing={editing}
           onChange={set('bank_ifsc')}
@@ -320,6 +381,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
         <FieldCard
           label="UPI ID"
           value={form.bank_upi_id}
+          displayValue={user?.bank_upi_id}
           editable={!isBankLocked || user?.bank_request_status === 'approved'}
           editing={editing}
           onChange={set('bank_upi_id')}

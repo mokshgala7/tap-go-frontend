@@ -134,7 +134,7 @@ function Passenger() {
     bank_upi_id: '',
   })
 
-  useEffect(() => {
+  const handleUseExistingDetails = () => {
     if (user) {
       setForm({
         name: user.name || '',
@@ -150,7 +150,7 @@ function Passenger() {
         bank_upi_id: user.bank_upi_id || '',
       })
     }
-  }, [user])
+  }
 
   useEffect(() => {
     if (user?.id) {
@@ -615,22 +615,56 @@ function Passenger() {
 
   const saveProfile = async () => {
     const res = await saveProfileToDb({
-      name: form.name,
-      email: form.email,
-      address: form.address,
-      city: form.city,
-      emergency_contact_name: form.emergency_contact_name,
-      emergency_contact_phone: form.emergency_contact_phone,
-      bank_account_holder: form.bank_account_holder,
-      bank_account_number: form.bank_account_number,
-      bank_ifsc: form.bank_ifsc,
-      bank_upi_id: form.bank_upi_id,
+      name: form.name.trim() ? form.name.trim() : user?.name,
+      email: form.email.trim() ? form.email.trim() : user?.email,
+      address: form.address.trim() ? form.address.trim() : user?.address,
+      city: form.city.trim() ? form.city.trim() : user?.city,
+      emergency_contact_name: form.emergency_contact_name.trim() ? form.emergency_contact_name.trim() : user?.emergency_contact_name,
+      emergency_contact_phone: form.emergency_contact_phone.trim() ? form.emergency_contact_phone.trim() : user?.emergency_contact_phone,
+      bank_account_holder: form.bank_account_holder.trim() ? form.bank_account_holder.trim() : user?.bank_account_holder,
+      bank_account_number: form.bank_account_number.trim() ? form.bank_account_number.trim() : user?.bank_account_number,
+      bank_ifsc: form.bank_ifsc.trim() ? form.bank_ifsc.trim() : user?.bank_ifsc,
+      bank_upi_id: form.bank_upi_id.trim() ? form.bank_upi_id.trim() : user?.bank_upi_id,
     })
     if (res.success) {
       setEditing(false)
+      setForm({
+        name: '',
+        email: '',
+        phone: '',
+        address: '',
+        city: '',
+        emergency_contact_name: '',
+        emergency_contact_phone: '',
+        bank_account_holder: '',
+        bank_account_number: '',
+        bank_ifsc: '',
+        bank_upi_id: '',
+      })
       flash('Profile updated in database.')
     } else {
       flash(res.message || 'Failed to save profile.')
+    }
+  }
+
+  const handleToggleEdit = () => {
+    if (editing) {
+      saveProfile()
+    } else {
+      setForm({
+        name: '',
+        email: '',
+        phone: '',
+        address: '',
+        city: '',
+        emergency_contact_name: '',
+        emergency_contact_phone: '',
+        bank_account_holder: '',
+        bank_account_number: '',
+        bank_ifsc: '',
+        bank_upi_id: '',
+      })
+      setEditing(true)
     }
   }
 
@@ -678,9 +712,31 @@ function Passenger() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 28, marginBottom: 12 }}>
         <h2 style={{ margin: 0 }}>Personal &amp; Contact</h2>
-        <button className="back" onClick={() => (editing ? saveProfile() : setEditing(true))}>
-          {editing ? 'Save changes' : 'Edit details'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {editing && (
+            <>
+              <button
+                type="button"
+                className="secondary-btn"
+                style={{ padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: 8 }}
+                onClick={handleUseExistingDetails}
+              >
+                Use existing details
+              </button>
+              <button
+                type="button"
+                className="secondary-btn"
+                style={{ padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: 8 }}
+                onClick={() => setEditing(false)}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+          <button className="back" onClick={handleToggleEdit}>
+            {editing ? 'Save changes' : 'Edit details'}
+          </button>
+        </div>
       </div>
 
       <div className="field-grid">
@@ -689,7 +745,7 @@ function Passenger() {
             <span className="field-label">Full Name</span>
             <span className="field-tag editable">Editable</span>
           </div>
-          {editing ? <input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} /> : <span className="field-value">{form.name || '—'}</span>}
+          {editing ? <input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Enter full name" autoComplete="off" /> : <span className="field-value">{user?.name || '—'}</span>}
         </div>
 
         <div className="field-card">
@@ -697,7 +753,7 @@ function Passenger() {
             <span className="field-label">Mobile Number</span>
             <span className="field-tag readonly">Read-only (Taken from DB)</span>
           </div>
-          <span className="field-value">{form.phone || '—'}</span>
+          <span className="field-value">{user?.phone || '—'}</span>
         </div>
 
         <div className="field-card">
@@ -705,7 +761,7 @@ function Passenger() {
             <span className="field-label">Email</span>
             <span className="field-tag editable">Editable</span>
           </div>
-          {editing ? <input value={form.email} onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))} /> : <span className="field-value">{form.email || '—'}</span>}
+          {editing ? <input value={form.email} onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))} placeholder="Enter email address" autoComplete="off" /> : <span className="field-value">{user?.email || '—'}</span>}
         </div>
 
         <div className="field-card">
@@ -713,7 +769,7 @@ function Passenger() {
             <span className="field-label">Address</span>
             <span className="field-tag editable">Editable</span>
           </div>
-          {editing ? <input value={form.address} onChange={(e) => setForm(f => ({ ...f, address: e.target.value }))} /> : <span className="field-value">{form.address || '—'}</span>}
+          {editing ? <input value={form.address} onChange={(e) => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Enter address" autoComplete="off" /> : <span className="field-value">{user?.address || '—'}</span>}
         </div>
 
         <div className="field-card">
@@ -721,7 +777,7 @@ function Passenger() {
             <span className="field-label">City</span>
             <span className="field-tag editable">Editable</span>
           </div>
-          {editing ? <input value={form.city} onChange={(e) => setForm(f => ({ ...f, city: e.target.value }))} /> : <span className="field-value">{form.city || '—'}</span>}
+          {editing ? <input value={form.city} onChange={(e) => setForm(f => ({ ...f, city: e.target.value }))} placeholder="Enter city" autoComplete="off" /> : <span className="field-value">{user?.city || '—'}</span>}
         </div>
       </div>
 
@@ -749,7 +805,7 @@ function Passenger() {
             <span className="field-label">Contact Name</span>
             <span className="field-tag editable">Editable</span>
           </div>
-          {editing ? <input value={form.emergency_contact_name} onChange={(e) => setForm(f => ({ ...f, emergency_contact_name: e.target.value }))} placeholder="Parent / Spouse Name" /> : <span className="field-value">{form.emergency_contact_name || '—'}</span>}
+          {editing ? <input value={form.emergency_contact_name} onChange={(e) => setForm(f => ({ ...f, emergency_contact_name: e.target.value }))} placeholder="Parent / Spouse Name" autoComplete="off" /> : <span className="field-value">{user?.emergency_contact_name || '—'}</span>}
         </div>
 
         <div className="field-card">
@@ -757,7 +813,7 @@ function Passenger() {
             <span className="field-label">Contact Phone</span>
             <span className="field-tag editable">Editable</span>
           </div>
-          {editing ? <input value={form.emergency_contact_phone} onChange={(e) => setForm(f => ({ ...f, emergency_contact_phone: e.target.value }))} placeholder="10-digit mobile" /> : <span className="field-value">{form.emergency_contact_phone || '—'}</span>}
+          {editing ? <input value={form.emergency_contact_phone} onChange={(e) => setForm(f => ({ ...f, emergency_contact_phone: e.target.value }))} placeholder="10-digit mobile" autoComplete="off" /> : <span className="field-value">{user?.emergency_contact_phone || '—'}</span>}
         </div>
       </div>
 
@@ -785,9 +841,9 @@ function Passenger() {
             </span>
           </div>
           {editing && (!isBankLocked || user?.bank_request_status === 'approved') ? (
-            <input value={form.bank_account_holder} onChange={(e) => setForm(f => ({ ...f, bank_account_holder: e.target.value }))} placeholder="Account Holder Name" />
+            <input value={form.bank_account_holder} onChange={(e) => setForm(f => ({ ...f, bank_account_holder: e.target.value }))} placeholder="Account Holder Name" autoComplete="off" />
           ) : (
-            <span className="field-value">{form.bank_account_holder || '—'}</span>
+            <span className="field-value">{user?.bank_account_holder || '—'}</span>
           )}
         </div>
 
@@ -799,13 +855,13 @@ function Passenger() {
             </span>
           </div>
           {editing && (!isBankLocked || user?.bank_request_status === 'approved') ? (
-            <input value={form.bank_account_number} onChange={(e) => setForm(f => ({ ...f, bank_account_number: e.target.value }))} placeholder="Bank Account Number" />
+            <input value={form.bank_account_number} onChange={(e) => setForm(f => ({ ...f, bank_account_number: e.target.value }))} placeholder="Bank Account Number" autoComplete="off" />
           ) : (
             <span className="field-value">
-              {form.bank_account_number
-                ? form.bank_account_number.length > 4
-                  ? `XXXX XXXX ${form.bank_account_number.slice(-4)}`
-                  : form.bank_account_number
+              {user?.bank_account_number
+                ? user.bank_account_number.length > 4
+                  ? `XXXX XXXX ${user.bank_account_number.slice(-4)}`
+                  : user.bank_account_number
                 : '—'}
             </span>
           )}
@@ -819,9 +875,9 @@ function Passenger() {
             </span>
           </div>
           {editing && (!isBankLocked || user?.bank_request_status === 'approved') ? (
-            <input value={form.bank_ifsc} onChange={(e) => setForm(f => ({ ...f, bank_ifsc: e.target.value }))} placeholder="IFSC Code (e.g. SBIN0001234)" />
+            <input value={form.bank_ifsc} onChange={(e) => setForm(f => ({ ...f, bank_ifsc: e.target.value }))} placeholder="IFSC Code (e.g. SBIN0001234)" autoComplete="off" />
           ) : (
-            <span className="field-value">{form.bank_ifsc || '—'}</span>
+            <span className="field-value">{user?.bank_ifsc || '—'}</span>
           )}
         </div>
 
@@ -833,9 +889,9 @@ function Passenger() {
             </span>
           </div>
           {editing && (!isBankLocked || user?.bank_request_status === 'approved') ? (
-            <input value={form.bank_upi_id} onChange={(e) => setForm(f => ({ ...f, bank_upi_id: e.target.value }))} placeholder="name@upi" />
+            <input value={form.bank_upi_id} onChange={(e) => setForm(f => ({ ...f, bank_upi_id: e.target.value }))} placeholder="name@upi" autoComplete="off" />
           ) : (
-            <span className="field-value">{form.bank_upi_id || '—'}</span>
+            <span className="field-value">{user?.bank_upi_id || '—'}</span>
           )}
         </div>
       </div>

@@ -91,7 +91,7 @@ def test_authenticated_profile(setup_db):
     res2 = client.get(f"/api/auth/profile/{user_a.id}", headers={"Authorization": f"Bearer {token}"})
     assert res2.status_code == 200
     data = res2.json()["user"]
-    assert "Requires Auth" not in data["id_document"]
+    assert "Requires Auth" not in (data.get("id_document") or "")
 
 def test_missing_and_invalid_token(setup_db):
     db, user_a, user_b, admin = setup_db

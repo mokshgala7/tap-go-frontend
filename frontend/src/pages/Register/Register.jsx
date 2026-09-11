@@ -18,23 +18,23 @@ const patterns = {
 
 const initialForm = {
   accountType: 'passenger',
-  name: 'Rohan Sharma',
-  email: 'rohan.sharma@example.com',
-  phone: '9876543210',
-  address: '405, Shivam Towers, J.G. Road, Bandra West',
-  city: 'Mumbai',
-  pincode: '400050',
-  aadhaar: '987654321012',
+  name: '',
+  email: '',
+  phone: '',
+  address: '',
+  city: '',
+  pincode: '',
+  aadhaar: '',
   emailOtp: '',
-  pan: 'ABCDE1234F',
-  password: 'Rohan@123',
-  confirmPassword: 'Rohan@123',
+  pan: '',
+  password: '',
+  confirmPassword: '',
   vehicleType: '',
   vehicleReg: '',
   vehicleMake: '',
   vehicleModel: '',
   dl: '',
-  terms: true,
+  terms: false,
 }
 
 const fieldLabels = {
@@ -116,6 +116,9 @@ function FloatingInput({
           maxLength={maxLength}
           value={value}
           onChange={onChange}
+          autoComplete={type === 'password' ? 'new-password' : 'off'}
+          autoCorrect="off"
+          spellCheck="false"
         />
         <label
           className={`floating-label ${as === 'textarea' ? '!top-3 !text-[0.65rem] !font-bold !text-gray-500 !uppercase !tracking-wide' : ''}`}
@@ -212,20 +215,11 @@ function Register() {
     return () => window.clearInterval(interval)
   }, [otpCooldown])
 
-  // Restore form data from sessionStorage when returning from review page
+  // Clean up any stale registration review data on mount to ensure fresh state
   useEffect(() => {
-    const stored = sessionStorage.getItem('registrationReviewData')
-    if (stored) {
-      try {
-        const data = JSON.parse(stored)
-        if (data.form) setForm({ ...initialForm, ...data.form })
-        if (data.profilePhoto) setProfilePhoto(data.profilePhoto)
-        if (data.signature) setSignature(data.signature)
-        if (data.files) setFiles(prev => ({ ...prev, ...data.files }))
-      } catch (e) {
-        // ignore parse errors
-      }
-    }
+    try {
+      sessionStorage.removeItem('registrationReviewData')
+    } catch {}
   }, [])
 
   const passwordStrength = useMemo(() => {
@@ -630,7 +624,7 @@ function Register() {
 
 
 
-            <form className="space-y-10" noValidate onSubmit={handleSubmit}>
+            <form className="space-y-10" noValidate onSubmit={handleSubmit} autoComplete="off">
               <div className="bg-white p-2.5 rounded-[1.25rem] shadow-card-border">
                 <div className="flex">
                   {['passenger', 'driver'].map((type) => (

@@ -28,13 +28,13 @@ function BankModal({ onClose, flash }) {
   const isLocked = Boolean(user?.bank_locked || user?.bank_account_number) && user?.bank_request_status !== 'approved'
 
   const [form, setForm] = useState({
-    accountHolder: user?.bank_account_holder || '',
-    accountNumber: user?.bank_account_number || '',
-    ifsc: user?.bank_ifsc || '',
-    upiId: user?.bank_upi_id || '',
+    accountHolder: '',
+    accountNumber: '',
+    ifsc: '',
+    upiId: '',
   })
 
-  useEffect(() => {
+  const handleUseExistingDetails = () => {
     if (user) {
       setForm({
         accountHolder: user.bank_account_holder || '',
@@ -43,17 +43,17 @@ function BankModal({ onClose, flash }) {
         upiId: user.bank_upi_id || '',
       })
     }
-  }, [user])
+  }
 
   const update = (key) => (e) => setForm((current) => ({ ...current, [key]: e.target.value }))
 
   const handleSave = async () => {
     setSaving(true)
     const res = await saveProfileToDb({
-      bank_account_holder: form.accountHolder,
-      bank_account_number: form.accountNumber,
-      bank_ifsc: form.ifsc,
-      bank_upi_id: form.upiId,
+      bank_account_holder: form.accountHolder.trim() ? form.accountHolder.trim() : user?.bank_account_holder,
+      bank_account_number: form.accountNumber.trim() ? form.accountNumber.trim() : user?.bank_account_number,
+      bank_ifsc: form.ifsc.trim() ? form.ifsc.trim() : user?.bank_ifsc,
+      bank_upi_id: form.upiId.trim() ? form.upiId.trim() : user?.bank_upi_id,
     })
     setSaving(false)
 
@@ -87,17 +87,28 @@ function BankModal({ onClose, flash }) {
             : 'Details saved here will be stored in your database profile. Note: Bank details can be saved/edited only ONCE before locking.'}
         </p>
 
+        {user?.bank_account_number && !isLocked && (
+          <button
+            type="button"
+            className="secondary-btn"
+            style={{ marginBottom: 16, padding: '6px 12px', fontSize: 12, fontWeight: 700, width: '100%', cursor: 'pointer', background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: 8 }}
+            onClick={handleUseExistingDetails}
+          >
+            Use existing details
+          </button>
+        )}
+
         <label htmlFor="bank-holder">Account Holder Name</label>
-        <input id="bank-holder" value={form.accountHolder} disabled={isLocked} onChange={update('accountHolder')} placeholder="e.g. Full Name" />
+        <input id="bank-holder" value={form.accountHolder} disabled={isLocked} onChange={update('accountHolder')} placeholder="e.g. Full Name" autoComplete="off" />
 
         <label htmlFor="bank-number">Account Number</label>
-        <input id="bank-number" value={form.accountNumber} disabled={isLocked} onChange={update('accountNumber')} placeholder="Bank Account Number" />
+        <input id="bank-number" value={form.accountNumber} disabled={isLocked} onChange={update('accountNumber')} placeholder="Bank Account Number" autoComplete="off" />
 
         <label htmlFor="bank-ifsc">IFSC Code</label>
-        <input id="bank-ifsc" value={form.ifsc} disabled={isLocked} onChange={update('ifsc')} placeholder="e.g. SBIN0001234" />
+        <input id="bank-ifsc" value={form.ifsc} disabled={isLocked} onChange={update('ifsc')} placeholder="e.g. SBIN0001234" autoComplete="off" />
 
         <label htmlFor="bank-upi">UPI ID</label>
-        <input id="bank-upi" value={form.upiId} disabled={isLocked} onChange={update('upiId')} placeholder="name@upi" />
+        <input id="bank-upi" value={form.upiId} disabled={isLocked} onChange={update('upiId')} placeholder="name@upi" autoComplete="off" />
 
         <div className="modal-actions" style={{ flexDirection: 'column', gap: 10, marginTop: 22 }}>
           {isLocked ? (

@@ -11,15 +11,30 @@ export function NFCCardOrderModal({ user, onClose, onOrderSuccess }) {
 
   // Form State
   const [form, setForm] = useState({
-    recipient_name: user?.name || '',
-    phone: user?.phone || '',
-    address_line1: user?.address || '',
+    recipient_name: '',
+    phone: '',
+    address_line1: '',
     address_line2: '',
-    area: user?.area || '',
-    city: user?.city || '',
-    state: user?.state || 'Maharashtra',
-    pincode: user?.pincode || '',
+    area: '',
+    city: '',
+    state: 'Maharashtra',
+    pincode: '',
   })
+
+  const handleUseExistingDetails = () => {
+    if (user) {
+      setForm({
+        recipient_name: user?.name || '',
+        phone: user?.phone || '',
+        address_line1: user?.address || '',
+        address_line2: '',
+        area: user?.area || '',
+        city: user?.city || '',
+        state: user?.state || 'Maharashtra',
+        pincode: user?.pincode || '',
+      })
+    }
+  }
 
   // Calculation State
   const [calc, setCalc] = useState({
@@ -249,9 +264,20 @@ export function NFCCardOrderModal({ user, onClose, onOrderSuccess }) {
               </div>
             </div>
 
-            <h4 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>
-              Shipping &amp; Delivery Address
-            </h4>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>
+                Shipping &amp; Delivery Address
+              </h4>
+              {user && (
+                <button
+                  type="button"
+                  style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 6, background: 'var(--bg, #f8fafc)', border: '1px solid var(--line, #e2e8f0)', cursor: 'pointer', color: 'var(--text)' }}
+                  onClick={handleUseExistingDetails}
+                >
+                  Use existing details
+                </button>
+              )}
+            </div>
 
             <div style={{ display: 'grid', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
