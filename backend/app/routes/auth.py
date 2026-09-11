@@ -1,16 +1,18 @@
 import os
 import uuid
 from typing import Optional
-from fastapi import APIRouter, Depends, Form, File, UploadFile, HTTPException, status
+from fastapi import APIRouter, Depends, Form, File, UploadFile, HTTPException, status, Header
 from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import EditRequest, User, EmailOTP
+from app.models import EditRequest, User, EmailOTP, UserSession
 from app.schemas import UserRegisterForm, UserLoginRequest, SendOTPRequest, EMAIL_REGEX, PHONE_REGEX
 from pydantic import BaseModel
 from app.utils.security import hash_password, verify_password, get_elapsed_seconds, is_otp_expired
+import hashlib
+import secrets
 from app.utils.email_service import (
     send_registration_otp,
     send_password_reset_otp,
@@ -27,49 +29,26 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 BASE_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads")
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".pdf"}
+from app.utils.storage_service import upload_document, delete_document
+
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
-
-def save_uploaded_file(file: UploadFile, folder: str, allowed_extensions=None) -> str:
-    """Helper to validate and save uploaded files to specified folder."""
-    if not file or not file.filename:
-        return None
-
-    if allowed_extensions is None:
-        allowed_extensions = ALLOWED_EXTENSIONS
-
-    # Validate file extension
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in allowed_extensions:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(allowed_extensions)}."
-        )
-
-    # Read content to validate size
-    contents = file.file.read()
-    if len(contents) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File '{file.filename}' exceeds maximum allowed size of 5 MB."
-        )
-
-    # Reset file cursor
-    file.file.seek(0)
-
-    # Ensure target directory exists
-    target_dir = os.path.join(BASE_UPLOAD_DIR, folder)
-    os.makedirs(target_dir, exist_ok=True)
-
-    # Generate unique filename
-    filename = f"{uuid.uuid4().hex}_{os.path.basename(file.filename)}"
-    file_path = os.path.join(target_dir, filename)
-
-    with open(file_path, "wb") as f:
-        f.write(contents)
-
-    # Return relative path for MySQL storage
-    return f"uploads/{folder}/{filename}"
+def get_current_user(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header.")
+    
+    token = authorization.split(" ")[1]
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    
+    session = db.query(UserSession).filter(UserSession.token_hash == token_hash).first()
+    if not session or session.revoked_at or session.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=401, detail="Session expired or invalid.")
+    
+    user = db.get(User, session.user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found.")
+    
+    return user
 
 
 @router.post("/send-otp")
@@ -474,44 +453,65 @@ async def register(
         )
 
     # 4. Handle file uploads
-    photo_path = save_uploaded_file(photo, "profile", ALLOWED_IMAGE_EXTENSIONS) if photo and hasattr(photo, "filename") and photo.filename else None
-    id_doc_path = save_uploaded_file(id_doc, "id_documents") if id_doc and hasattr(id_doc, "filename") and id_doc.filename else None
-    signature_path = save_uploaded_file(signature, "signatures", ALLOWED_IMAGE_EXTENSIONS) if signature and hasattr(signature, "filename") and signature.filename else None
-    rc_path = save_uploaded_file(rc, "rc") if rc and hasattr(rc, "filename") and rc.filename else None
-    licence_path = save_uploaded_file(licence, "licence") if licence and hasattr(licence, "filename") and licence.filename else None
-    insurance_path = save_uploaded_file(insurance, "insurance") if insurance and hasattr(insurance, "filename") and insurance.filename else None
+    # We keep track of uploaded paths for cleanup if DB commit fails
+    uploaded_paths = []
+    
+    def _upload(file, folder, extensions=None):
+        if file and hasattr(file, "filename") and file.filename:
+            path = upload_document(file, folder, extensions)
+            if path:
+                uploaded_paths.append(path)
+            return path
+        return None
+
+    photo_path = _upload(photo, "profile", ALLOWED_IMAGE_EXTENSIONS)
+    id_doc_path = _upload(id_doc, "id_documents")
+    signature_path = _upload(signature, "signatures", ALLOWED_IMAGE_EXTENSIONS)
+    rc_path = _upload(rc, "rc")
+    licence_path = _upload(licence, "licence")
+    insurance_path = _upload(insurance, "insurance")
 
     # 5. Hash password
     hashed_pwd = hash_password(validated_data.password)
 
     # 6. Create and save user
-    new_user = User(
-        account_type=validated_data.account_type,
-        name=validated_data.name,
-        email=validated_data.email,
-        phone=validated_data.phone,
-        address=validated_data.address,
-        city=validated_data.city,
-        pincode=validated_data.pincode,
-        aadhaar=validated_data.aadhaar,
-        pan=validated_data.pan,
-        password_hash=hashed_pwd,
-        profile_photo=photo_path,
-        id_document=id_doc_path,
-        signature_document=signature_path,
-        vehicle_type=validated_data.vehicle_type,
-        vehicle_registration=validated_data.vehicle_registration,
-        vehicle_make=validated_data.vehicle_make,
-        vehicle_model=validated_data.vehicle_model,
-        driving_licence_number=validated_data.driving_licence_number,
-        rc_document=rc_path,
-        licence_document=licence_path,
-        insurance_document=insurance_path
-    )
+    try:
+        new_user = User(
+            account_type=validated_data.account_type,
+            name=validated_data.name,
+            email=validated_data.email,
+            phone=validated_data.phone,
+            address=validated_data.address,
+            city=validated_data.city,
+            pincode=validated_data.pincode,
+            aadhaar=validated_data.aadhaar,
+            pan=validated_data.pan,
+            password_hash=hashed_pwd,
+            profile_photo=photo_path,
+            id_document=id_doc_path,
+            signature_document=signature_path,
+            vehicle_type=validated_data.vehicle_type,
+            vehicle_registration=validated_data.vehicle_registration,
+            vehicle_make=validated_data.vehicle_make,
+            vehicle_model=validated_data.vehicle_model,
+            driving_licence_number=validated_data.driving_licence_number,
+            rc_document=rc_path,
+            licence_document=licence_path,
+            insurance_document=insurance_path
+        )
 
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+    except Exception as e:
+        db.rollback()
+        # Cleanup uploaded files on failure
+        for path in uploaded_paths:
+            delete_document(path)
+        raise HTTPException(
+            status_code=500,
+            detail="Registration failed. Please try again."
+        )
 
     # 7. Send welcome email (non-blocking — failure won't break registration)
     try:
@@ -533,11 +533,20 @@ async def register(
     }
 
 
-def user_to_dict(user: User):
+def user_to_dict(user: User, include_docs: bool = False) -> dict:
+    from app.utils.storage_service import get_signed_url
+    
+    def _doc(path):
+        if not path:
+            return None
+        if include_docs:
+            return get_signed_url(path)
+        return "[REDACTED] - Requires Auth"
+
     return {
         "id": user.id,
-        "name": user.name,
         "account_type": user.account_type,
+        "name": user.name,
         "email": user.email,
         "phone": user.phone,
         "address": user.address,
@@ -546,12 +555,12 @@ def user_to_dict(user: User):
         "pincode": user.pincode,
         "aadhaar": user.aadhaar,
         "pan": user.pan,
-        "profile_photo": user.profile_photo,
-        "id_document": user.id_document,
-        "signature_document": user.signature_document,
-        "rc_document": user.rc_document,
-        "licence_document": user.licence_document,
-        "insurance_document": user.insurance_document,
+        "profile_photo": get_signed_url(user.profile_photo) if include_docs and user.profile_photo else user.profile_photo,
+        "id_document": _doc(user.id_document),
+        "signature_document": _doc(user.signature_document),
+        "rc_document": _doc(user.rc_document),
+        "licence_document": _doc(user.licence_document),
+        "insurance_document": _doc(user.insurance_document),
         "vehicle_type": user.vehicle_type,
         "vehicle_registration": user.vehicle_registration,
         "vehicle_make": user.vehicle_make,
@@ -606,18 +615,47 @@ async def login(credentials: UserLoginRequest, db: Session = Depends(get_db)):
             content={"success": False, "message": "Invalid Credentials"}
         )
 
+    # Create session
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    expires_at = datetime.utcnow() + timedelta(days=30)  # 30 days expiration
+    
+    new_session = UserSession(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at
+    )
+    db.add(new_session)
+    db.commit()
+
     return {
         "success": True,
-        "user": user_to_dict(user)
+        "token": raw_token,
+        "user": user_to_dict(user, include_docs=True)
     }
+
+@router.post("/logout")
+async def logout(current_user: User = Depends(get_current_user), authorization: str = Header(None), db: Session = Depends(get_db)):
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        session = db.query(UserSession).filter(UserSession.token_hash == token_hash).first()
+        if session:
+            session.revoked_at = datetime.utcnow()
+            db.commit()
+    return {"success": True}
 
 
 @router.get("/profile/{user_id}")
-async def get_profile(user_id: int, db: Session = Depends(get_db)):
+async def get_profile(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this profile.")
+    
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
-    return {"success": True, "user": user_to_dict(user)}
+    
+    return {"success": True, "user": user_to_dict(user, include_docs=True)}
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -637,7 +675,10 @@ class ProfileUpdateRequest(BaseModel):
 
 
 @router.put("/profile")
-async def update_profile(data: ProfileUpdateRequest, db: Session = Depends(get_db)):
+async def update_profile(data: ProfileUpdateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.id != data.user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to update this profile.")
+
     user = db.query(User).filter(User.id == data.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")

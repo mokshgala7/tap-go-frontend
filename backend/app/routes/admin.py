@@ -22,6 +22,7 @@ from app.models import (
     User, UserDocument, Wallet,
 )
 from app.utils.security import hash_password, verify_password
+from app.utils.storage_service import get_signed_url
 
 router = APIRouter(prefix="/api/admin", tags=["Administration"])
 
@@ -104,14 +105,14 @@ def document_rows(user: User, db: Session):
             rows.append({
                 "id": f"user-{column.name}",
                 "type": column.name.replace("_", " ").title(),
-                "file_path": value,
+                "file_path": get_signed_url(value),
                 "created_at": user.created_at.isoformat() if user.created_at else None,
             })
     for document in db.query(UserDocument).filter(UserDocument.user_id == user.id).all():
         rows.append({
             "id": document.id,
             "type": document.document_type,
-            "file_path": document.file_path,
+            "file_path": get_signed_url(document.file_path),
             "created_at": document.created_at.isoformat() if document.created_at else None,
         })
     return rows

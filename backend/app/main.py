@@ -258,7 +258,9 @@ UPLOADS_DIR = os.path.join(
 for folder in ["profile", "rc", "licence", "insurance", "signatures", "id_documents"]:
     os.makedirs(os.path.join(UPLOADS_DIR, folder), exist_ok=True)
 
-app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
+if settings.REVIEW_DEMO_MODE:
+    app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
+
 
 # Include Routers
 app.include_router(auth.router)

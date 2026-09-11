@@ -13,5 +13,12 @@ export async function adminRequest(path, adminId, options = {}) {
 }
 
 export function fileUrl(path) {
-  return path ? `${API_BASE}/${path.replace(/^\//, '')}` : null
+  if (!path) return null
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
+    return path
+  }
+  if (path.startsWith('uploads/')) {
+    return `${API_BASE}/${path.replace(/^\//, '')}`
+  }
+  return null
 }

@@ -92,6 +92,19 @@ class Settings:
     def SMTP_PORT(self) -> int:
         return int(os.getenv("SMTP_PORT", "587"))
 
+    # --- Supabase Storage Configuration ---
+    @property
+    def SUPABASE_URL(self) -> str:
+        return os.getenv("SUPABASE_URL", "").strip()
+
+    @property
+    def SUPABASE_SERVICE_ROLE_KEY(self) -> str:
+        return os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+
+    @property
+    def SUPABASE_STORAGE_BUCKET(self) -> str:
+        return os.getenv("SUPABASE_STORAGE_BUCKET", "verification-documents").strip()
+
     @property
     def SMTP_USER(self) -> str:
         return (

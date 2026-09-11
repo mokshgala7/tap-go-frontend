@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 
 const STORAGE_KEY = 'tapgo_user'
+const TOKEN_KEY = 'tapgo_token'
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
 
 
@@ -11,7 +12,10 @@ export function resolveFileUrl(filePath) {
   if (filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('data:')) {
     return filePath
   }
-  return `${API_BASE}/${filePath.replace(/^\//, '')}`
+  if (filePath.startsWith('uploads/')) {
+    return `${API_BASE}/${filePath.replace(/^\//, '')}`
+  }
+  return null
 }
 
 function normalizeUser(userData) {
@@ -62,6 +66,9 @@ export function AuthProvider({ children }) {
         const nextUser = normalizeUser(data.user)
         try {
           sessionStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser))
+          if (data.token) {
+            sessionStorage.setItem(TOKEN_KEY, data.token)
+          }
           if (nextUser.account_type === 'admin' || nextUser.role === 'admin') {
             sessionStorage.setItem('tapgo_admin_session', JSON.stringify({ email: nextUser.email, name: nextUser.name || 'Admin', id: nextUser.id }))
           }
@@ -115,9 +122,13 @@ export function AuthProvider({ children }) {
   const saveProfileToDb = async (patch) => {
     if (!user?.id) return { success: false, message: 'User not logged in' }
     try {
+      const token = sessionStorage.getItem(TOKEN_KEY)
+      const headers = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Bearer ${token}`
+
       const res = await fetch(`${API_BASE}/api/auth/profile`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ user_id: user.id, ...patch }),
       })
       const data = await res.json()
@@ -136,9 +147,13 @@ export function AuthProvider({ children }) {
   const requestAdminAccess = async (requestType) => {
     if (!user?.id) return { success: false, message: 'User not logged in' }
     try {
+      const token = sessionStorage.getItem(TOKEN_KEY)
+      const headers = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Bearer ${token}`
+
       const res = await fetch(`${API_BASE}/api/auth/request-admin-access`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ user_id: user.id, request_type: requestType }),
       })
       const data = await res.json()
@@ -157,7 +172,11 @@ export function AuthProvider({ children }) {
   const refreshProfile = async () => {
     if (!user?.id) return null
     try {
-      const res = await fetch(`${API_BASE}/api/auth/profile/${user.id}`)
+      const token = sessionStorage.getItem(TOKEN_KEY)
+      const headers = {}
+      if (token) headers['Authorization'] = `Bearer ${token}`
+
+      const res = await fetch(`${API_BASE}/api/auth/profile/${user.id}`, { headers })
       const data = await res.json()
       if (res.ok && data.success && data.user) {
         const nextUser = normalizeUser(data.user)
@@ -170,7 +189,17 @@ export function AuthProvider({ children }) {
     return user
   }
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      const token = sessionStorage.getItem(TOKEN_KEY)
+      if (token) {
+        await fetch(`${API_BASE}/api/auth/logout`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      }
+    } catch {}
+    
     setUser(null)
     try {
       sessionStorage.clear()
