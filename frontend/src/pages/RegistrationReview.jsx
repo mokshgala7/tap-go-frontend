@@ -121,7 +121,10 @@ function RegistrationReview() {
   }
 
   const editDetails = () => {
-    navigate('/register')
+    try {
+      sessionStorage.setItem('isEditingRegistration', 'true')
+    } catch {}
+    navigate('/register', { state: { mode: 'edit' } })
   }
 
   if (loading) {

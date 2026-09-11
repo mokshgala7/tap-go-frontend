@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from '../../routes/navigation.jsx'
+import { Link, useNavigate, useNavState } from '../../routes/navigation.jsx'
 import '../../styles/AuthPages.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
 
 const patterns = {
-  name: /^[a-zA-Z\s]{3,}$/,
+  name: /^[a-zA-Z\s.'-]+$/,
   email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
   phone: /^[0-9]{10}$/,
   pincode: /^[0-9]{6}$/,
@@ -56,7 +56,7 @@ const fieldLabels = {
 }
 
 const errorText = {
-  name: 'Min 3 characters, letters only.',
+  name: 'Please enter a valid full name.',
   email: 'Enter a valid email.',
   phone: 'Must be exactly 10 digits.',
   address: 'Address is required.',
@@ -186,21 +186,44 @@ function ProgressCheck({ active, hidden, label }) {
 
 function Register() {
   const navigate = useNavigate()
-  const [form, setForm] = useState(initialForm)
+  const navState = useNavState()
+
+  // Determine if returning from review to edit details
+  const isEditMode = Boolean(
+    (navState && navState.mode === 'edit') ||
+    (typeof window !== 'undefined' && sessionStorage.getItem('isEditingRegistration') === 'true')
+  )
+
+  const reviewBackup = useMemo(() => {
+    if (!isEditMode) return null
+    try {
+      const raw = sessionStorage.getItem('registrationReviewData')
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  }, [isEditMode])
+
+  const [form, setForm] = useState(() => {
+    if (reviewBackup?.form) {
+      return { ...initialForm, ...reviewBackup.form }
+    }
+    return initialForm
+  })
   const [touched, setTouched] = useState({})
-  const [profilePhoto, setProfilePhoto] = useState(null)   // Face photo — shown in live preview
-  const [files, setFiles] = useState({ rc: null, dlUpload: null, insurance: null, idDoc: null })
-  const [signature, setSignature] = useState(null)
+  const [profilePhoto, setProfilePhoto] = useState(() => reviewBackup?.profilePhoto || null)
+  const [files, setFiles] = useState(() => reviewBackup?.files || { rc: null, dlUpload: null, insurance: null, idDoc: null })
+  const [signature, setSignature] = useState(() => reviewBackup?.signature || null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [otpVerified, setOtpVerified] = useState(false)  // True once OTP is verified on-the-spot
+  const [otpVerified, setOtpVerified] = useState(() => Boolean(reviewBackup?.otpVerified))
   const [otpSending, setOtpSending] = useState(false)
-  const [otpMessage, setOtpMessage] = useState('')       // Status message for OTP
+  const [otpMessage, setOtpMessage] = useState(() => (reviewBackup?.otpVerified ? '✓ Email verified!' : ''))
   const [otpVerifying, setOtpVerifying] = useState(false)
-  const [otpCooldown, setOtpCooldown] = useState(0)      // 60-second resend cooldown
-  const [legalModal, setLegalModal] = useState(null)     // null | 'terms' | 'privacy' | 'esign'
+  const [otpCooldown, setOtpCooldown] = useState(0)
+  const [legalModal, setLegalModal] = useState(null)
   const canvasRef = useRef(null)
-  const [sessionId] = useState(() => Math.floor(100000 + Math.random() * 900000))
+  const [sessionId] = useState(() => reviewBackup?.sessionId || Math.floor(100000 + Math.random() * 900000))
   const [sessionTime] = useState(() => {
     const now = new Date()
     return `SECURE SESSION • ${now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • ${now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
@@ -215,12 +238,15 @@ function Register() {
     return () => window.clearInterval(interval)
   }, [otpCooldown])
 
-  // Clean up any stale registration review data on mount to ensure fresh state
+  // For fresh registrations (not editing an existing review session), ensure storage is clean
   useEffect(() => {
-    try {
-      sessionStorage.removeItem('registrationReviewData')
-    } catch {}
-  }, [])
+    if (!isEditMode) {
+      try {
+        sessionStorage.removeItem('registrationReviewData')
+        sessionStorage.removeItem('isEditingRegistration')
+      } catch {}
+    }
+  }, [isEditMode])
 
   const passwordStrength = useMemo(() => {
     let strength = 0
@@ -233,7 +259,7 @@ function Register() {
 
   const valid = useMemo(
     () => ({
-      name: patterns.name.test(form.name.trim()),
+      name: form.name.trim().length > 0 && patterns.name.test(form.name.trim()) && /[a-zA-Z]/.test(form.name.trim()),
       email: patterns.email.test(form.email.trim()),
       phone: patterns.phone.test(form.phone),
       address: form.address.trim().length > 0,
@@ -327,8 +353,8 @@ function Register() {
     if (['pan', 'vehicleReg', 'dl'].includes(name)) nextValue = value.toUpperCase()
     setForm((current) => ({ ...current, [name]: nextValue }))
 
-    // If email changes, reset OTP verification
-    if (name === 'email') {
+    // If email changes, reset OTP verification only if different from previously verified email
+    if (name === 'email' && value !== reviewBackup?.form?.email) {
       setOtpVerified(false)
       setOtpMessage('')
     }
@@ -467,6 +493,7 @@ function Register() {
           files,
           sessionId,
           isDriver,
+          otpVerified,
         }),
       )
       navigate('/registration-review')
