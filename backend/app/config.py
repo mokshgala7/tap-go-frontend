@@ -55,9 +55,38 @@ class Settings:
     def ALLOWED_ORIGINS(self) -> list[str]:
         return os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 
+    # --- Amazon SES Configuration (HTTPS API via boto3) ---
+    @property
+    def AWS_ACCESS_KEY_ID(self) -> str:
+        return os.getenv("AWS_ACCESS_KEY_ID", "").strip()
+
+    @property
+    def AWS_SECRET_ACCESS_KEY(self) -> str:
+        return os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
+
+    @property
+    def AWS_REGION(self) -> str:
+        return os.getenv("AWS_REGION", "ap-south-1").strip()
+
+    @property
+    def SES_FROM_EMAIL(self) -> str:
+        raw = (os.getenv("SES_FROM_EMAIL") or os.getenv("AWS_SES_FROM_EMAIL") or "tapandgosupport@gmail.com").strip()
+        if "<" in raw:
+            return raw
+        return f"Tap & Go <{raw}>"
+
+    @property
+    def SES_SENDER_EMAIL(self) -> str:
+        raw = (os.getenv("SES_FROM_EMAIL") or os.getenv("AWS_SES_FROM_EMAIL") or "tapandgosupport@gmail.com").strip()
+        if "<" in raw and ">" in raw:
+            return raw.split("<")[1].split(">")[0].strip()
+        return raw
+
+    # --- Legacy SMTP settings (retained for backward compatibility, not used for email delivery) ---
     @property
     def SMTP_HOST(self) -> str:
         return os.getenv("SMTP_HOST", "smtp.gmail.com")
+
 
     @property
     def SMTP_PORT(self) -> int:

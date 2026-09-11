@@ -75,7 +75,7 @@ def save_uploaded_file(file: UploadFile, folder: str, allowed_extensions=None) -
 @router.post("/send-otp")
 async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     """
-    Generate a 6-digit OTP and send it via Gmail SMTP for account registration.
+    Generate a 6-digit OTP and send it via Amazon SES for account registration.
     - 5-minute expiration
     - 60-second resend cooldown
     - Server-side storage in email_otps
@@ -122,7 +122,7 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     db.add(new_otp)
     db.commit()
 
-    # Deliver via real Gmail SMTP
+    # Deliver via real Amazon SES
     success = send_registration_otp(clean_email, otp, request.account_type)
     if not success:
         # Rollback so user can retry cleanly
@@ -218,7 +218,7 @@ class ForgotPasswordRequest(BaseModel):
 @router.post("/forgot-password-otp")
 async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """
-    Generate and send OTP for forgot password flow via Gmail SMTP.
+    Generate and send OTP for forgot password flow via Amazon SES.
     - 5-minute expiration
     - 60-second cooldown
     - Purpose distinct from registration

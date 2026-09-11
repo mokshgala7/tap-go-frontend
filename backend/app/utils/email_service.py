@@ -1,15 +1,40 @@
-import smtplib
+import re
 import logging
+import threading
 from datetime import datetime
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from typing import Optional
+
+import boto3
+from botocore.exceptions import ClientError, BotoCoreError
 
 from app.config import settings
 from app.database import SessionLocal
 from app.models import EmailLog
 
 logger = logging.getLogger(__name__)
+
+_last_email_error = threading.local()
+
+
+def get_last_email_error() -> Optional[str]:
+    """Retrieves the last diagnostic error message from the most recent email dispatch."""
+    return getattr(_last_email_error, "value", None)
+
+
+def _set_last_email_error(err: Optional[str]) -> None:
+    _last_email_error.value = err
+
+
+def _sanitize_error_message(err: Optional[str]) -> str:
+    """Removes any sensitive tokens or AWS secrets from error logs and diagnostic messages."""
+    if not err:
+        return ""
+    sanitized = str(err)
+    if settings.AWS_SECRET_ACCESS_KEY:
+        sanitized = sanitized.replace(settings.AWS_SECRET_ACCESS_KEY, "[REDACTED_SECRET]")
+    if settings.AWS_ACCESS_KEY_ID:
+        sanitized = sanitized.replace(settings.AWS_ACCESS_KEY_ID, "[REDACTED_KEY_ID]")
+    return sanitized
 
 
 def log_email_delivery(
@@ -21,13 +46,14 @@ def log_email_delivery(
 ) -> None:
     """Safely log email delivery attempt to database without failing the caller or storing secrets."""
     try:
+        clean_error = _sanitize_error_message(error_message) if error_message else None
         with SessionLocal() as db:
             log_entry = EmailLog(
                 email_type=email_type,
                 recipient=recipient,
                 reference=reference,
                 status=status,
-                error_message=error_message[:500] if error_message else None,
+                error_message=clean_error[:500] if clean_error else None,
             )
             db.add(log_entry)
             db.commit()
@@ -35,125 +61,79 @@ def log_email_delivery(
         logger.warning(f"[EmailLog] Could not record email log: {e}")
 
 
-import socket
-import threading
-_last_email_error = threading.local()
-
-def get_last_email_error() -> Optional[str]:
-    """Retrieves the last diagnostic error message from the most recent email dispatch."""
-    return getattr(_last_email_error, "value", None)
-
-def _set_last_email_error(err: Optional[str]) -> None:
-    _last_email_error.value = err
-
-
-def _create_ipv4_socket(host: str, port: int, timeout: float = 6.0) -> socket.socket:
-    """Forces IPv4 socket resolution to prevent [Errno 101] Network is unreachable on Render/cloud containers."""
-    last_exc = None
-    for res in socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM):
-        af, socktype, proto, canonname, sa = res
-        sock = None
-        try:
-            sock = socket.socket(af, socktype, proto)
-            sock.settimeout(timeout)
-            sock.connect(sa)
-            return sock
-        except OSError as e:
-            last_exc = e
-            if sock:
-                sock.close()
-    raise OSError(f"Could not establish IPv4 connection to {host}:{port}: {last_exc}")
+def _get_ses_client():
+    """Initializes and returns an Amazon SES client using HTTPS."""
+    client_kwargs = {
+        "region_name": settings.AWS_REGION or "ap-south-1"
+    }
+    if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
+        client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
+        client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
+    return boto3.client("ses", **client_kwargs)
 
 
-class IPv4SMTP(smtplib.SMTP):
-    """SMTP client that strictly binds to IPv4 to prevent unreachable IPv6 route errors on cloud hosts."""
-    def _get_socket(self, host, port, timeout):
-        return _create_ipv4_socket(host, port, timeout or 6.0)
+def _strip_html(html: str) -> str:
+    """Generates clean plain text alternative from HTML for email clients."""
+    clean = re.sub(r'<style.*?</style>', '', html, flags=re.DOTALL)
+    clean = re.sub(r'<[^<]+?>', '', clean)
+    return re.sub(r'\n\s*\n', '\n\n', clean).strip()
 
 
-class IPv4SMTP_SSL(smtplib.SMTP_SSL):
-    def _get_socket(self, host, port, timeout):
-        raw_sock = _create_ipv4_socket(host, port, timeout or 6.0)
-        return self.context.wrap_socket(raw_sock, server_hostname=self._host)
-
-
-def _send_smtp_email(to_email: str, subject: str, html_content: str) -> tuple[bool, Optional[str]]:
+def _send_ses_email(to_email: str, subject: str, html_content: str) -> tuple[bool, Optional[str]]:
     """
-    Sends an HTML email using Gmail SMTP via IPv4.
-    Tries configured port (587 STARTTLS) and automatically falls back to port 465 (SSL)
-    if cloud firewall blocks or times out on port 587.
-    Also handles Google App Passwords with or without spaces.
+    Sends an HTML email using Amazon SES via HTTPS (boto3).
     Never raises uncaught exceptions.
     Returns (success: bool, error_message: Optional[str]).
     """
-    if not settings.SMTP_HOST:
-        return False, "SMTP_HOST is not configured"
-    if not settings.SMTP_USER:
-        return False, "SMTP_USER is not configured"
-    if not settings.SMTP_PASSWORD:
-        return False, "SMTP_PASSWORD is missing in environment variables"
+    if not settings.AWS_ACCESS_KEY_ID:
+        return False, "AWS_ACCESS_KEY_ID is missing in configuration"
+    if not settings.AWS_SECRET_ACCESS_KEY:
+        return False, "AWS_SECRET_ACCESS_KEY is missing in configuration"
+
+    sender = settings.SES_FROM_EMAIL or "Tap & Go <tapandgosupport@gmail.com>"
+    plain_text = _strip_html(html_content)
 
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = settings.SMTP_FROM_EMAIL
-        msg["To"] = to_email
-
-        part = MIMEText(html_content, "html", "utf-8")
-        msg.attach(part)
-    except Exception as prep_err:
-        return False, f"Failed to prepare MIME email: {prep_err}"
-
-    clean_pw = settings.SMTP_PASSWORD.strip()
-    passwords_to_try = [clean_pw]
-    if " " in clean_pw:
-        passwords_to_try.append(clean_pw.replace(" ", ""))
-
-    # Try configured port first (default 587 STARTTLS), then fallback to port 465 (SSL)
-    ports_to_try = [(settings.SMTP_PORT, settings.SMTP_PORT == 465)]
-    if settings.SMTP_PORT != 465:
-        ports_to_try.append((465, True))
-
-    last_err = None
-    collected_errors = []
-    for port, is_ssl in ports_to_try:
-        try:
-            if is_ssl:
-                server = IPv4SMTP_SSL(settings.SMTP_HOST, port, timeout=6)
-            else:
-                server = IPv4SMTP(settings.SMTP_HOST, port, timeout=6)
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-
-            with server:
-                authenticated = False
-                for pw in passwords_to_try:
-                    try:
-                        server.login(settings.SMTP_USER, pw)
-                        authenticated = True
-                        break
-                    except smtplib.SMTPAuthenticationError as auth_err:
-                        last_err = f"SMTP auth failed for {settings.SMTP_USER}: {auth_err}"
-                        collected_errors.append(last_err)
-                if not authenticated:
-                    continue
-
-                server.send_message(msg)
-                logger.info(f"[Email] Successfully delivered email to {to_email} via {settings.SMTP_HOST}:{port}")
-                return True, None
-        except Exception as ex:
-            err_msg = f"Port {port}: {type(ex).__name__} ({ex})"
-            collected_errors.append(err_msg)
-            last_err = err_msg
-            logger.warning(f"[Email] Attempt on port {port} failed: {err_msg}")
-
-    combined = "; ".join(collected_errors) if collected_errors else (last_err or "SMTP delivery failed on all attempted ports")
-    if "timed out" in combined.lower() or "timeout" in combined.lower():
-        combined += " [Render Free Tier blocks outbound SMTP ports 25, 465, and 587. Upgrade Render web service to Starter to unblock direct SMTP.]"
-
-    return False, combined
-
+        client = _get_ses_client()
+        response = client.send_email(
+            Source=sender,
+            Destination={
+                "ToAddresses": [to_email],
+            },
+            Message={
+                "Subject": {
+                    "Data": subject,
+                    "Charset": "UTF-8",
+                },
+                "Body": {
+                    "Html": {
+                        "Data": html_content,
+                        "Charset": "UTF-8",
+                    },
+                    "Text": {
+                        "Data": plain_text,
+                        "Charset": "UTF-8",
+                    },
+                },
+            },
+        )
+        message_id = response.get("MessageId", "unknown")
+        logger.info(f"[Email] Successfully delivered email to {to_email} via Amazon SES (MessageId: {message_id})")
+        return True, None
+    except ClientError as ce:
+        err_code = ce.response.get("Error", {}).get("Code", "SESClientError")
+        err_msg = ce.response.get("Error", {}).get("Message", str(ce))
+        safe_err = _sanitize_error_message(f"SES [{err_code}]: {err_msg}")
+        logger.warning(f"[Email] Amazon SES client error sending to {to_email}: {safe_err}")
+        return False, safe_err
+    except BotoCoreError as be:
+        safe_err = _sanitize_error_message(f"SES BotoCoreError: {str(be)}")
+        logger.warning(f"[Email] Amazon SES core error sending to {to_email}: {safe_err}")
+        return False, safe_err
+    except Exception as ex:
+        safe_err = _sanitize_error_message(f"SES Unexpected error: {type(ex).__name__} ({str(ex)})")
+        logger.error(f"[Email] Exception during Amazon SES delivery to {to_email}: {safe_err}")
+        return False, safe_err
 
 def send_email(
     to_email: str,
@@ -164,16 +144,16 @@ def send_email(
 ) -> bool:
     """
     Central email delivery dispatcher.
-    Sends email via Gmail SMTP and records delivery status in email_logs.
+    Sends email via Amazon SES HTTPS API and records delivery status in email_logs.
     """
     _set_last_email_error(None)
     success = False
     err_msg = None
     try:
-        success, err_msg = _send_smtp_email(to_email, subject, html_content)
+        success, err_msg = _send_ses_email(to_email, subject, html_content)
     except Exception as e:
-        logger.error(f"[Email] Exception during SMTP delivery to {to_email}: {e}")
-        err_msg = f"{type(e).__name__}: {str(e)}"
+        logger.error(f"[Email] Exception during Amazon SES delivery to {to_email}: {e}")
+        err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
         success = False
 
     if not success:
@@ -185,12 +165,13 @@ def send_email(
             recipient=to_email,
             reference=reference,
             status="SENT" if success else "FAILED",
-            error_message=None if success else (err_msg or "SMTP delivery failed"),
+            error_message=None if success else (err_msg or "SES delivery failed"),
         )
     except Exception as log_err:
         logger.error(f"[Email] Failed to record delivery log: {log_err}")
 
     return success
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────

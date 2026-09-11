@@ -197,7 +197,7 @@ def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
 @router.post("/withdraw/request-otp")
 def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_db)):
     """
-    Generates and emails a single-use OTP for withdrawal confirmation via Gmail SMTP.
+    Generates and emails a single-use OTP for withdrawal confirmation via Amazon SES.
     - 5-minute expiration
     - 60-second cooldown
     - Purpose distinct from registration and password reset
@@ -264,7 +264,7 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
     db.add(new_otp)
     db.commit()
 
-    # Deliver via real Gmail SMTP
+    # Deliver via real Amazon SES
     email_sent = send_withdrawal_otp(to_email=user.email, otp=otp_code, amount=data.amount)
 
     dest_str = f"Bank Account (ending in {user.bank_account_number.strip()[-4:]})" if user.bank_account_number else f"UPI ID ({user.bank_upi_id})"
