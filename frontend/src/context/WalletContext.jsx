@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
 import { useAuth } from './AuthContext.jsx'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.onrender.com'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
 
 const WalletContext = createContext(null)
 

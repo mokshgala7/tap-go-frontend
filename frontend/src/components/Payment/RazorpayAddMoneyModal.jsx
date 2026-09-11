@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.onrender.com'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
 
 function loadRazorpayScript() {
   return new Promise((resolve) => {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.onrender.com'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
 
 export function WithdrawModal({ user, balance, onClose, onSuccess }) {
   const [step, setStep] = useState(1) // 1: Enter amount & request OTP, 2: Enter OTP & confirm

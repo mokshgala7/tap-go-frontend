@@ -7,7 +7,7 @@ import illustration from '../assets/images/login-fintech-taxi.svg'
 import logo from '../assets/images/logio.png'
 import '../styles/Login.css'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.onrender.com'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
 
 const trustBadges = ['🔒 Secure Login', '🛡 AI Powered', '🚖 Trusted by Taxi Drivers']
 

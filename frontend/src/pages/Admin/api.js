@@ -1,4 +1,4 @@
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://tap-go-backend.onrender.com'
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
 
 
 export async function adminRequest(path, adminId, options = {}) {
