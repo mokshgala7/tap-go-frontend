@@ -18,8 +18,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import (
-    ActivityLog, Admin, EditRequest, FraudAlert, ProjectSetting, Transaction,
-    User, UserDocument, Wallet,
+    ActivityLog, Admin, EditRequest, FraudAlert, ProjectSetting, SupportTicket,
+    Transaction, User, UserDocument, Wallet, WithdrawalRequest,
 )
 from app.utils.security import hash_password, verify_password
 from app.utils.storage_service import get_signed_url
@@ -215,6 +215,8 @@ def dashboard(admin: Admin = Depends(current_admin), db: Session = Depends(get_d
         "revenue": float(revenue),
         "fraud_alerts": db.query(func.count(FraudAlert.id)).filter(FraudAlert.status == "open").scalar() or 0,
         "pending_edit_requests": db.query(func.count(EditRequest.id)).filter(EditRequest.status == "pending").scalar() or 0,
+        "pending_withdrawal_requests": db.query(func.count(WithdrawalRequest.id)).filter(WithdrawalRequest.status == "pending").scalar() or 0,
+        "open_support_tickets": db.query(func.count(SupportTicket.id)).filter(SupportTicket.status.in_(["open", "in_progress"])).scalar() or 0,
     }
 
 
@@ -451,3 +453,233 @@ def update_setting(key: str, payload: SettingUpdate, admin: Admin = Depends(curr
     log(db, admin, "update", "setting", None, key)
     db.commit()
     return {"key": setting.key, "value": setting.value}
+
+
+# ── Withdrawal Request Admin Routes ──────────────────────────────────────────
+
+from app.utils.email_service import (
+    send_withdrawal_approved_email,
+    send_withdrawal_paid_email,
+    send_withdrawal_rejected_email,
+)
+
+
+class WithdrawalRejectRequest(BaseModel):
+    admin_note: Optional[str] = None
+
+
+def wr_to_dict(wr: WithdrawalRequest) -> dict:
+    return {
+        "id": wr.id,
+        "user_id": wr.user_id,
+        "wallet_id": wr.wallet_id,
+        "hold_transaction_id": wr.hold_transaction_id,
+        "amount": float(wr.amount),
+        "destination_desc": wr.destination_desc,
+        "reference": wr.reference,
+        "status": wr.status,
+        "admin_note": wr.admin_note,
+        "reviewed_at": wr.reviewed_at.isoformat() if wr.reviewed_at else None,
+        "paid_at": wr.paid_at.isoformat() if wr.paid_at else None,
+        "created_at": wr.created_at.isoformat() if wr.created_at else None,
+    }
+
+
+@router.get("/withdrawal-requests")
+def list_withdrawal_requests(
+    status: Optional[str] = Query(default=None),
+    page: int = 1,
+    page_size: int = 20,
+    admin: Admin = Depends(current_admin),
+    db: Session = Depends(get_db),
+):
+    """List all withdrawal requests, filterable by status."""
+    query = db.query(WithdrawalRequest)
+    if status:
+        query = query.filter(WithdrawalRequest.status == status)
+    total = query.count()
+    items = query.order_by(WithdrawalRequest.created_at.desc()).offset(
+        (max(page, 1) - 1) * min(page_size, 100)
+    ).limit(min(page_size, 100)).all()
+    return {
+        "items": [wr_to_dict(w) for w in items],
+        "total": total,
+        "page": page,
+        "page_size": min(page_size, 100),
+    }
+
+
+@router.patch("/withdrawal-requests/{request_id}/approve")
+def approve_withdrawal(
+    request_id: int,
+    admin: Admin = Depends(current_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Approve a pending withdrawal request.
+    Balance is already reserved (deducted); approval moves status to approved.
+    Idempotent: if already approved/paid, returns current state.
+    """
+    wr = db.get(WithdrawalRequest, request_id)
+    if not wr:
+        raise HTTPException(status_code=404, detail="Withdrawal request not found.")
+    if wr.status != "pending":
+        return {"success": True, "message": f"Request is already in status '{wr.status}'.", "withdrawal_request": wr_to_dict(wr)}
+
+    wr.status = "approved"
+    wr.admin_id = admin.id
+    wr.reviewed_at = datetime.utcnow()
+
+    # Update hold transaction status to approved
+    if wr.hold_transaction_id:
+        hold_txn = db.get(Transaction, wr.hold_transaction_id)
+        if hold_txn:
+            hold_txn.status = "approved"
+
+    log(db, admin, "approve", "withdrawal_request", wr.id, f"Approved withdrawal #{wr.reference} for user {wr.user_id}")
+    db.commit()
+    db.refresh(wr)
+
+    user = db.get(User, wr.user_id)
+    if user:
+        try:
+            send_withdrawal_approved_email(
+                to_email=user.email,
+                user_name=user.name,
+                amount=float(wr.amount),
+                reference=wr.reference,
+            )
+        except Exception:
+            pass
+
+    return {"success": True, "withdrawal_request": wr_to_dict(wr)}
+
+
+@router.patch("/withdrawal-requests/{request_id}/pay")
+def mark_withdrawal_paid(
+    request_id: int,
+    admin: Admin = Depends(current_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Mark an approved withdrawal as paid out.
+    Status must be 'approved'. Idempotent: if already paid, returns current state.
+    No balance change — balance was reserved at submission, no double-deduction.
+    """
+    wr = db.get(WithdrawalRequest, request_id)
+    if not wr:
+        raise HTTPException(status_code=404, detail="Withdrawal request not found.")
+    if wr.status == "paid":
+        return {"success": True, "message": "Request is already marked as paid.", "withdrawal_request": wr_to_dict(wr)}
+    if wr.status != "approved":
+        raise HTTPException(status_code=400, detail=f"Cannot mark as paid from status '{wr.status}'. Must be 'approved' first.")
+
+    wr.status = "paid"
+    wr.paid_at = datetime.utcnow()
+
+    # Mark hold transaction as completed
+    if wr.hold_transaction_id:
+        hold_txn = db.get(Transaction, wr.hold_transaction_id)
+        if hold_txn:
+            hold_txn.status = "completed"
+            hold_txn.transaction_type = "withdrawal"
+
+    log(db, admin, "pay", "withdrawal_request", wr.id, f"Marked withdrawal #{wr.reference} as paid for user {wr.user_id}")
+    db.commit()
+    db.refresh(wr)
+
+    user = db.get(User, wr.user_id)
+    if user:
+        try:
+            send_withdrawal_paid_email(
+                to_email=user.email,
+                user_name=user.name,
+                amount=float(wr.amount),
+                reference=wr.reference,
+            )
+        except Exception:
+            pass
+
+    return {"success": True, "withdrawal_request": wr_to_dict(wr)}
+
+
+@router.patch("/withdrawal-requests/{request_id}/reject")
+def reject_withdrawal(
+    request_id: int,
+    payload: WithdrawalRejectRequest,
+    admin: Admin = Depends(current_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Reject a pending withdrawal request.
+    Atomically reverses the reserved balance back to the user's wallet.
+    Idempotent: if already rejected, returns current state.
+    Uses with_for_update() for concurrency safety.
+    Creates a withdrawal_reversal transaction for audit trail.
+    """
+    wr = db.get(WithdrawalRequest, request_id)
+    if not wr:
+        raise HTTPException(status_code=404, detail="Withdrawal request not found.")
+    if wr.status == "rejected":
+        return {"success": True, "message": "Request is already rejected.", "withdrawal_request": wr_to_dict(wr)}
+    if wr.status != "pending":
+        raise HTTPException(status_code=400, detail=f"Cannot reject from status '{wr.status}'. Only 'pending' requests can be rejected.")
+
+    # Atomically reverse the reserved balance (with row-level lock)
+    wallet = db.query(Wallet).filter(
+        Wallet.id == wr.wallet_id
+    ).with_for_update().first()
+    if not wallet:
+        raise HTTPException(status_code=500, detail="Wallet not found for this withdrawal request.")
+
+    reversal_amount = wr.amount
+    wallet.balance += reversal_amount
+
+    # Update hold transaction to cancelled
+    if wr.hold_transaction_id:
+        hold_txn = db.get(Transaction, wr.hold_transaction_id)
+        if hold_txn:
+            hold_txn.status = "cancelled"
+
+    # Create reversal transaction for audit trail
+    reversal_ref = f"REV-{wr.reference}"
+    user = db.get(User, wr.user_id)
+    reversal_txn = Transaction(
+        reference=reversal_ref,
+        passenger_id=wr.user_id if user and user.account_type == "passenger" else None,
+        driver_id=wr.user_id if user and user.account_type == "driver" else None,
+        wallet_id=wallet.id,
+        amount=reversal_amount,
+        payment_method="bank_transfer",
+        status="completed",
+        otp_verified=True,
+        fraud_status="clear",
+        transaction_type="withdrawal_reversal",
+        description=f"Reversal of rejected withdrawal {wr.reference}",
+        balance_after=wallet.balance,
+    )
+    db.add(reversal_txn)
+
+    wr.status = "rejected"
+    wr.admin_id = admin.id
+    wr.admin_note = payload.admin_note.strip() if payload.admin_note else None
+    wr.reviewed_at = datetime.utcnow()
+
+    log(db, admin, "reject", "withdrawal_request", wr.id,
+        f"Rejected withdrawal #{wr.reference} for user {wr.user_id}. Balance restored.")
+    db.commit()
+    db.refresh(wr)
+
+    if user:
+        try:
+            send_withdrawal_rejected_email(
+                to_email=user.email,
+                user_name=user.name,
+                amount=float(wr.amount),
+                reference=wr.reference,
+                admin_note=payload.admin_note,
+            )
+        except Exception:
+            pass
+
+    return {"success": True, "withdrawal_request": wr_to_dict(wr)}

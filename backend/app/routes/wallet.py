@@ -9,14 +9,18 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Transaction, User, Wallet, EmailOTP
+from app.models import Transaction, User, Wallet, EmailOTP, WithdrawalRequest
 from app.utils.email_service import (
     send_withdrawal_otp,
     send_withdrawal_email,
     send_ride_passenger_email,
     send_ride_driver_email,
+    send_withdrawal_approved_email,
+    send_withdrawal_paid_email,
+    send_withdrawal_rejected_email,
 )
 from app.utils.security import get_elapsed_seconds, is_otp_expired
+from app.routes.auth import get_current_user
 from sqlalchemy import func
 import logging
 
@@ -281,17 +285,24 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
 def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
     """
     Submits a withdrawal request using server-side Email OTP verification.
-    Deducts balance atomically and records a pending/processing transaction.
+    Atomically reserves (deducts) the balance and creates a WithdrawalRequest
+    (status=pending). The balance stays deducted until admin approves/rejects.
+    Prevents concurrent double-spending via with_for_update() row locking.
+    Idempotency: duplicate idempotency_key returns the existing request.
     Notification email sent post-commit; email failure never rolls back the transaction.
     """
     if data.idempotency_key:
-        existing = db.query(Transaction).filter(Transaction.idempotency_key == data.idempotency_key).first()
-        if existing:
+        existing_wr = db.query(WithdrawalRequest).filter(
+            WithdrawalRequest.idempotency_key == data.idempotency_key
+        ).first()
+        if existing_wr:
             wallet = get_or_create_wallet(data.user_id, db)
             return {
                 "success": True,
-                "message": f"Successfully submitted withdrawal of ₹{data.amount:.2f}.",
+                "message": "Withdrawal request already submitted. Awaiting admin review.",
                 "wallet": wallet_to_dict(wallet),
+                "request_id": existing_wr.id,
+                "request_status": existing_wr.status,
             }
 
     if data.amount <= 0:
@@ -346,7 +357,8 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
     # Single-use OTP: delete after successful verification
     db.delete(db_otp)
 
-    # Lock wallet row exclusively during balance deduction
+    # ── Atomic Balance Reservation (with row-level lock) ──────────────────────
+    # Lock wallet row exclusively to prevent concurrent double-spending
     wallet = get_or_create_wallet(data.user_id, db, for_update=True)
     if wallet.is_frozen:
         raise HTTPException(status_code=400, detail="Your wallet is frozen. Withdrawals are disabled.")
@@ -358,14 +370,15 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
             detail=f"Insufficient wallet balance. Available balance is ₹{float(wallet.balance):.2f}."
         )
 
-    # Atomic reduction
+    # Deduct balance atomically (reservation/hold)
     wallet.balance -= withdraw_dec
 
     dest_desc = f"Bank Account (XXXX XXXX {user.bank_account_number.strip()[-4:]})" if has_bank else f"UPI ID ({user.bank_upi_id})"
     ref_code = f"WD-{uuid.uuid4().hex[:10].upper()}"
-    desc = f"₹{data.amount:.2f} withdrawal requested to {dest_desc}"
+    desc = f"₹{data.amount:.2f} withdrawal hold — pending admin approval to {dest_desc}"
 
-    txn = Transaction(
+    # Record withdrawal_hold transaction (status=pending, not completed)
+    hold_txn = Transaction(
         reference=ref_code,
         passenger_id=user.id if user.account_type == "passenger" else None,
         driver_id=user.id if user.account_type == "driver" else None,
@@ -375,17 +388,33 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
         status="pending",
         otp_verified=True,
         fraud_status="clear",
-        transaction_type="withdrawal",
+        transaction_type="withdrawal_hold",
         description=desc,
         balance_after=wallet.balance,
         idempotency_key=data.idempotency_key,
     )
-    db.add(txn)
+    db.add(hold_txn)
+    db.flush()  # get hold_txn.id without committing
+
+    # Create WithdrawalRequest record
+    wr = WithdrawalRequest(
+        user_id=user.id,
+        wallet_id=wallet.id,
+        hold_transaction_id=hold_txn.id,
+        amount=withdraw_dec,
+        destination_desc=dest_desc,
+        reference=ref_code,
+        otp_verified=True,
+        status="pending",
+        idempotency_key=data.idempotency_key,
+    )
+    db.add(wr)
     db.commit()
     db.refresh(wallet)
-    db.refresh(txn)
+    db.refresh(hold_txn)
+    db.refresh(wr)
 
-    # Safely dispatch withdrawal notification email (never roll back transaction on failure)
+    # Post-commit notification (never rolls back the transaction)
     try:
         send_withdrawal_email(
             to_email=user.email,
@@ -393,16 +422,46 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
             amount=data.amount,
             reference=ref_code,
             destination=dest_desc,
-            status="Pending Processing",
+            status="Pending Admin Review",
         )
     except Exception as e:
         logger.warning(f"[WithdrawalEmail] Notification delivery failed: {e}")
 
     return {
         "success": True,
-        "message": f"Withdrawal request of ₹{data.amount:.2f} submitted to {dest_desc}. Status: Pending processing.",
+        "message": f"Withdrawal request of ₹{data.amount:.2f} submitted and is pending admin review. Your balance has been reserved.",
         "wallet": wallet_to_dict(wallet),
+        "request_id": wr.id,
+        "request_status": wr.status,
     }
+@router.get("/withdraw/history")
+def get_withdrawal_history(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Returns the authenticated user's withdrawal request history.
+    User identity is derived from JWT — no user_id parameter accepted.
+    """
+    requests = db.query(WithdrawalRequest).filter(
+        WithdrawalRequest.user_id == current_user.id
+    ).order_by(WithdrawalRequest.created_at.desc()).all()
+
+    return {
+        "success": True,
+        "withdrawal_requests": [
+            {
+                "id": wr.id,
+                "reference": wr.reference,
+                "amount": float(wr.amount),
+                "destination_desc": wr.destination_desc,
+                "status": wr.status,
+                "admin_note": wr.admin_note,
+                "created_at": wr.created_at.isoformat() if wr.created_at else None,
+                "reviewed_at": wr.reviewed_at.isoformat() if wr.reviewed_at else None,
+                "paid_at": wr.paid_at.isoformat() if wr.paid_at else None,
+            }
+            for wr in requests
+        ]
+    }
+
 
 
 @router.post("/pay")

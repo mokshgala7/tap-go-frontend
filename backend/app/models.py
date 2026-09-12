@@ -257,3 +257,65 @@ class UserSession(Base):
     expires_at = Column(DateTime, nullable=False)
     revoked_at = Column(DateTime, nullable=True)
 
+
+class SupportTicket(Base):
+    __tablename__ = "support_tickets"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    email = Column(String(120), nullable=False)
+    phone = Column(String(20), nullable=False)
+    category = Column(String(50), nullable=False, default="other")  # billing, technical, nfc_card, account, other
+    priority = Column(String(20), nullable=False, default="medium")  # low, medium, high, urgent
+    subject = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    status = Column(String(30), nullable=False, default="open", index=True)  # open, in_progress, resolved, closed
+    admin_reply = Column(Text, nullable=True)
+    replied_by = Column(Integer, ForeignKey("admins.id"), nullable=True)
+    replied_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class NFCCard(Base):
+    __tablename__ = "nfc_cards"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    card_reference = Column(String(64), nullable=False, unique=True, index=True)
+    card_type = Column(String(50), nullable=False, default="standard_nfc")
+    status = Column(String(20), nullable=False, default="active", index=True)  # active, blocked, lost, replaced
+    blocked_reason = Column(Text, nullable=True)
+    block_requested_at = Column(DateTime, nullable=True)
+    # FK to the nfc_card_orders record that originally issued this card (optional)
+    nfc_order_id = Column(Integer, ForeignKey("nfc_card_orders.id"), nullable=True)
+    # FK to the replacement nfc_card_orders record (set when status→replaced)
+    replacement_order_id = Column(Integer, ForeignKey("nfc_card_orders.id"), nullable=True)
+    issued_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class WithdrawalRequest(Base):
+    __tablename__ = "withdrawal_requests"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    wallet_id = Column(Integer, ForeignKey("wallets.id"), nullable=False)
+    # The transaction that represents the held/reserved balance deduction
+    hold_transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+    amount = Column(Numeric(12, 2), nullable=False)
+    destination_desc = Column(Text, nullable=False)
+    reference = Column(String(64), nullable=False, unique=True, index=True)
+    otp_verified = Column(Boolean, nullable=False, default=True)
+    # pending → approved → paid | pending → rejected | paid → refunded
+    status = Column(String(20), nullable=False, default="pending", index=True)
+    admin_id = Column(Integer, ForeignKey("admins.id"), nullable=True)
+    admin_note = Column(Text, nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    paid_at = Column(DateTime, nullable=True)
+    idempotency_key = Column(String(128), nullable=True, unique=True, index=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+

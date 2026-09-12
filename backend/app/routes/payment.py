@@ -1,15 +1,21 @@
 from decimal import Decimal
 import uuid
+import json
+import random
 import logging
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, Header, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.database import get_db
-from app.models import Transaction, User, Wallet
+from app.models import Transaction, User, Wallet, EmailOTP
 from app.services.payment.razorpay_service import razorpay_service
-from app.utils.email_service import send_wallet_topup_email
+from app.utils.email_service import send_wallet_topup_email, send_topup_otp
+from app.utils.security import get_elapsed_seconds, is_otp_expired
+from app.routes.auth import get_current_user
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -19,8 +25,12 @@ debug_router = APIRouter(tags=["Debug"])
 
 
 class CreateOrderRequest(BaseModel):
-    user_id: int
-    amount: float  # Amount in INR Rupees
+    amount: float   # Amount in INR Rupees
+    otp: str        # Mandatory wallet_topup OTP (no bypass)
+
+
+class TopupOTPRequest(BaseModel):
+    amount: float   # Amount in INR Rupees to tie to the OTP
 
 
 class VerifyPaymentRequest(BaseModel):
@@ -46,11 +56,86 @@ def get_or_create_wallet(user_id: int, db: Session, for_update: bool = False) ->
     return wallet
 
 
+@router.post("/topup/request-otp")
+def request_topup_otp(
+    data: TopupOTPRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Generates and emails a single-use, amount-tied OTP for wallet top-up authorisation.
+    User identity derived from JWT. Amount is stored in OTP metadata for later verification.
+    - 5-minute expiration
+    - 60-second cooldown
+    - Purpose = 'wallet_topup'
+    """
+    if data.amount < 1.0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Minimum top-up amount is ₹1.00.")
+
+    wallet = get_or_create_wallet(current_user.id, db)
+    if wallet.is_frozen:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Your wallet is frozen. Adding funds is disabled.")
+
+    clean_email = current_user.email.strip().lower()
+    # 60-second cooldown check
+    existing_otp = db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        EmailOTP.purpose == "wallet_topup"
+    ).order_by(EmailOTP.created_at.desc()).first()
+
+    if existing_otp and existing_otp.created_at:
+        elapsed = get_elapsed_seconds(existing_otp.created_at)
+        if elapsed < 60:
+            remaining_seconds = max(1, min(60, int(60 - elapsed)))
+            raise HTTPException(
+                status_code=429,
+                detail=f"Please wait {remaining_seconds} seconds before requesting another top-up OTP."
+            )
+
+    # Generate 6-digit OTP with 5-minute expiry
+    otp_code = f"{random.randint(100000, 999999)}"
+    expires_at = datetime.utcnow() + timedelta(minutes=5)
+    # Store amount in metadata so /create-order can verify it matches
+    otp_metadata = json.dumps({"amount": round(data.amount, 2), "user_id": current_user.id})
+
+    # Clear any prior wallet_topup OTPs for this email
+    db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        EmailOTP.purpose == "wallet_topup"
+    ).delete()
+
+    new_otp = EmailOTP(
+        email=current_user.email,
+        otp=otp_code,
+        purpose="wallet_topup",
+        attempts=0,
+        is_verified=False,
+        expires_at=expires_at,
+        otp_metadata=otp_metadata,
+    )
+    db.add(new_otp)
+    db.commit()
+
+    email_sent = send_topup_otp(to_email=current_user.email, otp=otp_code, amount=data.amount)
+
+    return {
+        "success": True,
+        "message": f"Top-up OTP has been sent to {current_user.email}. Enter it to proceed to checkout.",
+        "email_sent": email_sent,
+    }
+
+
 @router.post("/create-order")
-def create_razorpay_order(data: CreateOrderRequest, db: Session = Depends(get_db)):
+def create_razorpay_order(
+    data: CreateOrderRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
     Creates a Razorpay Order for adding money to a Tap & Go wallet.
-    Validates amount >= ₹1.00 (100 paise).
+    Requires mandatory wallet_topup OTP verified server-side before order creation.
+    OTP must match: authenticated user, wallet_topup purpose, exact amount, expiry, attempt limit.
+    User identity is derived from JWT — no user_id from request body.
     """
     if data.amount < 1.0:
         raise HTTPException(
@@ -58,24 +143,84 @@ def create_razorpay_order(data: CreateOrderRequest, db: Session = Depends(get_db
             detail="Minimum top-up amount is ₹1.00."
         )
 
-    user = db.get(User, data.user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found."
-        )
-
-    wallet = get_or_create_wallet(user.id, db)
+    wallet = get_or_create_wallet(current_user.id, db)
     if wallet.is_frozen:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Your wallet is frozen. Adding funds is disabled."
         )
 
+    # ── Mandatory server-side OTP gate ─────────────────────────────────────────
+    # OTP must be present (no bypass)
+    if not data.otp or not data.otp.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Wallet top-up OTP is required. Please request an OTP first."
+        )
+
+    clean_email = current_user.email.strip().lower()
+    db_otp = db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        EmailOTP.purpose == "wallet_topup"
+    ).first()
+
+    if not db_otp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No wallet top-up OTP found for this account. Please request an OTP first."
+        )
+
+    if db_otp.attempts >= 5:
+        db.delete(db_otp)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Too many incorrect OTP attempts. Please request a new OTP.")
+
+    if is_otp_expired(db_otp.expires_at):
+        db.delete(db_otp)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Top-up OTP has expired. Please request a new OTP.")
+
+    if db_otp.otp != data.otp.strip():
+        db_otp.attempts += 1
+        db.commit()
+        remaining = max(0, 5 - db_otp.attempts)
+        if remaining == 0:
+            db.delete(db_otp)
+            db.commit()
+            raise HTTPException(status_code=400, detail="Too many incorrect OTP attempts. Please request a new OTP.")
+        raise HTTPException(status_code=400, detail=f"Invalid top-up OTP. ({remaining} attempts remaining)")
+
+    # Verify amount match (OTP is amount-tied)
+    try:
+        meta = json.loads(db_otp.otp_metadata) if db_otp.otp_metadata else {}
+        stored_amount = meta.get("amount")
+        stored_user_id = meta.get("user_id")
+        if stored_amount is not None and round(stored_amount, 2) != round(data.amount, 2):
+            db_otp.attempts += 1
+            db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail=f"OTP was issued for a different amount (₹{stored_amount:.2f}). Please request a new OTP for ₹{data.amount:.2f}."
+            )
+        if stored_user_id is not None and stored_user_id != current_user.id:
+            db.delete(db_otp)
+            db.commit()
+            raise HTTPException(status_code=400, detail="OTP does not match authenticated user.")
+    except HTTPException:
+        raise
+    except Exception:
+        # If metadata is malformed, still allow but log
+        logger.warning(f"[TopupOTP] Could not parse otp_metadata for user {current_user.id}")
+
+    # OTP valid and amount-verified — consume it (single-use, atomic)
+    db.delete(db_otp)
+    db.commit()
+    # ── End OTP gate ────────────────────────────────────────────────────────────
+
     try:
         order = razorpay_service.create_order(
             amount_in_rupees=data.amount,
-            notes={"user_id": str(user.id), "user_email": user.email}
+            notes={"user_id": str(current_user.id), "user_email": current_user.email}
         )
         return {
             "success": True,

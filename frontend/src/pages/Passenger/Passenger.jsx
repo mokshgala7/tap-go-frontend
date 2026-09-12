@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import jsQR from 'jsqr'
 import { useNavigate } from '../../routes/navigation.jsx'
 import { useAuth, resolveFileUrl } from '../../context/AuthContext.jsx'
@@ -10,6 +10,9 @@ import WithdrawModal from '../../components/Payment/WithdrawModal.jsx'
 import NFCCardOrderModal from '../../components/NFC/NFCCardOrderModal.jsx'
 import NFCOrderHistoryModal from '../../components/NFC/NFCOrderHistoryModal.jsx'
 import './Passenger.css'
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
+function getToken() { try { return sessionStorage.getItem('tapgo_token') || '' } catch { return '' } }
 
 const Icon = ({ children, className = '' }) => (
   <span className={`material-symbols-outlined ${className}`} aria-hidden="true">
@@ -85,6 +88,192 @@ function PassengerDocCard({ title, path }) {
   )
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SupportTicketModal — Create a new support ticket from the passenger dashboard
+   ═══════════════════════════════════════════════════════════════════════════ */
+function SupportTicketModal({ user, onClose }) {
+  const [form, setFormState] = useState({ name: user?.name || '', email: user?.email || '', phone: user?.phone || '', category: 'technical', priority: 'medium', subject: '', message: '' })
+  const set = (k, v) => setFormState(f => ({ ...f, [k]: v }))
+  const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState('')
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!form.subject.trim() || !form.message.trim()) { setError('Subject and message are required.'); return }
+    setLoading(true); setError('')
+    try {
+      const res = await fetch(`${API_BASE}/api/support/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setSuccess(`Ticket #${data.ticket.id} submitted! We will reply to your email shortly.`)
+      } else {
+        setError(data.detail || 'Failed to submit ticket.')
+      }
+    } catch { setError('Service unavailable. Please try again.') } finally { setLoading(false) }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', padding: 16 }}>
+      <div style={{ width: '100%', maxWidth: 440, background: '#fff', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+        <div style={{ background: '#0b1420', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div><div style={{ color: '#fdd34d', fontWeight: 700, fontSize: 15 }}>🎫 Contact Support</div><div style={{ color: '#8a9bad', fontSize: 12 }}>We reply within 24 hours</div></div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#8a9bad', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+        </div>
+        <div style={{ padding: '20px 20px 24px', maxHeight: '70vh', overflowY: 'auto' }}>
+          {success ? (
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+              <p style={{ fontWeight: 700, color: '#16a34a', marginBottom: 8 }}>{success}</p>
+              <button onClick={onClose} style={{ marginTop: 16, padding: '10px 24px', background: '#0b1420', color: '#fdd34d', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}>Close</button>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {error && <div style={{ padding: '10px 12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, color: '#dc2626', fontSize: 13 }}>{error}</div>}
+              {[['Subject', 'subject', 'text', 'Brief summary of your issue'], ['Your Name', 'name', 'text', ''], ['Email', 'email', 'email', ''], ['Phone', 'phone', 'tel', '']].map(([lbl, key, type, ph]) => (
+                <label key={key} style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>{lbl}<input type={type} value={form[key]} onChange={e => set(key, e.target.value)} placeholder={ph} required style={{ display: 'block', width: '100%', marginTop: 4, padding: '9px 12px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 13, boxSizing: 'border-box' }} /></label>
+              ))}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Category
+                  <select value={form.category} onChange={e => set('category', e.target.value)} style={{ display: 'block', width: '100%', marginTop: 4, padding: '9px 12px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 13 }}>
+                    <option value="billing">Billing</option><option value="technical">Technical</option><option value="nfc_card">NFC Card</option><option value="account">Account</option><option value="other">Other</option>
+                  </select></label>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Priority
+                  <select value={form.priority} onChange={e => set('priority', e.target.value)} style={{ display: 'block', width: '100%', marginTop: 4, padding: '9px 12px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 13 }}>
+                    <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option>
+                  </select></label>
+              </div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Message
+                <textarea value={form.message} onChange={e => set('message', e.target.value)} required rows={4} placeholder="Describe your issue in detail…" style={{ display: 'block', width: '100%', marginTop: 4, padding: '9px 12px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} /></label>
+              <button type="submit" disabled={loading} style={{ padding: '12px', background: '#0b1420', color: '#fdd34d', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
+                {loading ? 'Submitting…' : 'Submit Support Ticket'}
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NFCSecurityModal — Block / Unblock / Report Lost / Request Replacement
+   ═══════════════════════════════════════════════════════════════════════════ */
+function NFCSecurityModal({ user, onClose }) {
+  const [cards, setCards] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [showReplacement, setShowReplacement] = useState(false)
+  const [replForm, setReplForm] = useState({ recipient_name: user?.name || '', phone: user?.phone || '', address_line1: '', area: '', city: user?.city || '', state: '', pincode: '' })
+  const setRepl = (k, v) => setReplForm(f => ({ ...f, [k]: v }))
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const res = await fetch(`${API_BASE}/api/nfc/my`, { headers: { Authorization: `Bearer ${getToken()}` } })
+      const data = await res.json()
+      setCards(data.cards || [])
+    } catch { setError('Could not load card data.') } finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const card = cards[0]  // most recent card
+
+  const doAction = async (path, body = null) => {
+    setActionLoading(true); setError(''); setSuccess('')
+    try {
+      const res = await fetch(`${API_BASE}/api/nfc/${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: body ? JSON.stringify(body) : undefined,
+      })
+      const data = await res.json()
+      if (res.ok && data.success) { setSuccess(data.message); await load() }
+      else setError(data.detail || 'Action failed.')
+    } catch { setError('Service unavailable.') } finally { setActionLoading(false) }
+  }
+
+  const handleReplacement = async (e) => {
+    e.preventDefault()
+    await doAction('my/request-replacement', { ...replForm, card_type: card?.card_type || 'standard_nfc' })
+    setShowReplacement(false)
+  }
+
+  const STATUS_COLOR = { active: '#22c55e', blocked: '#ef4444', lost: '#f59e0b', replaced: '#94a3b8' }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', padding: 16 }}>
+      <div style={{ width: '100%', maxWidth: 420, background: '#fff', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+        <div style={{ background: '#0b1420', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div><div style={{ color: '#fdd34d', fontWeight: 700, fontSize: 15 }}>💳 NFC Card Security</div><div style={{ color: '#8a9bad', fontSize: 12 }}>Manage your physical NFC card</div></div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#8a9bad', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+        </div>
+        <div style={{ padding: '20px', maxHeight: '70vh', overflowY: 'auto' }}>
+          {error && <div style={{ padding: '10px 12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, color: '#dc2626', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+          {success && <div style={{ padding: '10px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, color: '#16a34a', fontSize: 13, marginBottom: 12 }}>✅ {success}</div>}
+          {loading ? <p style={{ textAlign: 'center', color: '#64748b' }}>Loading card data…</p> : !card ? (
+            <p style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>No NFC card issued to your account yet.<br />Order one from the Home screen.</p>
+          ) : (
+            <div>
+              <div style={{ background: '#f8fafc', borderRadius: 14, padding: '16px', marginBottom: 16, border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Card Reference</div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#0b1420' }}>{card.card_reference}</div>
+                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ padding: '3px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: (STATUS_COLOR[card.status] || '#94a3b8') + '22', color: STATUS_COLOR[card.status] || '#94a3b8' }}>{card.status.toUpperCase()}</span>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>{card.card_type}</span>
+                </div>
+                {card.blocked_reason && <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>Reason: {card.blocked_reason}</div>}
+              </div>
+
+              {card.status === 'replaced' && <p style={{ fontSize: 13, color: '#64748b', textAlign: 'center' }}>This card has been replaced. Check your NFC Card History for the new order.</p>}
+
+              {showReplacement ? (
+                <form onSubmit={handleReplacement} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ fontWeight: 700, color: '#0b1420', marginBottom: 4 }}>Replacement Delivery Address</div>
+                  {[['Recipient Name', 'recipient_name'], ['Phone', 'phone'], ['Address Line 1', 'address_line1'], ['Area / Locality', 'area'], ['City', 'city'], ['State', 'state'], ['Pincode', 'pincode']].map(([lbl, key]) => (
+                    <input key={key} placeholder={lbl} value={replForm[key]} required onChange={e => setRepl(key, e.target.value)}
+                      style={{ padding: '9px 12px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 13 }} />
+                  ))}
+                  <button type="submit" disabled={actionLoading} style={{ padding: 12, background: '#0b1420', color: '#fdd34d', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}>
+                    {actionLoading ? 'Submitting…' : 'Submit Replacement Request'}
+                  </button>
+                  <button type="button" onClick={() => setShowReplacement(false)} style={{ padding: 10, background: '#f1f5f9', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+                </form>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {card.status === 'active' && (
+                    <><button onClick={() => { if (window.confirm('Block your NFC card? You can unblock it anytime.')) doAction('my/block', { reason: 'Blocked by user from app' }) }} disabled={actionLoading}
+                        style={{ padding: 12, background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, color: '#dc2626', fontWeight: 700, cursor: 'pointer' }}>🔒 Block Card</button>
+                      <button onClick={() => { if (window.confirm('Report card as lost? This cannot be undone.')) doAction('my/report-lost') }} disabled={actionLoading}
+                        style={{ padding: 12, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, color: '#92400e', fontWeight: 700, cursor: 'pointer' }}>⚠️ Report Lost</button></>
+                  )}
+                  {card.status === 'blocked' && (
+                    <><button onClick={() => doAction('my/unblock')} disabled={actionLoading}
+                        style={{ padding: 12, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, color: '#16a34a', fontWeight: 700, cursor: 'pointer' }}>🔓 Unblock Card</button>
+                      <button onClick={() => { if (window.confirm('Report card as lost? This cannot be undone.')) doAction('my/report-lost') }} disabled={actionLoading}
+                        style={{ padding: 12, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, color: '#92400e', fontWeight: 700, cursor: 'pointer' }}>⚠️ Report Lost</button></>
+                  )}
+                  {card.status === 'lost' && (
+                    <button onClick={() => setShowReplacement(true)} disabled={actionLoading}
+                      style={{ padding: 12, background: '#0b1420', color: '#fdd34d', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}>📦 Request Replacement Card</button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Passenger() {
   const navigate = useNavigate()
   const { user, logout, saveProfileToDb, requestAdminAccess, refreshProfile } = useAuth()
@@ -119,6 +308,9 @@ function Passenger() {
   // NFC Card Order Modal State
   const [showNFCOrderModal, setShowNFCOrderModal] = useState(false)
   const [showNFCHistoryModal, setShowNFCHistoryModal] = useState(false)
+  // New: Support Ticket and NFC Security Modal
+  const [showSupportModal, setShowSupportModal] = useState(false)
+  const [showNFCSecurityModal, setShowNFCSecurityModal] = useState(false)
 
   const [form, setForm] = useState({
     name: '',
@@ -396,6 +588,22 @@ function Passenger() {
             Order Card (₹50)
           </button>
         </div>
+      </div>
+
+      {/* Support & NFC Security Quick Actions */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, margin: '8px 0 4px' }}>
+        <button onClick={() => setShowSupportModal(true)}
+          style={{ padding: '14px 12px', background: 'linear-gradient(135deg,#1e3a5f,#0b1420)', borderRadius: 14, border: 'none', color: '#fff', textAlign: 'left', cursor: 'pointer' }}>
+          <div style={{ fontSize: 20, marginBottom: 4 }}>🎫</div>
+          <div style={{ fontWeight: 700, fontSize: 13 }}>Contact Support</div>
+          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>Submit a ticket</div>
+        </button>
+        <button onClick={() => setShowNFCSecurityModal(true)}
+          style={{ padding: '14px 12px', background: 'linear-gradient(135deg,#1a2e4a,#0b1420)', borderRadius: 14, border: 'none', color: '#fff', textAlign: 'left', cursor: 'pointer' }}>
+          <div style={{ fontSize: 20, marginBottom: 4 }}>💳</div>
+          <div style={{ fontWeight: 700, fontSize: 13 }}>NFC Card Security</div>
+          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>Block / report lost</div>
+        </button>
       </div>
 
       <h2>Transaction History</h2>
@@ -1110,6 +1318,14 @@ function Passenger() {
           onClose={() => setShowNFCHistoryModal(false)}
           onOrderAgain={() => setShowNFCOrderModal(true)}
         />
+      )}
+
+      {showSupportModal && (
+        <SupportTicketModal user={user} onClose={() => setShowSupportModal(false)} />
+      )}
+
+      {showNFCSecurityModal && (
+        <NFCSecurityModal user={user} onClose={() => setShowNFCSecurityModal(false)} />
       )}
 
       {notice && <div className="toast">✓ {notice}</div>}

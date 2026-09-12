@@ -934,3 +934,259 @@ def send_security_alert_email(
 def send_otp_email(to_email: str, otp: str, account_type: str = "passenger") -> bool:
     return send_registration_otp(to_email, otp, account_type)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NEW EMAIL FUNCTIONS — Support Tickets, NFC, Withdrawal lifecycle
+# ─────────────────────────────────────────────────────────────────────────────
+
+def send_topup_otp(to_email: str, otp: str, amount: float) -> bool:
+    """Send wallet top-up OTP email before Razorpay checkout."""
+    body = f"""
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr><td style="padding:0 0 20px;">
+        <p style="margin:0;font-size:15px;color:#C8D6E5;line-height:1.7;">
+          You requested to add <strong style="color:#FDD34D;">₹{amount:.2f}</strong> to your Tap&amp;Go wallet.
+          Use the code below to authorise the transaction. This code is valid for <strong>5 minutes</strong> and is single-use only.
+        </p>
+      </td></tr>
+      <tr><td style="padding:0 0 28px;">
+        <div style="background:rgba(253,211,77,0.10);border:2px solid rgba(253,211,77,0.30);border-radius:16px;padding:28px 20px;text-align:center;">
+          <span style="font-size:40px;font-weight:900;letter-spacing:18px;color:#FDD34D;font-family:monospace;">{otp}</span>
+          <p style="margin:14px 0 0;font-size:13px;color:#8A9BAD;">Top-up OTP · ₹{amount:.2f} · Valid 5 mins</p>
+        </div>
+      </td></tr>
+      <tr><td style="padding:0 0 16px;">
+        <p style="margin:0;font-size:13px;color:#8A9BAD;line-height:1.6;">
+          If you did not request this top-up, please ignore this email. Do not share this OTP with anyone.
+        </p>
+      </td></tr>
+    </table>
+    """
+    html = _render_email_shell(
+        badge="Wallet Top-up OTP",
+        badge_bg="rgba(253,211,77,0.14)",
+        badge_color="#FDD34D",
+        title="Wallet Top-up Verification Code",
+        body_html=body,
+    )
+    return send_email(
+        to_email=to_email,
+        subject="Tap & Go — Wallet Top-up OTP",
+        html_content=html,
+        email_type="topup_otp",
+    )
+
+
+def send_support_ticket_created(to_email: str, user_name: str, ticket_id: int, subject: str) -> bool:
+    """Confirmation email when user creates a support ticket."""
+    body = f"""
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr><td style="padding:0 0 20px;">
+        <p style="margin:0;font-size:15px;color:#C8D6E5;line-height:1.7;">
+          Hi <strong style="color:#F1F5F9;">{user_name}</strong>,<br/><br/>
+          We've received your support ticket and our team will get back to you shortly.
+        </p>
+      </td></tr>
+      <tr><td style="padding:0 0 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(255,255,255,0.04);border-radius:12px;overflow:hidden;">
+          <tr><td style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8A9BAD;">Ticket ID</span><br/>
+            <span style="font-size:15px;font-weight:700;color:#F1F5F9;">#{ticket_id}</span>
+          </td></tr>
+          <tr><td style="padding:14px 18px;">
+            <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8A9BAD;">Subject</span><br/>
+            <span style="font-size:15px;font-weight:600;color:#F1F5F9;">{subject}</span>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+    """
+    html = _render_email_shell(
+        badge="Support Ticket Created",
+        badge_bg="rgba(99,102,241,0.14)",
+        badge_color="#A5B4FC",
+        title="Your Support Ticket Has Been Received",
+        body_html=body,
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Tap & Go — Support Ticket #{ticket_id} Received",
+        html_content=html,
+        email_type="support_ticket_created",
+        reference=str(ticket_id),
+    )
+
+
+def send_support_ticket_reply(to_email: str, user_name: str, ticket_id: int, subject: str, reply: str) -> bool:
+    """Notification email when admin replies to a support ticket."""
+    body = f"""
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr><td style="padding:0 0 20px;">
+        <p style="margin:0;font-size:15px;color:#C8D6E5;line-height:1.7;">
+          Hi <strong style="color:#F1F5F9;">{user_name}</strong>,<br/><br/>
+          Our support team has replied to your ticket <strong>#{ticket_id}</strong>.
+        </p>
+      </td></tr>
+      <tr><td style="padding:0 0 24px;">
+        <div style="background:rgba(255,255,255,0.04);border-left:4px solid #A5B4FC;border-radius:0 12px 12px 0;padding:16px 18px;">
+          <p style="margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8A9BAD;">Admin Reply</p>
+          <p style="margin:0;font-size:14px;color:#E2E8F0;line-height:1.7;">{reply}</p>
+        </div>
+      </td></tr>
+      <tr><td style="padding:0 0 16px;">
+        <p style="margin:0;font-size:13px;color:#8A9BAD;">Subject: {subject}</p>
+      </td></tr>
+    </table>
+    """
+    html = _render_email_shell(
+        badge="Support Reply",
+        badge_bg="rgba(99,102,241,0.14)",
+        badge_color="#A5B4FC",
+        title="Your Support Ticket Has Been Updated",
+        body_html=body,
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Tap & Go — Reply to Support Ticket #{ticket_id}",
+        html_content=html,
+        email_type="support_ticket_reply",
+        reference=str(ticket_id),
+    )
+
+
+def send_withdrawal_approved_email(to_email: str, user_name: str, amount: float, reference: str) -> bool:
+    """Withdrawal request approved email."""
+    body = f"""
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr><td style="padding:0 0 20px;">
+        <p style="margin:0;font-size:15px;color:#C8D6E5;line-height:1.7;">
+          Hi <strong style="color:#F1F5F9;">{user_name}</strong>,<br/><br/>
+          Your withdrawal request of <strong style="color:#FDD34D;">₹{amount:.2f}</strong> has been <strong style="color:#4ADE80;">approved</strong> and is now being processed for payout.
+        </p>
+      </td></tr>
+      <tr><td style="padding:0 0 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(255,255,255,0.04);border-radius:12px;overflow:hidden;">
+          <tr><td style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8A9BAD;">Reference</span><br/>
+            <span style="font-size:14px;font-weight:700;color:#F1F5F9;font-family:monospace;">{reference}</span>
+          </td></tr>
+          <tr><td style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8A9BAD;">Amount</span><br/>
+            <span style="font-size:20px;font-weight:900;color:#FDD34D;">₹{amount:.2f}</span>
+          </td></tr>
+          <tr><td style="padding:14px 18px;">
+            <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8A9BAD;">Status</span><br/>
+            <span style="font-size:14px;font-weight:700;color:#4ADE80;">✓ Approved</span>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+    """
+    html = _render_email_shell(
+        badge="Withdrawal Approved",
+        badge_bg="rgba(74,222,128,0.12)",
+        badge_color="#4ADE80",
+        title="Withdrawal Request Approved",
+        body_html=body,
+        accent_bar_gradient="linear-gradient(90deg,#4ADE80,#22C55E)",
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Tap & Go — Withdrawal Approved ({reference})",
+        html_content=html,
+        email_type="withdrawal_approved",
+        reference=reference,
+    )
+
+
+def send_withdrawal_paid_email(to_email: str, user_name: str, amount: float, reference: str) -> bool:
+    """Withdrawal paid/disbursed email."""
+    body = f"""
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr><td style="padding:0 0 20px;">
+        <p style="margin:0;font-size:15px;color:#C8D6E5;line-height:1.7;">
+          Hi <strong style="color:#F1F5F9;">{user_name}</strong>,<br/><br/>
+          Your withdrawal of <strong style="color:#FDD34D;">₹{amount:.2f}</strong> has been <strong style="color:#4ADE80;">paid out</strong> to your registered bank/UPI destination.
+        </p>
+      </td></tr>
+      <tr><td style="padding:0 0 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(255,255,255,0.04);border-radius:12px;overflow:hidden;">
+          <tr><td style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8A9BAD;">Reference</span><br/>
+            <span style="font-size:14px;font-weight:700;color:#F1F5F9;font-family:monospace;">{reference}</span>
+          </td></tr>
+          <tr><td style="padding:14px 18px;">
+            <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8A9BAD;">Status</span><br/>
+            <span style="font-size:14px;font-weight:700;color:#4ADE80;">✓ Paid Out</span>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td><p style="margin:0;font-size:13px;color:#8A9BAD;line-height:1.6;">Please allow 1–3 business days for the funds to reflect in your account.</p></td></tr>
+    </table>
+    """
+    html = _render_email_shell(
+        badge="Withdrawal Paid",
+        badge_bg="rgba(74,222,128,0.12)",
+        badge_color="#4ADE80",
+        title="Your Withdrawal Has Been Paid",
+        body_html=body,
+        accent_bar_gradient="linear-gradient(90deg,#4ADE80,#22C55E)",
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Tap & Go — Withdrawal Paid ({reference})",
+        html_content=html,
+        email_type="withdrawal_paid",
+        reference=reference,
+    )
+
+
+def send_withdrawal_rejected_email(
+    to_email: str, user_name: str, amount: float, reference: str, admin_note: Optional[str] = None
+) -> bool:
+    """Withdrawal rejection email — informs user balance has been restored."""
+    note_block = (
+        f'<tr><td style="padding:14px 18px;"><span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8A9BAD;">Reason</span><br/>'
+        f'<span style="font-size:14px;color:#E2E8F0;">{admin_note}</span></td></tr>'
+        if admin_note else ""
+    )
+    body = f"""
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr><td style="padding:0 0 20px;">
+        <p style="margin:0;font-size:15px;color:#C8D6E5;line-height:1.7;">
+          Hi <strong style="color:#F1F5F9;">{user_name}</strong>,<br/><br/>
+          Unfortunately, your withdrawal request of <strong style="color:#FDD34D;">₹{amount:.2f}</strong> has been <strong style="color:#F87171;">rejected</strong>.
+          The full amount has been <strong style="color:#4ADE80;">restored to your wallet</strong>.
+        </p>
+      </td></tr>
+      <tr><td style="padding:0 0 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(255,255,255,0.04);border-radius:12px;overflow:hidden;">
+          <tr><td style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8A9BAD;">Reference</span><br/>
+            <span style="font-size:14px;font-weight:700;color:#F1F5F9;font-family:monospace;">{reference}</span>
+          </td></tr>
+          <tr><td style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#8A9BAD;">Status</span><br/>
+            <span style="font-size:14px;font-weight:700;color:#F87171;">✗ Rejected</span>
+          </td></tr>
+          {note_block}
+        </table>
+      </td></tr>
+      <tr><td><p style="margin:0;font-size:13px;color:#8A9BAD;line-height:1.6;">Your wallet balance has been restored. If you have questions, please contact support.</p></td></tr>
+    </table>
+    """
+    html = _render_email_shell(
+        badge="Withdrawal Rejected",
+        badge_bg="rgba(248,113,113,0.12)",
+        badge_color="#F87171",
+        title="Withdrawal Request Rejected",
+        body_html=body,
+        accent_bar_gradient="linear-gradient(90deg,#F87171,#EF4444)",
+    )
+    return send_email(
+        to_email=to_email,
+        subject=f"Tap & Go — Withdrawal Rejected ({reference})",
+        html_content=html,
+        email_type="withdrawal_rejected",
+        reference=reference,
+    )

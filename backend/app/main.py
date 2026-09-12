@@ -9,7 +9,7 @@ from sqlalchemy import inspect, text
 
 from app.config import settings
 from app.database import engine, Base
-from app.routes import admin, auth, wallet, payment, card_order
+from app.routes import admin, auth, wallet, payment, card_order, support, nfc_security
 
 logger = logging.getLogger("tapgo")
 
@@ -51,6 +51,14 @@ def run_database_migrations(eng):
                         logger.info("[Migration] Added column email_otps.is_verified")
                     except Exception as ex:
                         logger.warning(f"[Migration] email_otps.is_verified: {ex}")
+
+                # Metadata column for amount-tied OTP (wallet_topup)
+                if "otp_metadata" not in otp_cols:
+                    try:
+                        conn.execute(text("ALTER TABLE email_otps ADD COLUMN otp_metadata TEXT NULL"))
+                        logger.info("[Migration] Added column email_otps.otp_metadata")
+                    except Exception as ex:
+                        logger.warning(f"[Migration] email_otps.otp_metadata: {ex}")
         else:
             with eng.begin() as conn:
                 if dialect == "postgresql":
@@ -227,6 +235,229 @@ def run_database_migrations(eng):
         except Exception as rev_ex:
             logger.warning(f"[Warning] ensure_amazon_reviewer_user: {rev_ex}")
 
+        # 8. SUPPORT TICKETS TABLE
+        table_names = set(inspect(eng).get_table_names())
+        if "support_tickets" not in table_names:
+            with eng.begin() as conn:
+                try:
+                    if dialect == "postgresql":
+                        conn.execute(text("""
+                            CREATE TABLE IF NOT EXISTS support_tickets (
+                                id SERIAL PRIMARY KEY,
+                                user_id INTEGER NOT NULL REFERENCES users(id),
+                                name VARCHAR(100) NOT NULL,
+                                email VARCHAR(120) NOT NULL,
+                                phone VARCHAR(20) NOT NULL,
+                                category VARCHAR(50) NOT NULL DEFAULT 'other',
+                                priority VARCHAR(20) NOT NULL DEFAULT 'medium',
+                                subject VARCHAR(255) NOT NULL,
+                                message TEXT NOT NULL,
+                                status VARCHAR(30) NOT NULL DEFAULT 'open',
+                                admin_reply TEXT NULL,
+                                replied_by INTEGER NULL REFERENCES admins(id),
+                                replied_at TIMESTAMP WITHOUT TIME ZONE NULL,
+                                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                                updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);
+                            CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+                            CREATE INDEX IF NOT EXISTS idx_support_tickets_created_at ON support_tickets(created_at);
+                        """))
+                    elif dialect == "mysql":
+                        conn.execute(text("""
+                            CREATE TABLE IF NOT EXISTS support_tickets (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                user_id INT NOT NULL,
+                                name VARCHAR(100) NOT NULL,
+                                email VARCHAR(120) NOT NULL,
+                                phone VARCHAR(20) NOT NULL,
+                                category VARCHAR(50) NOT NULL DEFAULT 'other',
+                                priority VARCHAR(20) NOT NULL DEFAULT 'medium',
+                                subject VARCHAR(255) NOT NULL,
+                                message TEXT NOT NULL,
+                                status VARCHAR(30) NOT NULL DEFAULT 'open',
+                                admin_reply TEXT NULL,
+                                replied_by INT NULL,
+                                replied_at DATETIME NULL,
+                                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                KEY idx_user_id (user_id),
+                                KEY idx_status (status),
+                                KEY idx_created_at (created_at)
+                            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                        """))
+                    else:
+                        conn.execute(text("""
+                            CREATE TABLE IF NOT EXISTS support_tickets (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                user_id INTEGER NOT NULL,
+                                name VARCHAR(100) NOT NULL,
+                                email VARCHAR(120) NOT NULL,
+                                phone VARCHAR(20) NOT NULL,
+                                category VARCHAR(50) NOT NULL DEFAULT 'other',
+                                priority VARCHAR(20) NOT NULL DEFAULT 'medium',
+                                subject VARCHAR(255) NOT NULL,
+                                message TEXT NOT NULL,
+                                status VARCHAR(30) NOT NULL DEFAULT 'open',
+                                admin_reply TEXT NULL,
+                                replied_by INTEGER NULL,
+                                replied_at DATETIME NULL,
+                                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                            );
+                            CREATE INDEX IF NOT EXISTS ix_support_tickets_user_id ON support_tickets(user_id);
+                            CREATE INDEX IF NOT EXISTS ix_support_tickets_status ON support_tickets(status);
+                        """))
+                    logger.info("[Migration] Created table support_tickets")
+                except Exception as ex:
+                    logger.warning(f"[Migration] support_tickets: {ex}")
+
+        # 9. NFC CARDS TABLE
+        table_names = set(inspect(eng).get_table_names())
+        if "nfc_cards" not in table_names:
+            with eng.begin() as conn:
+                try:
+                    if dialect == "postgresql":
+                        conn.execute(text("""
+                            CREATE TABLE IF NOT EXISTS nfc_cards (
+                                id SERIAL PRIMARY KEY,
+                                user_id INTEGER NOT NULL REFERENCES users(id),
+                                card_reference VARCHAR(64) NOT NULL UNIQUE,
+                                card_type VARCHAR(50) NOT NULL DEFAULT 'standard_nfc',
+                                status VARCHAR(20) NOT NULL DEFAULT 'active',
+                                blocked_reason TEXT NULL,
+                                block_requested_at TIMESTAMP WITHOUT TIME ZONE NULL,
+                                nfc_order_id INTEGER NULL REFERENCES nfc_card_orders(id),
+                                replacement_order_id INTEGER NULL REFERENCES nfc_card_orders(id),
+                                issued_at TIMESTAMP WITHOUT TIME ZONE NULL,
+                                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                                updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_nfc_cards_user_id ON nfc_cards(user_id);
+                            CREATE INDEX IF NOT EXISTS idx_nfc_cards_status ON nfc_cards(status);
+                            CREATE UNIQUE INDEX IF NOT EXISTS idx_nfc_cards_ref ON nfc_cards(card_reference);
+                        """))
+                    elif dialect == "mysql":
+                        conn.execute(text("""
+                            CREATE TABLE IF NOT EXISTS nfc_cards (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                user_id INT NOT NULL,
+                                card_reference VARCHAR(64) NOT NULL UNIQUE,
+                                card_type VARCHAR(50) NOT NULL DEFAULT 'standard_nfc',
+                                status VARCHAR(20) NOT NULL DEFAULT 'active',
+                                blocked_reason TEXT NULL,
+                                block_requested_at DATETIME NULL,
+                                nfc_order_id INT NULL,
+                                replacement_order_id INT NULL,
+                                issued_at DATETIME NULL,
+                                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                KEY idx_user_id (user_id),
+                                KEY idx_status (status)
+                            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                        """))
+                    else:
+                        conn.execute(text("""
+                            CREATE TABLE IF NOT EXISTS nfc_cards (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                user_id INTEGER NOT NULL,
+                                card_reference VARCHAR(64) NOT NULL UNIQUE,
+                                card_type VARCHAR(50) NOT NULL DEFAULT 'standard_nfc',
+                                status VARCHAR(20) NOT NULL DEFAULT 'active',
+                                blocked_reason TEXT NULL,
+                                block_requested_at DATETIME NULL,
+                                nfc_order_id INTEGER NULL,
+                                replacement_order_id INTEGER NULL,
+                                issued_at DATETIME NULL,
+                                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                            );
+                            CREATE INDEX IF NOT EXISTS ix_nfc_cards_user_id ON nfc_cards(user_id);
+                            CREATE INDEX IF NOT EXISTS ix_nfc_cards_status ON nfc_cards(status);
+                        """))
+                    logger.info("[Migration] Created table nfc_cards")
+                except Exception as ex:
+                    logger.warning(f"[Migration] nfc_cards: {ex}")
+
+        # 10. WITHDRAWAL REQUESTS TABLE
+        table_names = set(inspect(eng).get_table_names())
+        if "withdrawal_requests" not in table_names:
+            with eng.begin() as conn:
+                try:
+                    if dialect == "postgresql":
+                        conn.execute(text("""
+                            CREATE TABLE IF NOT EXISTS withdrawal_requests (
+                                id SERIAL PRIMARY KEY,
+                                user_id INTEGER NOT NULL REFERENCES users(id),
+                                wallet_id INTEGER NOT NULL REFERENCES wallets(id),
+                                hold_transaction_id INTEGER NULL REFERENCES transactions(id),
+                                amount NUMERIC(12,2) NOT NULL,
+                                destination_desc TEXT NOT NULL,
+                                reference VARCHAR(64) NOT NULL UNIQUE,
+                                otp_verified BOOLEAN NOT NULL DEFAULT TRUE,
+                                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                                admin_id INTEGER NULL REFERENCES admins(id),
+                                admin_note TEXT NULL,
+                                reviewed_at TIMESTAMP WITHOUT TIME ZONE NULL,
+                                paid_at TIMESTAMP WITHOUT TIME ZONE NULL,
+                                idempotency_key VARCHAR(128) NULL UNIQUE,
+                                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                                updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_wr_user_id ON withdrawal_requests(user_id);
+                            CREATE INDEX IF NOT EXISTS idx_wr_status ON withdrawal_requests(status);
+                            CREATE INDEX IF NOT EXISTS idx_wr_reference ON withdrawal_requests(reference);
+                        """))
+                    elif dialect == "mysql":
+                        conn.execute(text("""
+                            CREATE TABLE IF NOT EXISTS withdrawal_requests (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                user_id INT NOT NULL,
+                                wallet_id INT NOT NULL,
+                                hold_transaction_id INT NULL,
+                                amount DECIMAL(12,2) NOT NULL,
+                                destination_desc TEXT NOT NULL,
+                                reference VARCHAR(64) NOT NULL UNIQUE,
+                                otp_verified TINYINT(1) NOT NULL DEFAULT 1,
+                                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                                admin_id INT NULL,
+                                admin_note TEXT NULL,
+                                reviewed_at DATETIME NULL,
+                                paid_at DATETIME NULL,
+                                idempotency_key VARCHAR(128) NULL UNIQUE,
+                                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                KEY idx_user_id (user_id),
+                                KEY idx_status (status)
+                            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                        """))
+                    else:
+                        conn.execute(text("""
+                            CREATE TABLE IF NOT EXISTS withdrawal_requests (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                user_id INTEGER NOT NULL,
+                                wallet_id INTEGER NOT NULL,
+                                hold_transaction_id INTEGER NULL,
+                                amount NUMERIC(12,2) NOT NULL,
+                                destination_desc TEXT NOT NULL,
+                                reference VARCHAR(64) NOT NULL UNIQUE,
+                                otp_verified BOOLEAN NOT NULL DEFAULT 1,
+                                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                                admin_id INTEGER NULL,
+                                admin_note TEXT NULL,
+                                reviewed_at DATETIME NULL,
+                                paid_at DATETIME NULL,
+                                idempotency_key VARCHAR(128) NULL UNIQUE,
+                                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                            );
+                            CREATE INDEX IF NOT EXISTS ix_wr_user_id ON withdrawal_requests(user_id);
+                            CREATE INDEX IF NOT EXISTS ix_wr_status ON withdrawal_requests(status);
+                        """))
+                    logger.info("[Migration] Created table withdrawal_requests")
+                except Exception as ex:
+                    logger.warning(f"[Migration] withdrawal_requests: {ex}")
+
     except Exception as e:
         logger.error(f"[Database Migration Critical] Startup migration error: {e}")
 
@@ -278,6 +509,8 @@ app.include_router(wallet.router)
 app.include_router(payment.router)
 app.include_router(payment.debug_router)
 app.include_router(card_order.router)
+app.include_router(support.router)
+app.include_router(nfc_security.router)
 
 @app.get("/")
 def root():

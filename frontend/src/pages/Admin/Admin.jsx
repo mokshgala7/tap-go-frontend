@@ -39,6 +39,7 @@ const navigation = [
   ['dashboard', 'Overview', '▦'], ['drivers', 'Driver Management', '♙'], ['passengers', 'Passenger Management', '♟'],
   ['nfc-orders', 'NFC Card Orders', '💳'], ['documents', 'Driver Documents', '▤'], ['requests', 'Edit Requests', '✓'],
   ['transactions', 'Transactions', '⇄'], ['wallets', 'Wallets', '◉'], ['fraud', 'Fraud Centre', '⚑'],
+  ['withdrawals', 'Withdrawal Requests', '💸'], ['support', 'Support Tickets', '🎫'],
   ['logs', 'Activity Logs', '◷'], ['settings', 'Settings', '⚙'], ['database', 'Database Viewer', '▤'],
 ]
 const resourceConfig = {
@@ -324,6 +325,201 @@ function NFCOrdersAdmin({ adminId }) {
   )
 }
 
+function WithdrawalRequestsAdmin({ adminId }) {
+  const [result, setResult] = useState({ items: [] })
+  const [filter, setFilter] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [actionMsg, setActionMsg] = useState('')
+
+  const load = () => {
+    setLoading(true)
+    adminRequest(`/withdrawal-requests${filter ? `?status=${filter}` : ''}`, adminId)
+      .then((data) => { setResult(data || { items: [] }); setLoading(false) })
+      .catch((err) => { setError(err.message); setLoading(false) })
+  }
+  useEffect(() => { load() }, [adminId, filter])
+
+  const act = async (id, action) => {
+    const confirmMsg = action === 'reject' ? 'Reject this withdrawal and restore the user\'s balance?' : action === 'pay' ? 'Mark this withdrawal as paid out?' : 'Approve this withdrawal?'
+    if (!window.confirm(confirmMsg)) return
+    const note = action === 'reject' ? window.prompt('Optional rejection reason (leave blank to skip):') : null
+    try {
+      setActionMsg('')
+      const body = action === 'reject' ? JSON.stringify({ admin_note: note || null }) : undefined
+      await adminRequest(`/withdrawal-requests/${id}/${action}`, adminId, { method: 'PATCH', body })
+      setActionMsg(`Withdrawal #${id} ${action}d successfully.`)
+      load()
+    } catch (err) { setError(err.message) }
+  }
+
+  const STATUS_COLORS = { pending: '#f59e0b', approved: '#3b82f6', paid: '#22c55e', rejected: '#ef4444' }
+  return (
+    <section className="admin-section">
+      <div className="section-heading">
+        <div><span className="eyebrow">Wallet Withdrawals</span><h2>Withdrawal Request Management</h2><p>Approve, mark as paid, or reject user withdrawal requests. Balance is reserved at submission and reversed on rejection.</p></div>
+      </div>
+      <div className="table-controls">
+        <select value={filter} onChange={(e) => { setFilter(e.target.value) }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+          <option value="">All Statuses</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="paid">Paid</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        <button className="secondary-button" onClick={load}>Refresh</button>
+      </div>
+      {actionMsg && <p style={{ color: '#22c55e', fontWeight: 600, marginBottom: 12 }}>{actionMsg}</p>}
+      <LoadState error={error}>
+        {loading ? <Empty text="Loading withdrawal requests…" /> : (
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>ID</th><th>User ID</th><th>Reference</th><th>Amount</th><th>Destination</th><th>Status</th><th>Note</th><th>Submitted</th><th>Actions</th></tr></thead>
+              <tbody>
+                {result.items?.length ? result.items.map((w) => (
+                  <tr key={w.id}>
+                    <td>{w.id}</td>
+                    <td>{w.user_id}</td>
+                    <td><code style={{ fontSize: 11 }}>{w.reference}</code></td>
+                    <td><strong>{money(w.amount)}</strong></td>
+                    <td style={{ fontSize: 12 }}>{w.destination_desc}</td>
+                    <td><span style={{ padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: (STATUS_COLORS[w.status] || '#94a3b8') + '22', color: STATUS_COLORS[w.status] || '#94a3b8' }}>{w.status}</span></td>
+                    <td style={{ fontSize: 12, color: '#64748b' }}>{w.admin_note || '—'}</td>
+                    <td>{date(w.created_at)}</td>
+                    <td className="actions">
+                      {w.status === 'pending' && <><button onClick={() => act(w.id, 'approve')}>Approve</button><button onClick={() => act(w.id, 'reject')}>Reject</button></>}
+                      {w.status === 'approved' && <button onClick={() => act(w.id, 'pay')}>Mark Paid</button>}
+                      {(w.status === 'paid' || w.status === 'rejected') && <span style={{ color: '#94a3b8', fontSize: 12 }}>{w.status === 'paid' ? '✓ Paid' : '✗ Rejected'}</span>}
+                    </td>
+                  </tr>
+                )) : <tr><td colSpan="9"><Empty text="No withdrawal requests found." /></td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </LoadState>
+    </section>
+  )
+}
+
+function SupportTicketsAdmin({ adminId }) {
+  const [result, setResult] = useState({ items: [] })
+  const [filter, setFilter] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState(null)
+  const [replyText, setReplyText] = useState('')
+  const [newStatus, setNewStatus] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const load = () => {
+    setLoading(true)
+    adminRequest(`/support/admin/all${filter ? `?ticket_status=${filter}` : ''}`, adminId)
+      .then((data) => { setResult(data || { items: [] }); setLoading(false) })
+      .catch((err) => { setError(err.message); setLoading(false) })
+  }
+  useEffect(() => { load() }, [adminId, filter])
+
+  const sendReply = async () => {
+    if (!replyText.trim()) return
+    setSaving(true)
+    try {
+      await adminRequest(`/support/admin/${selected.id}/reply`, adminId, { method: 'PATCH', body: JSON.stringify({ admin_reply: replyText, status: newStatus || undefined }) })
+      setSelected(null); setReplyText(''); setNewStatus('')
+      load()
+    } catch (err) { setError(err.message) } finally { setSaving(false) }
+  }
+
+  const updateStatus = async (id, status) => {
+    try { await adminRequest(`/support/admin/${id}/status`, adminId, { method: 'PATCH', body: JSON.stringify({ status }) }); load() }
+    catch (err) { setError(err.message) }
+  }
+
+  const PRIORITY_COLORS = { urgent: '#ef4444', high: '#f59e0b', medium: '#3b82f6', low: '#22c55e' }
+  const STATUS_COLORS = { open: '#ef4444', in_progress: '#f59e0b', resolved: '#22c55e', closed: '#94a3b8' }
+
+  return (
+    <section className="admin-section">
+      <div className="section-heading">
+        <div><span className="eyebrow">Customer Support</span><h2>Support Tickets</h2><p>View, reply to, and resolve user support tickets. Email notifications sent on reply.</p></div>
+      </div>
+      <div className="table-controls">
+        <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+          <option value="">All Statuses</option>
+          <option value="open">Open</option>
+          <option value="in_progress">In Progress</option>
+          <option value="resolved">Resolved</option>
+          <option value="closed">Closed</option>
+        </select>
+        <button className="secondary-button" onClick={load}>Refresh</button>
+      </div>
+      <LoadState error={error}>
+        {loading ? <Empty text="Loading support tickets…" /> : (
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>ID</th><th>User</th><th>Category</th><th>Priority</th><th>Subject</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>
+              <tbody>
+                {result.items?.length ? result.items.map((t) => (
+                  <tr key={t.id}>
+                    <td>#{t.id}</td>
+                    <td><span style={{ fontSize: 12 }}>{t.name}<br /><small style={{ color: '#64748b' }}>{t.email}</small></span></td>
+                    <td style={{ fontSize: 12 }}>{t.category}</td>
+                    <td><span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: (PRIORITY_COLORS[t.priority] || '#94a3b8') + '22', color: PRIORITY_COLORS[t.priority] || '#94a3b8' }}>{t.priority}</span></td>
+                    <td style={{ fontSize: 12, maxWidth: 200 }}>{t.subject}</td>
+                    <td><span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: (STATUS_COLORS[t.status] || '#94a3b8') + '22', color: STATUS_COLORS[t.status] || '#94a3b8' }}>{t.status}</span></td>
+                    <td style={{ fontSize: 12 }}>{date(t.created_at)}</td>
+                    <td className="actions">
+                      <button onClick={() => { setSelected(t); setReplyText(t.admin_reply || ''); setNewStatus(t.status) }}>Reply</button>
+                      {t.status !== 'closed' && <button onClick={() => updateStatus(t.id, 'closed')}>Close</button>}
+                      {t.status === 'open' && <button onClick={() => updateStatus(t.id, 'in_progress')}>In Progress</button>}
+                    </td>
+                  </tr>
+                )) : <tr><td colSpan="8"><Empty text="No support tickets found." /></td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </LoadState>
+
+      {selected && (
+        <div className="modal-backdrop" role="presentation">
+          <article className="profile-modal" role="dialog" style={{ maxWidth: 520 }}>
+            <button className="modal-close" onClick={() => { setSelected(null); setReplyText(''); setNewStatus('') }}>×</button>
+            <span className="eyebrow">Ticket #{selected.id} · {selected.category}</span>
+            <h2 style={{ fontSize: 18 }}>{selected.subject}</h2>
+            <div style={{ background: '#f8fafc', borderRadius: 10, padding: '14px 16px', marginBottom: 16, fontSize: 13 }}>
+              <p style={{ margin: '0 0 8px', color: '#64748b' }}><b>From:</b> {selected.name} ({selected.email})</p>
+              <p style={{ margin: 0, color: '#1e293b', lineHeight: 1.6 }}>{selected.message}</p>
+            </div>
+            {selected.admin_reply && (
+              <div style={{ background: '#f0fdf4', borderLeft: '3px solid #22c55e', borderRadius: '0 10px 10px 0', padding: '12px 16px', marginBottom: 16, fontSize: 13 }}>
+                <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 700, color: '#16a34a', textTransform: 'uppercase' }}>Previous Reply</p>
+                <p style={{ margin: 0 }}>{selected.admin_reply}</p>
+              </div>
+            )}
+            <label style={{ display: 'block', marginBottom: 8, fontWeight: 700, fontSize: 12 }}>Reply</label>
+            <textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={4}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 13, resize: 'vertical', marginBottom: 12 }}
+              placeholder="Type your reply here…" />
+            <label style={{ display: 'block', marginBottom: 8, fontWeight: 700, fontSize: 12 }}>Update Status</label>
+            <select value={newStatus} onChange={(e) => setNewStatus(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 13, marginBottom: 16 }}>
+              <option value="open">Open</option>
+              <option value="in_progress">In Progress</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
+            </select>
+            <div className="modal-actions">
+              <button className="primary-button" onClick={sendReply} disabled={saving}>{saving ? 'Sending…' : 'Send Reply'}</button>
+              <button className="secondary-button" onClick={() => { setSelected(null); setReplyText(''); setNewStatus('') }}>Cancel</button>
+            </div>
+          </article>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function AdminShell({ admin, onLogout }) {
   const [page, setPageState] = useState(() => sessionStorage.getItem('admin_page') || 'dashboard')
   const setPage = (newPage) => {
@@ -337,6 +533,8 @@ function AdminShell({ admin, onLogout }) {
     if (page === 'nfc-orders') return <NFCOrdersAdmin {...props} />
     if (page === 'database') return <DatabaseViewer {...props} />
     if (page === 'settings') return <Settings {...props} />
+    if (page === 'withdrawals') return <WithdrawalRequestsAdmin {...props} />
+    if (page === 'support') return <SupportTicketsAdmin {...props} />
     return <SimpleResource {...props} kind={page} />
   }
   return (

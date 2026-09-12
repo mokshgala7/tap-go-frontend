@@ -50,7 +50,7 @@ function Login() {
 
   const handleCopy = (text, field) => {
     if (navigator?.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).catch(() => {})
+      navigator.clipboard.writeText(text).catch(() => { })
     }
     setCopiedField(field)
     setTimeout(() => {
@@ -268,7 +268,7 @@ function Login() {
                   )}
                 </button>
 
-                
+
               </form>
 
               {/* Amazon Verification Test Account */}
