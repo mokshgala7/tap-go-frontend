@@ -218,6 +218,15 @@ def run_database_migrations(eng):
         except Exception as admin_ex:
             logger.warning(f"[Warning] ensure_default_admin: {admin_ex}")
 
+        # 7. ENSURE AMAZON REVIEWER USER EXISTS
+        try:
+            from app.database import SessionLocal
+            from app.routes.auth import ensure_amazon_reviewer_user
+            with SessionLocal() as db:
+                ensure_amazon_reviewer_user(db)
+        except Exception as rev_ex:
+            logger.warning(f"[Warning] ensure_amazon_reviewer_user: {rev_ex}")
+
     except Exception as e:
         logger.error(f"[Database Migration Critical] Startup migration error: {e}")
 

@@ -46,6 +46,25 @@ function Login() {
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState(initialErrors)
   const [successMessage, setSuccessMessage] = useState('')
+  const [copiedField, setCopiedField] = useState(null)
+
+  const handleCopy = (text, field) => {
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {})
+    }
+    setCopiedField(field)
+    setTimeout(() => {
+      setCopiedField((current) => (current === field ? null : current))
+    }, 2000)
+  }
+
+  const handleFillReviewCredentials = () => {
+    setFormData({
+      account: 'amazon.review@thetapandgo.in',
+      password: 'TapGo@2026Review',
+    })
+    setErrors(initialErrors)
+  }
 
   useEffect(() => {
     const reviewNotice = sessionStorage.getItem('tapgo_registration_notice')
@@ -251,6 +270,83 @@ function Login() {
 
                 
               </form>
+
+              {/* Amazon Verification Test Account */}
+              <section className="login-verification-card" aria-label="Amazon Verification Test Account">
+                <div className="login-verification-header">
+                  <div className="login-verification-badge-title">
+                    <span className="material-symbols-outlined login-verification-icon" aria-hidden="true">
+                      verified_user
+                    </span>
+                    <div>
+                      <h2 className="login-verification-title">Amazon Verification Test Account</h2>
+                      <p className="login-verification-subtitle">Pre-configured testing credentials for app reviewer verification</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="login-verification-autofill-btn"
+                    onClick={handleFillReviewCredentials}
+                    title="Fill credentials into login form"
+                  >
+                    <span className="material-symbols-outlined" aria-hidden="true">login</span>
+                    <span>Fill form</span>
+                  </button>
+                </div>
+
+                <div className="login-verification-body">
+                  <div className="login-verification-row">
+                    <div className="login-verification-label-group">
+                      <span className="login-verification-label">Email:</span>
+                      <span className="login-verification-value">amazon.review@thetapandgo.in</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={`login-verification-copy-btn ${copiedField === 'email' ? 'login-verification-copied' : ''}`}
+                      onClick={() => handleCopy('amazon.review@thetapandgo.in', 'email')}
+                      aria-label="Copy reviewer email"
+                    >
+                      <span className="material-symbols-outlined" aria-hidden="true">
+                        {copiedField === 'email' ? 'done' : 'content_copy'}
+                      </span>
+                      <span>{copiedField === 'email' ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+
+                  <div className="login-verification-row">
+                    <div className="login-verification-label-group">
+                      <span className="login-verification-label">Password:</span>
+                      <span className="login-verification-value login-verification-password">TapGo@2026Review</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={`login-verification-copy-btn ${copiedField === 'password' ? 'login-verification-copied' : ''}`}
+                      onClick={() => handleCopy('TapGo@2026Review', 'password')}
+                      aria-label="Copy reviewer password"
+                    >
+                      <span className="material-symbols-outlined" aria-hidden="true">
+                        {copiedField === 'password' ? 'done' : 'content_copy'}
+                      </span>
+                      <span>{copiedField === 'password' ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="login-verification-meta">
+                  <span className="login-verification-tag">
+                    <span className="material-symbols-outlined" aria-hidden="true">account_circle</span>
+                    Role: Passenger (User)
+                  </span>
+                  <span className="login-verification-tag">
+                    <span className="material-symbols-outlined" aria-hidden="true">account_balance_wallet</span>
+                    Pre-funded Wallet (₹500)
+                  </span>
+                  <span className="login-verification-tag">
+                    <span className="material-symbols-outlined" aria-hidden="true">qr_code_scanner</span>
+                    NFC &amp; QR Ready
+                  </span>
+                </div>
+              </section>
 
               <div className="login-card-footer">
                 <p>

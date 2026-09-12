@@ -843,3 +843,239 @@
   }
 }
 
+/* ==========================================================================
+   Amazon Verification Test Account Card (Reviewer Access Section)
+   ========================================================================== */
+.login-verification-card {
+  margin-top: 24px;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, rgba(254, 183, 0, 0.09) 0%, rgba(4, 22, 39, 0.03) 100%);
+  border: 1.5px solid rgba(254, 183, 0, 0.4);
+  border-radius: 20px;
+  box-shadow: 0 4px 18px rgba(4, 22, 39, 0.04);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+  position: relative;
+}
+
+.login-verification-card:hover {
+  border-color: rgba(254, 183, 0, 0.7);
+  box-shadow: 0 6px 24px rgba(254, 183, 0, 0.12);
+}
+
+.login-verification-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.login-verification-badge-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.login-verification-icon {
+  color: #b87d00;
+  font-size: 24px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.login-verification-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--login-primary);
+  letter-spacing: -0.2px;
+}
+
+.login-verification-subtitle {
+  margin: 2px 0 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--login-muted);
+}
+
+.login-verification-autofill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #ffffff;
+  color: var(--login-primary);
+  border: 1px solid var(--login-border-strong);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 180ms ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.login-verification-autofill-btn .material-symbols-outlined {
+  font-size: 15px;
+  color: #b87d00;
+}
+
+.login-verification-autofill-btn:hover {
+  background: var(--login-accent);
+  border-color: var(--login-accent);
+  color: #000000;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(254, 183, 0, 0.28);
+}
+
+.login-verification-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.login-verification-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #ffffff;
+  border: 1px solid var(--login-border);
+  border-radius: 12px;
+  transition: border-color 150ms ease;
+}
+
+.login-verification-row:hover {
+  border-color: var(--login-border-strong);
+}
+
+.login-verification-label-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.login-verification-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--login-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.login-verification-value {
+  font-size: 13.5px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  font-weight: 600;
+  color: var(--login-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+}
+
+.login-verification-password {
+  letter-spacing: 0.3px;
+}
+
+.login-verification-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--login-soft);
+  color: var(--login-text);
+  border: 1px solid var(--login-border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 150ms ease;
+}
+
+.login-verification-copy-btn .material-symbols-outlined {
+  font-size: 15px;
+  color: var(--login-muted);
+  transition: color 150ms ease;
+}
+
+.login-verification-copy-btn:hover {
+  background: #ffffff;
+  border-color: var(--login-primary);
+  color: var(--login-primary);
+}
+
+.login-verification-copy-btn:hover .material-symbols-outlined {
+  color: var(--login-primary);
+}
+
+.login-verification-copied {
+  background: #e8f5e9 !important;
+  color: #1b5e20 !important;
+  border-color: #81c784 !important;
+}
+
+.login-verification-copied .material-symbols-outlined {
+  color: #2e7d32 !important;
+}
+
+.login-verification-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(4, 22, 39, 0.12);
+}
+
+.login-verification-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(4, 22, 39, 0.04);
+  color: var(--login-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.login-verification-tag .material-symbols-outlined {
+  font-size: 13px;
+  color: #b87d00;
+}
+
+@media (max-width: 480px) {
+  .login-verification-card {
+    padding: 14px 14px;
+  }
+  .login-verification-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .login-verification-autofill-btn {
+    align-self: flex-start;
+  }
+  .login-verification-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .login-verification-label-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .login-verification-copy-btn {
+    margin-left: auto;
+  }
+}
+

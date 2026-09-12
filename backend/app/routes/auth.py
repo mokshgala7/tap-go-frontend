@@ -778,3 +778,106 @@ async def request_admin_access(data: AdminAccessRequest, db: Session = Depends(g
         "message": f"Admin access request submitted for {data.request_type}. Pending admin review.",
         "user": user_to_dict(user)
     }
+
+
+def ensure_amazon_reviewer_user(db: Session) -> User:
+    """
+    Ensure the official Amazon App Verification Reviewer user exists
+    in the database with active status, valid credentials, and an initialized wallet.
+    Idempotent across PostgreSQL, MySQL, and SQLite.
+    """
+    from decimal import Decimal
+    from app.models import Wallet, Transaction
+    import uuid
+    import logging
+
+    logger = logging.getLogger("tapgo.auth")
+    email = "amazon.review@thetapandgo.in"
+    phone = "9800000001"
+    password = "TapGo@2026Review"
+
+    user = db.query(User).filter(func.lower(User.email) == email.lower()).first()
+
+    if not user:
+        # Check if phone collision exists; if so, pick a unique safe phone
+        existing_phone = db.query(User).filter(User.phone == phone).first()
+        if existing_phone:
+            phone = f"98{uuid.uuid4().int % 100000000:08d}"
+
+        user = User(
+            account_type="passenger",
+            name="Amazon Reviewer",
+            email=email,
+            phone=phone,
+            password_hash=hash_password(password),
+            address="BKC, Bandra Kurla Complex",
+            city="Mumbai",
+            state="Maharashtra",
+            pincode="400051",
+            aadhaar="999988887777",
+            pan="ABCDE1234F",
+            status="active",
+            qr_identifier="TAPGO-AMZ-REVIEW-QR",
+            nfc_identifier="TAPGO-AMZ-REVIEW-NFC",
+            bank_account_holder="Amazon Reviewer",
+            bank_account_number="918800000001",
+            bank_ifsc="HDFC0001234",
+            bank_upi_id="amazon.review@upi",
+            bank_locked=1,
+            bank_request_status="none",
+            doc_request_status="none",
+            phone_request_status="none",
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        logger.info("[Auth] Created Amazon Verification Reviewer account")
+    else:
+        # Update credentials and active status to guarantee login works
+        user.status = "active"
+        if not verify_password(password, user.password_hash):
+            user.password_hash = hash_password(password)
+        if not user.qr_identifier:
+            user.qr_identifier = "TAPGO-AMZ-REVIEW-QR"
+        if not user.nfc_identifier:
+            user.nfc_identifier = "TAPGO-AMZ-REVIEW-NFC"
+        db.commit()
+        db.refresh(user)
+
+    # Ensure Wallet exists with usable testing balance
+    wallet = db.query(Wallet).filter(Wallet.user_id == user.id).first()
+    if not wallet:
+        wallet = Wallet(
+            user_id=user.id,
+            balance=Decimal("500.00"),
+            is_frozen=False,
+        )
+        db.add(wallet)
+        db.commit()
+        db.refresh(wallet)
+    elif wallet.balance < Decimal("100.00"):
+        wallet.balance = Decimal("500.00")
+        wallet.is_frozen = False
+        db.commit()
+        db.refresh(wallet)
+
+    # Ensure sample completed initial transaction for transaction history navigation
+    existing_txn = db.query(Transaction).filter(Transaction.passenger_id == user.id).first()
+    if not existing_txn:
+        init_txn = Transaction(
+            reference=f"TXN-AMZ-{uuid.uuid4().hex[:8].upper()}",
+            passenger_id=user.id,
+            wallet_id=wallet.id,
+            amount=Decimal("500.00"),
+            payment_method="razorpay",
+            status="completed",
+            otp_verified=True,
+            fraud_status="clear",
+            transaction_type="deposit",
+            description="Initial Verification Balance",
+            balance_after=Decimal("500.00"),
+        )
+        db.add(init_txn)
+        db.commit()
+
+    return user
