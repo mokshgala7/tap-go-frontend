@@ -20,6 +20,17 @@ class Settings:
         return os.getenv("REVIEW_DEMO_MODE", "false").lower() in ("1", "true", "yes")
 
     @property
+    def IS_PRODUCTION(self) -> bool:
+        """Determines if the application is running in a production cloud environment (e.g. Render)."""
+        return bool(
+            os.getenv("RENDER")
+            or os.getenv("RENDER_SERVICE_ID")
+            or os.getenv("RENDER_INSTANCE_ID")
+            or os.getenv("ENVIRONMENT", "").lower() in ("production", "prod")
+            or os.getenv("ENV", "").lower() in ("production", "prod")
+        )
+
+    @property
     def DB_HOST(self) -> str:
         return os.getenv("DB_HOST", "localhost")
 

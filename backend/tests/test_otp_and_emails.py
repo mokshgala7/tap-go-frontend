@@ -414,17 +414,35 @@ def test_all_branded_email_helpers():
 
 
 def test_local_development_smtp_fallback():
-    """Verify that if AWS credentials are absent, send_email falls back to local dev SMTP."""
-    with patch.object(settings.__class__, "AWS_ACCESS_KEY_ID", ""):
-        with patch.object(settings.__class__, "AWS_SECRET_ACCESS_KEY", ""):
-            with patch("app.utils.email_service._send_smtp_email", return_value=(True, None)) as mock_smtp:
-                res = send_email(
-                    to_email="dev@example.com",
-                    subject="Dev Subject",
-                    html_content="<p>Dev</p>",
-                )
-                assert res is True
-                mock_smtp.assert_called_once()
+    """Verify that if AWS credentials are absent in local dev, send_email falls back to local dev SMTP."""
+    with patch.object(settings.__class__, "IS_PRODUCTION", False):
+        with patch.object(settings.__class__, "AWS_ACCESS_KEY_ID", ""):
+            with patch.object(settings.__class__, "AWS_SECRET_ACCESS_KEY", ""):
+                with patch("app.utils.email_service._send_smtp_email", return_value=(True, None)) as mock_smtp:
+                    res = send_email(
+                        to_email="dev@example.com",
+                        subject="Dev Subject",
+                        html_content="<p>Dev</p>",
+                    )
+                    assert res is True
+                    mock_smtp.assert_called_once()
+
+
+def test_production_no_silent_smtp_fallback():
+    """Verify that in production, if AWS credentials are missing, SMTP fallback is NEVER attempted."""
+    with patch.object(settings.__class__, "IS_PRODUCTION", True):
+        with patch.object(settings.__class__, "AWS_ACCESS_KEY_ID", ""):
+            with patch.object(settings.__class__, "AWS_SECRET_ACCESS_KEY", ""):
+                with patch("app.utils.email_service._send_smtp_email") as mock_smtp:
+                    res = send_email(
+                        to_email="prod.test@thetapandgo.in",
+                        subject="Production Test",
+                        html_content="<p>Test</p>",
+                    )
+                    assert res is False
+                    mock_smtp.assert_not_called()
+                    last_err = get_last_email_error()
+                    assert "Silent SMTP fallback is disabled in production" in last_err
 
 
 if __name__ == "__main__":

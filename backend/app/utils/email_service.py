@@ -209,27 +209,41 @@ def send_email(
     success = False
     err_msg = None
 
-    # Primary production path: Amazon SES via boto3
-    if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
-        try:
-            success, err_msg = _send_ses_email(to_email, subject, html_content)
-        except Exception as e:
-            logger.error(f"[Email] Exception during Amazon SES delivery to {to_email}: {e}")
-            err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
+    # Check environment: In production, Amazon SES is the sole authorized provider.
+    if settings.IS_PRODUCTION:
+        if not settings.AWS_ACCESS_KEY_ID or not settings.AWS_SECRET_ACCESS_KEY:
+            err_msg = "Production AWS SES configuration error: AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY is missing. Silent SMTP fallback is disabled in production."
+            logger.error(f"[Email] {err_msg}")
             success = False
-    elif settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD:
-        # Local development fallback
-        logger.info(f"[Email] AWS credentials not detected. Falling back to local dev SMTP for {to_email}")
-        try:
-            success, err_msg = _send_smtp_email(to_email, subject, html_content)
-        except Exception as e:
-            logger.error(f"[Email] Exception during local development SMTP delivery to {to_email}: {e}")
-            err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
-            success = False
+        else:
+            try:
+                success, err_msg = _send_ses_email(to_email, subject, html_content)
+            except Exception as e:
+                logger.error(f"[Email] Exception during production Amazon SES delivery to {to_email}: {e}")
+                err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
+                success = False
     else:
-        err_msg = "No email credentials configured (AWS SES or SMTP)"
-        logger.warning(f"[Email] Cannot send email to {to_email}: {err_msg}")
-        success = False
+        # Local development path:
+        if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
+            try:
+                success, err_msg = _send_ses_email(to_email, subject, html_content)
+            except Exception as e:
+                logger.error(f"[Email] Exception during Amazon SES delivery to {to_email}: {e}")
+                err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
+                success = False
+        elif settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD:
+            # Local development fallback only
+            logger.info(f"[Email] [Local Dev] AWS credentials not detected. Falling back to local dev SMTP for {to_email}")
+            try:
+                success, err_msg = _send_smtp_email(to_email, subject, html_content)
+            except Exception as e:
+                logger.error(f"[Email] Exception during local development SMTP delivery to {to_email}: {e}")
+                err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
+                success = False
+        else:
+            err_msg = "No email credentials configured (AWS SES or local dev SMTP)"
+            logger.warning(f"[Email] Cannot send email to {to_email}: {err_msg}")
+            success = False
 
     if not success:
         _set_last_email_error(err_msg)
