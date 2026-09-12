@@ -3,7 +3,7 @@ import { Link, useNavigate } from '../routes/navigation.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import Footer from '../components/Common/Footer.jsx'
 import Navbar from '../components/Common/Navbar.jsx'
-import illustration from '../assets/images/login-fintech-taxi.svg'
+import illustration from '../assets/images/image.png'
 import logo from '../assets/images/logio.png'
 import '../styles/Login.css'
 
