@@ -4,6 +4,10 @@ import threading
 from datetime import datetime
 from typing import Optional
 
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
 import boto3
 from botocore.exceptions import ClientError, BotoCoreError
 
@@ -34,6 +38,8 @@ def _sanitize_error_message(err: Optional[str]) -> str:
         sanitized = sanitized.replace(settings.AWS_SECRET_ACCESS_KEY, "[REDACTED_SECRET]")
     if settings.AWS_ACCESS_KEY_ID:
         sanitized = sanitized.replace(settings.AWS_ACCESS_KEY_ID, "[REDACTED_KEY_ID]")
+    if settings.SMTP_PASSWORD:
+        sanitized = sanitized.replace(settings.SMTP_PASSWORD, "[REDACTED_PASSWORD]")
     return sanitized
 
 
@@ -82,6 +88,7 @@ def _strip_html(html: str) -> str:
 def _send_ses_email(to_email: str, subject: str, html_content: str) -> tuple[bool, Optional[str]]:
     """
     Sends an HTML email using Amazon SES via HTTPS (boto3).
+    Sole production email-sending mechanism for Tap & Go.
     Never raises uncaught exceptions.
     Returns (success: bool, error_message: Optional[str]).
     """
@@ -90,7 +97,7 @@ def _send_ses_email(to_email: str, subject: str, html_content: str) -> tuple[boo
     if not settings.AWS_SECRET_ACCESS_KEY:
         return False, "AWS_SECRET_ACCESS_KEY is missing in configuration"
 
-    sender = settings.SES_FROM_EMAIL or "Tap & Go <tapandgosupport@gmail.com>"
+    sender = settings.SES_FROM_EMAIL or "Tap & Go <support@thetapandgo.in>"
     plain_text = _strip_html(html_content)
 
     try:
@@ -135,6 +142,56 @@ def _send_ses_email(to_email: str, subject: str, html_content: str) -> tuple[boo
         logger.error(f"[Email] Exception during Amazon SES delivery to {to_email}: {safe_err}")
         return False, safe_err
 
+
+def _send_smtp_email(to_email: str, subject: str, html_content: str) -> tuple[bool, Optional[str]]:
+    """
+    Local development fallback SMTP dispatcher.
+    Only invoked if AWS SES credentials are not present in the local environment.
+    """
+    if not settings.SMTP_HOST or not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+        return False, "Local development SMTP settings incomplete"
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = settings.SMTP_FROM_EMAIL
+        msg["To"] = to_email
+
+        plain_text = _strip_html(html_content)
+        msg.attach(MIMEText(plain_text, "plain", "utf-8"))
+        msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+        clean_pw = settings.SMTP_PASSWORD.strip()
+        ports_to_try = [(settings.SMTP_PORT, settings.SMTP_PORT == 465)]
+        if settings.SMTP_PORT != 465:
+            ports_to_try.append((465, True))
+
+        last_err = None
+        for port, is_ssl in ports_to_try:
+            try:
+                if is_ssl:
+                    server = smtplib.SMTP_SSL(settings.SMTP_HOST, port, timeout=10)
+                else:
+                    server = smtplib.SMTP(settings.SMTP_HOST, port, timeout=10)
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+
+                with server:
+                    server.login(settings.SMTP_USER, clean_pw)
+                    server.send_message(msg)
+                    logger.info(f"[Email] Local dev fallback email delivered to {to_email} via SMTP:{port}")
+                    return True, None
+            except Exception as ex:
+                last_err = _sanitize_error_message(f"{type(ex).__name__} on port {port}: {ex}")
+                logger.warning(f"[Email] Local SMTP attempt on port {port} failed: {last_err}")
+
+        return False, last_err or "Local SMTP delivery failed"
+    except Exception as ex:
+        safe_err = _sanitize_error_message(f"SMTP prep error: {ex}")
+        return False, safe_err
+
+
 def send_email(
     to_email: str,
     subject: str,
@@ -144,16 +201,34 @@ def send_email(
 ) -> bool:
     """
     Central email delivery dispatcher.
-    Sends email via Amazon SES HTTPS API and records delivery status in email_logs.
+    Uses Amazon SES HTTPS API (boto3) as the primary production delivery mechanism.
+    Falls back to local SMTP only if AWS SES credentials are absent in development.
+    Records delivery status in email_logs.
     """
     _set_last_email_error(None)
     success = False
     err_msg = None
-    try:
-        success, err_msg = _send_ses_email(to_email, subject, html_content)
-    except Exception as e:
-        logger.error(f"[Email] Exception during Amazon SES delivery to {to_email}: {e}")
-        err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
+
+    # Primary production path: Amazon SES via boto3
+    if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
+        try:
+            success, err_msg = _send_ses_email(to_email, subject, html_content)
+        except Exception as e:
+            logger.error(f"[Email] Exception during Amazon SES delivery to {to_email}: {e}")
+            err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
+            success = False
+    elif settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD:
+        # Local development fallback
+        logger.info(f"[Email] AWS credentials not detected. Falling back to local dev SMTP for {to_email}")
+        try:
+            success, err_msg = _send_smtp_email(to_email, subject, html_content)
+        except Exception as e:
+            logger.error(f"[Email] Exception during local development SMTP delivery to {to_email}: {e}")
+            err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
+            success = False
+    else:
+        err_msg = "No email credentials configured (AWS SES or SMTP)"
+        logger.warning(f"[Email] Cannot send email to {to_email}: {err_msg}")
         success = False
 
     if not success:
@@ -165,7 +240,7 @@ def send_email(
             recipient=to_email,
             reference=reference,
             status="SENT" if success else "FAILED",
-            error_message=None if success else (err_msg or "SES delivery failed"),
+            error_message=None if success else (err_msg or "Email delivery failed"),
         )
     except Exception as log_err:
         logger.error(f"[Email] Failed to record delivery log: {log_err}")

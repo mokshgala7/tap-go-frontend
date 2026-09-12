@@ -70,14 +70,14 @@ class Settings:
 
     @property
     def SES_FROM_EMAIL(self) -> str:
-        raw = (os.getenv("SES_FROM_EMAIL") or os.getenv("AWS_SES_FROM_EMAIL") or "tapandgosupport@gmail.com").strip()
+        raw = (os.getenv("SES_FROM_EMAIL") or os.getenv("AWS_SES_FROM_EMAIL") or "support@thetapandgo.in").strip()
         if "<" in raw:
             return raw
         return f"Tap & Go <{raw}>"
 
     @property
     def SES_SENDER_EMAIL(self) -> str:
-        raw = (os.getenv("SES_FROM_EMAIL") or os.getenv("AWS_SES_FROM_EMAIL") or "tapandgosupport@gmail.com").strip()
+        raw = (os.getenv("SES_FROM_EMAIL") or os.getenv("AWS_SES_FROM_EMAIL") or "support@thetapandgo.in").strip()
         if "<" in raw and ">" in raw:
             return raw.split("<")[1].split(">")[0].strip()
         return raw

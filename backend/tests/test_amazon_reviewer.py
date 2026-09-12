@@ -23,6 +23,7 @@ app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
 def test_amazon_reviewer_provisioning_and_login():
+    app.dependency_overrides[get_db] = override_get_db
     db = TestingSessionLocal()
     user = ensure_amazon_reviewer_user(db)
     assert user.email == "amazon.review@thetapandgo.in"
