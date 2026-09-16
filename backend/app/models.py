@@ -54,15 +54,34 @@ class User(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 class EmailOTP(Base):
+    """
+    Email OTP model for transactional verification workflows.
+    Canonical reasons:
+      - 'create_account' (legacy purpose: 'registration')
+      - 'forgot_password'
+      - 'withdraw_balance' (legacy purpose: 'withdrawal')
+      - 'wallet_topup'
+    Lifecycle:
+      - OTP rows are NEVER physically deleted; they are persisted for auditability and security history.
+      - 'used=True' means the OTP is no longer usable. This includes successful consumption,
+        invalidation upon resend of a newer code, expiration, or lockout after 5 failed attempts.
+    """
     __tablename__ = "email_otps"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     email = Column(String(120), nullable=False, index=True)
     otp = Column(String(10), nullable=False)
-    purpose = Column(String(32), nullable=False, default="registration")
+    # Canonical workflow reason
+    reason = Column(String(32), nullable=False, default="create_account", index=True)
+    # Purpose retained and synchronized for backward compatibility
+    purpose = Column(String(32), nullable=False, default="create_account", index=True)
     attempts = Column(Integer, nullable=False, default=0)
     is_verified = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, server_default=func.now())
+    # used=True means no longer usable (consumed, invalidated by resend, or locked out)
+    used = Column(Boolean, nullable=False, default=False, index=True)
+    # Optional metadata (e.g., amount-tied topup JSON {"amount": 100.0, "user_id": 1})
+    otp_metadata = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
     expires_at = Column(DateTime, nullable=False)
 
 

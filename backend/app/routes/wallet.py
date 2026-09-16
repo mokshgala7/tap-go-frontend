@@ -204,7 +204,10 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
     Generates and emails a single-use OTP for withdrawal confirmation via Amazon SES.
     - 5-minute expiration
     - 60-second cooldown
-    - Purpose distinct from registration and password reset
+    - Canonical reason 'withdraw_balance', synchronized purpose 'withdraw_balance'
+    - Prior unconsumed OTPs invalidated with used=True
+    - OTP record remains persisted even if SES delivery fails
+    - Never physically deleted
     """
     if data.amount <= 0:
         raise HTTPException(status_code=400, detail="Withdrawal amount must be greater than zero.")
@@ -235,7 +238,10 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
     # 60-second cooldown check
     existing_otp = db.query(EmailOTP).filter(
         func.lower(EmailOTP.email) == clean_email,
-        EmailOTP.purpose == "withdrawal"
+        or_(
+            EmailOTP.reason == "withdraw_balance",
+            EmailOTP.purpose.in_(["withdraw_balance", "withdrawal"]),
+        )
     ).order_by(EmailOTP.created_at.desc()).first()
 
     if existing_otp and existing_otp.created_at:
@@ -247,22 +253,28 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
                 detail=f"Please wait {remaining_seconds} seconds before requesting another withdrawal OTP."
             )
 
+    # Invalidate previous unconsumed withdrawal OTPs for this email (used=True)
+    db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        or_(
+            EmailOTP.reason == "withdraw_balance",
+            EmailOTP.purpose.in_(["withdraw_balance", "withdrawal"]),
+        ),
+        EmailOTP.used == False,
+    ).update({"used": True}, synchronize_session=False)
+
     # Generate 6-digit OTP with 5-minute expiration
     otp_code = f"{random.randint(100000, 999999)}"
     expires_at = datetime.utcnow() + timedelta(minutes=5)
 
-    # Clear previous withdrawal OTPs for this email
-    db.query(EmailOTP).filter(
-        func.lower(EmailOTP.email) == clean_email,
-        EmailOTP.purpose == "withdrawal"
-    ).delete()
-
     new_otp = EmailOTP(
         email=user.email,
         otp=otp_code,
-        purpose="withdrawal",
+        reason="withdraw_balance",
+        purpose="withdraw_balance",
         attempts=0,
         is_verified=False,
+        used=False,
         expires_at=expires_at,
     )
     db.add(new_otp)
@@ -328,34 +340,40 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
     clean_email = user.email.strip().lower()
     db_otp = db.query(EmailOTP).filter(
         func.lower(EmailOTP.email) == clean_email,
-        EmailOTP.purpose == "withdrawal"
-    ).first()
+        or_(
+            EmailOTP.reason == "withdraw_balance",
+            EmailOTP.purpose.in_(["withdraw_balance", "withdrawal"]),
+        ),
+        EmailOTP.used == False,
+    ).order_by(EmailOTP.created_at.desc()).first()
 
     if not db_otp:
         raise HTTPException(status_code=400, detail="No withdrawal OTP found. Please request a new OTP.")
 
     if db_otp.attempts >= 5:
-        db.delete(db_otp)
+        db_otp.used = True
         db.commit()
         raise HTTPException(status_code=400, detail="Too many incorrect OTP attempts. Please request a new OTP.")
 
     if is_otp_expired(db_otp.expires_at):
-        db.delete(db_otp)
+        db_otp.used = True
         db.commit()
         raise HTTPException(status_code=400, detail="OTP has expired. Please request a new OTP.")
 
     if db_otp.otp != data.otp.strip():
         db_otp.attempts += 1
+        if db_otp.attempts >= 5:
+            db_otp.used = True
         db.commit()
-        remaining = max(0, 5 - db_otp.attempts)
-        if remaining == 0:
-            db.delete(db_otp)
-            db.commit()
+        if db_otp.attempts >= 5:
             raise HTTPException(status_code=400, detail="Too many incorrect OTP attempts. Please request a new OTP.")
+        remaining = max(0, 5 - db_otp.attempts)
         raise HTTPException(status_code=400, detail=f"Invalid OTP code. ({remaining} attempts remaining)")
 
-    # Single-use OTP: delete after successful verification
-    db.delete(db_otp)
+    # Single-use OTP: mark used=True (persisted, never deleted)
+    db_otp.is_verified = True
+    db_otp.used = True
+
 
     # ── Atomic Balance Reservation (with row-level lock) ──────────────────────
     # Lock wallet row exclusively to prevent concurrent double-spending

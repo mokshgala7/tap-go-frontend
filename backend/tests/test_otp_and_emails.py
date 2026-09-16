@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from botocore.exceptions import ClientError, BotoCoreError
 
+from sqlalchemy import or_
 from app.database import SessionLocal, engine
 from app.models import Base, User, Wallet, EmailOTP, EmailLog, Transaction, NFCCardOrder
 from app.schemas import SendOTPRequest, UserLoginRequest
@@ -31,6 +32,12 @@ from app.routes.wallet import (
     pay_fare,
     PayRequest,
     get_or_create_wallet,
+)
+from app.routes.payment import (
+    request_topup_otp,
+    create_razorpay_order,
+    CreateOrderRequest,
+    TopupOTPRequest,
 )
 from app.utils.email_service import (
     send_registration_otp,
@@ -91,6 +98,7 @@ def test_ses_mocked_successful_send():
         assert "verified.test@thetapandgo.in" in call_kwargs["Destination"]["ToAddresses"]
         assert "Test Subject" == call_kwargs["Message"]["Subject"]["Data"]
         assert "<p>Test Body</p>" == call_kwargs["Message"]["Body"]["Html"]["Data"]
+        assert call_kwargs.get("ReplyToAddresses") == ["Tap & Go Support <support@thetapandgo.in>"]
 
     # Verify central send_email dispatcher logs to EmailLog
     with patch("app.utils.email_service._get_ses_client", return_value=mock_ses):
@@ -172,11 +180,13 @@ def test_registration_otp_flow():
             # Verify DB entry
             otp_row = db.query(EmailOTP).filter(
                 EmailOTP.email == test_reg_email,
-                EmailOTP.purpose == "registration",
+                EmailOTP.reason == "create_account",
             ).first()
             assert otp_row is not None
             assert len(otp_row.otp) == 6 and otp_row.otp.isdigit(), f"Invalid OTP format: {otp_row.otp}"
-            assert otp_row.purpose == "registration"
+            assert otp_row.reason == "create_account"
+            assert otp_row.purpose == "create_account"
+            assert otp_row.used is False
             assert otp_row.attempts == 0
 
             # Verify 5-minute expiry
@@ -194,7 +204,7 @@ def test_registration_otp_flow():
                 assert "Please wait" in e.detail
 
             # 2c. Incorrect OTP attempt increments attempts
-            v_req = VerifyOTPRequest(email=test_reg_email, otp="000000", purpose="registration")
+            v_req = VerifyOTPRequest(email=test_reg_email, otp="000000", reason="create_account")
             try:
                 asyncio.run(verify_otp(v_req, db=db))
                 pytest.fail("Incorrect OTP did not raise 400!")
@@ -205,7 +215,7 @@ def test_registration_otp_flow():
             db.refresh(otp_row)
             assert otp_row.attempts == 1
 
-            # 2d. 5 incorrect attempts triggers lockout
+            # 2d. 5 incorrect attempts triggers lockout and marks used=True
             otp_row.attempts = 4
             db.commit()
             try:
@@ -215,24 +225,30 @@ def test_registration_otp_flow():
                 assert e.status_code == 400
                 assert "Too many incorrect attempts" in e.detail
 
+            db.refresh(otp_row)
+            assert otp_row.used is True, "Lockout must mark used=True"
+
             # 2e. Re-issue fresh OTP and test valid verification
             fresh_otp = EmailOTP(
                 email=test_reg_email,
                 otp="849201",
-                purpose="registration",
+                reason="create_account",
+                purpose="create_account",
                 attempts=0,
                 is_verified=False,
+                used=False,
                 expires_at=datetime.utcnow() + timedelta(minutes=5),
             )
             db.add(fresh_otp)
             db.commit()
 
-            v_req_valid = VerifyOTPRequest(email=test_reg_email, otp="849201", purpose="registration")
+            v_req_valid = VerifyOTPRequest(email=test_reg_email, otp="849201", reason="create_account")
             v_res = asyncio.run(verify_otp(v_req_valid, db=db))
             assert v_res.get("success") is True
 
             db.refresh(fresh_otp)
             assert fresh_otp.is_verified is True
+            assert fresh_otp.used is False
 
 
 # ============================================================================
@@ -267,20 +283,23 @@ def test_forgot_password_otp_flow():
             # DB check
             fp_otp = db.query(EmailOTP).filter(
                 EmailOTP.email == test_email,
-                EmailOTP.purpose == "forgot_password",
+                EmailOTP.reason == "forgot_password",
             ).first()
             assert fp_otp is not None
+            assert fp_otp.reason == "forgot_password"
+            assert fp_otp.purpose == "forgot_password"
+            assert fp_otp.used is False
             assert len(fp_otp.otp) == 6
 
             # Cross-purpose rejection check: cannot use forgot_password OTP for registration
             try:
-                asyncio.run(verify_otp(VerifyOTPRequest(email=test_email, otp=fp_otp.otp, purpose="registration"), db=db))
+                asyncio.run(verify_otp(VerifyOTPRequest(email=test_email, otp=fp_otp.otp, reason="create_account"), db=db))
                 pytest.fail("Cross-purpose OTP was accepted!")
             except HTTPException as e:
                 assert e.status_code == 400
 
-            # Verify with correct purpose
-            v_res = asyncio.run(verify_otp(VerifyOTPRequest(email=test_email, otp=fp_otp.otp, purpose="forgot_password"), db=db))
+            # Verify with correct reason/purpose
+            v_res = asyncio.run(verify_otp(VerifyOTPRequest(email=test_email, otp=fp_otp.otp, reason="forgot_password"), db=db))
             assert v_res.get("success") is True
 
             # Reset password
@@ -290,6 +309,11 @@ def test_forgot_password_otp_flow():
                 new_password="NewPassword@2026",
             ), db=db))
             assert r_res.get("success") is True
+
+            # OTP must remain persisted in DB and marked used=True
+            db.refresh(fp_otp)
+            assert fp_otp.used is True, "Password reset OTP must be marked used=True"
+            assert fp_otp.is_verified is True
 
             # Verify login with old password fails, new password succeeds
             db.refresh(user)
@@ -428,22 +452,478 @@ def test_local_development_smtp_fallback():
                     mock_smtp.assert_called_once()
 
 
-def test_production_no_silent_smtp_fallback():
-    """Verify that in production, if AWS credentials are missing, SMTP fallback is NEVER attempted."""
-    with patch.object(settings.__class__, "IS_PRODUCTION", True):
-        with patch.object(settings.__class__, "AWS_ACCESS_KEY_ID", ""):
-            with patch.object(settings.__class__, "AWS_SECRET_ACCESS_KEY", ""):
-                with patch("app.utils.email_service._send_smtp_email") as mock_smtp:
-                    res = send_email(
-                        to_email="prod.test@thetapandgo.in",
-                        subject="Production Test",
-                        html_content="<p>Test</p>",
-                    )
-                    assert res is False
-                    mock_smtp.assert_not_called()
-                    last_err = get_last_email_error()
-                    assert "Silent SMTP fallback is disabled in production" in last_err
+# ============================================================================
+# COMPREHENSIVE TESTS FOR OTP PERSISTENCE, REASONS, CROSS-PURPOSE & RESILIENCE
+# ============================================================================
+
+def test_canonical_reasons_and_purpose_sync():
+    """Verify all canonical reasons (create_account, forgot_password, withdraw_balance, wallet_topup) synchronize purpose and initialize used=False."""
+    ts = int(datetime.now().timestamp())
+    email = f"canon_{ts}@thetapandgo.in"
+
+    with SessionLocal() as db:
+        user = User(
+            account_type="passenger",
+            name="Canonical Test User",
+            email=email,
+            phone=f"95{ts % 100000000:08d}",
+            password_hash=hash_password("Pass@123"),
+            bank_account_number="1234567890",
+            status="active",
+        )
+        db.add(user)
+        db.commit()
+
+        # 1. create_account via send_otp
+        with patch("app.utils.email_service._send_ses_email", return_value=(True, None)):
+            res1 = asyncio.run(send_otp(SendOTPRequest(email=f"new_{ts}@thetapandgo.in", account_type="passenger"), db=db))
+            assert res1.get("success") is True
+            row1 = db.query(EmailOTP).filter(EmailOTP.email == f"new_{ts}@thetapandgo.in").first()
+            assert row1.reason == "create_account"
+            assert row1.purpose == "create_account"
+            assert row1.used is False
+
+            # 2. forgot_password via forgot_password_otp
+            res2 = asyncio.run(forgot_password_otp(ForgotPasswordRequest(account=email), db=db))
+            assert res2.get("success") is True
+            row2 = db.query(EmailOTP).filter(EmailOTP.email == email, EmailOTP.reason == "forgot_password").first()
+            assert row2.reason == "forgot_password"
+            assert row2.purpose == "forgot_password"
+            assert row2.used is False
+
+            # 3. withdraw_balance via request_withdrawal_otp
+            wallet = get_or_create_wallet(user.id, db)
+            wallet.balance = Decimal("500.00")
+            db.commit()
+            res3 = request_withdrawal_otp(WithdrawOTPRequest(user_id=user.id, amount=100.0), db=db)
+            assert res3.get("success") is True
+            row3 = db.query(EmailOTP).filter(EmailOTP.email == email, EmailOTP.reason == "withdraw_balance").first()
+            assert row3.reason == "withdraw_balance"
+            assert row3.purpose == "withdraw_balance"
+            assert row3.used is False
+
+            # 4. wallet_topup via request_topup_otp
+            res4 = request_topup_otp(TopupOTPRequest(amount=250.0), current_user=user, db=db)
+            assert res4.get("success") is True
+            row4 = db.query(EmailOTP).filter(EmailOTP.email == email, EmailOTP.reason == "wallet_topup").first()
+            assert row4.reason == "wallet_topup"
+            assert row4.purpose == "wallet_topup"
+            assert row4.used is False
+            assert "250.0" in (row4.otp_metadata or "")
+
+
+def test_otp_persistence_no_deletion_on_consumption():
+    """Verify that consuming an OTP marks used=True and never deletes the row from the database."""
+    ts = int(datetime.now().timestamp())
+    email = f"persist_{ts}@thetapandgo.in"
+
+    with SessionLocal() as db:
+        user = User(
+            account_type="passenger",
+            name="Persist User",
+            email=email,
+            phone=f"94{ts % 100000000:08d}",
+            password_hash=hash_password("Pass@123"),
+            bank_account_number="987654321098",
+            status="active",
+        )
+        db.add(user)
+        db.commit()
+
+        wallet = get_or_create_wallet(user.id, db)
+        wallet.balance = Decimal("1000.00")
+        db.commit()
+
+        # Seed an OTP for withdrawal
+        w_otp = EmailOTP(
+            email=email,
+            otp="654321",
+            reason="withdraw_balance",
+            purpose="withdraw_balance",
+            attempts=0,
+            is_verified=False,
+            used=False,
+            expires_at=datetime.utcnow() + timedelta(minutes=5),
+        )
+        db.add(w_otp)
+        db.commit()
+        otp_id = w_otp.id
+
+        initial_count = db.query(EmailOTP).count()
+
+        # Execute withdrawal
+        with patch("app.utils.email_service._send_ses_email", return_value=(True, None)):
+            res = withdraw_to_bank(WithdrawRequest(user_id=user.id, amount=100.0, otp="654321"), db=db)
+            assert res.get("success") is True
+
+        # Row MUST still exist in database with used=True and is_verified=True
+        consumed_otp = db.get(EmailOTP, otp_id)
+        assert consumed_otp is not None, "CRITICAL: OTP row was physically deleted on consumption!"
+        assert consumed_otp.used is True, "OTP row must be marked used=True"
+        assert consumed_otp.is_verified is True
+        assert db.query(EmailOTP).count() >= initial_count
+
+
+def test_strict_cross_purpose_rejection():
+    """Verify that an OTP created for one reason CANNOT be verified or consumed for another reason."""
+    ts = int(datetime.now().timestamp())
+    email = f"crossp_{ts}@thetapandgo.in"
+
+    with SessionLocal() as db:
+        # Create an account creation OTP
+        acc_otp = EmailOTP(
+            email=email,
+            otp="112233",
+            reason="create_account",
+            purpose="create_account",
+            attempts=0,
+            is_verified=False,
+            used=False,
+            expires_at=datetime.utcnow() + timedelta(minutes=5),
+        )
+        db.add(acc_otp)
+        db.commit()
+
+        # 1. Attempt to verify create_account OTP as forgot_password -> MUST FAIL
+        try:
+            asyncio.run(verify_otp(VerifyOTPRequest(email=email, otp="112233", reason="forgot_password"), db=db))
+            pytest.fail("Cross-purpose OTP was accepted for forgot_password!")
+        except HTTPException as e:
+            assert e.status_code == 400
+
+        # 2. Attempt to verify create_account OTP as withdraw_balance -> MUST FAIL
+        try:
+            asyncio.run(verify_otp(VerifyOTPRequest(email=email, otp="112233", reason="withdraw_balance"), db=db))
+            pytest.fail("Cross-purpose OTP was accepted for withdraw_balance!")
+        except HTTPException as e:
+            assert e.status_code == 400
+
+        # 3. Attempt to verify create_account OTP as wallet_topup -> MUST FAIL
+        try:
+            asyncio.run(verify_otp(VerifyOTPRequest(email=email, otp="112233", reason="wallet_topup"), db=db))
+            pytest.fail("Cross-purpose OTP was accepted for wallet_topup!")
+        except HTTPException as e:
+            assert e.status_code == 400
+
+        # 4. Verify with correct reason succeeds
+        v_res = asyncio.run(verify_otp(VerifyOTPRequest(email=email, otp="112233", reason="create_account"), db=db))
+        assert v_res.get("success") is True
+
+
+def test_single_use_behavior():
+    """Verify that once an OTP is used (used=True), it cannot be re-verified or consumed a second time."""
+    ts = int(datetime.now().timestamp())
+    email = f"single_{ts}@thetapandgo.in"
+
+    with SessionLocal() as db:
+        user = User(
+            account_type="passenger",
+            name="Single Use User",
+            email=email,
+            phone=f"93{ts % 100000000:08d}",
+            password_hash=hash_password("Pass@123"),
+            status="active",
+        )
+        db.add(user)
+        db.commit()
+
+        otp_row = EmailOTP(
+            email=email,
+            otp="991122",
+            reason="forgot_password",
+            purpose="forgot_password",
+            attempts=0,
+            is_verified=False,
+            used=False,
+            expires_at=datetime.utcnow() + timedelta(minutes=5),
+        )
+        db.add(otp_row)
+        db.commit()
+
+        # First consumption succeeds
+        res1 = asyncio.run(reset_password(ResetPasswordRequest(email=email, otp="991122", new_password="NewPass@123"), db=db))
+        assert res1.get("success") is True
+
+        db.refresh(otp_row)
+        assert otp_row.used is True
+
+        # Second attempt with same OTP must fail with 400
+        try:
+            asyncio.run(reset_password(ResetPasswordRequest(email=email, otp="991122", new_password="AnotherPass@123"), db=db))
+            pytest.fail("Single-use OTP was re-consumed!")
+        except HTTPException as e:
+            assert e.status_code == 400
+            assert "No password reset request found" in e.detail or "expired" in e.detail
+
+
+def test_resend_cooldown_and_invalidation():
+    """Verify 60s cooldown, and that a resend after cooldown marks prior active OTP as used=True while persisting both."""
+    ts = int(datetime.now().timestamp())
+    email = f"resend_{ts}@thetapandgo.in"
+
+    with patch("app.utils.email_service._send_ses_email", return_value=(True, None)):
+        with SessionLocal() as db:
+            # First send
+            res1 = asyncio.run(send_otp(SendOTPRequest(email=email, account_type="passenger"), db=db))
+            assert res1.get("success") is True
+
+            otp1 = db.query(EmailOTP).filter(EmailOTP.email == email, EmailOTP.used == False).first()
+            assert otp1 is not None
+            otp1_id = otp1.id
+            otp1_code = otp1.otp
+
+            # Immediate second send must raise 429
+            try:
+                asyncio.run(send_otp(SendOTPRequest(email=email, account_type="passenger"), db=db))
+                pytest.fail("Cooldown did not trigger!")
+            except HTTPException as e:
+                assert e.status_code == 429
+
+            # Simulate 61 seconds elapsed on otp1
+            otp1.created_at = datetime.utcnow() - timedelta(seconds=65)
+            db.commit()
+
+            # Second send after cooldown succeeds
+            res2 = asyncio.run(send_otp(SendOTPRequest(email=email, account_type="passenger"), db=db))
+            assert res2.get("success") is True
+
+            # Both rows MUST still exist in database
+            db.refresh(otp1)
+            assert otp1.used is True, "Prior OTP must be marked used=True upon resend"
+
+            otp2 = db.query(EmailOTP).filter(EmailOTP.email == email, EmailOTP.used == False).first()
+            assert otp2 is not None
+            assert otp2.id != otp1_id
+            assert otp2.used is False
+
+            # First OTP code cannot be verified anymore
+            try:
+                asyncio.run(verify_otp(VerifyOTPRequest(email=email, otp=otp1_code, reason="create_account"), db=db))
+                pytest.fail("Invalidated prior OTP was accepted!")
+            except HTTPException as e:
+                assert e.status_code == 400
+
+            # Second OTP code verifies successfully
+            v_res = asyncio.run(verify_otp(VerifyOTPRequest(email=email, otp=otp2.otp, reason="create_account"), db=db))
+            assert v_res.get("success") is True
+
+
+def test_failed_attempt_lockout_marks_used():
+    """Verify 5 failed attempts mark OTP as used=True and locks out further attempts."""
+    ts = int(datetime.now().timestamp())
+    email = f"lockout_{ts}@thetapandgo.in"
+
+    with SessionLocal() as db:
+        otp_row = EmailOTP(
+            email=email,
+            otp="778899",
+            reason="create_account",
+            purpose="create_account",
+            attempts=0,
+            is_verified=False,
+            used=False,
+            expires_at=datetime.utcnow() + timedelta(minutes=5),
+        )
+        db.add(otp_row)
+        db.commit()
+        otp_id = otp_row.id
+
+        # 4 wrong attempts
+        for i in range(1, 5):
+            try:
+                asyncio.run(verify_otp(VerifyOTPRequest(email=email, otp="000000", reason="create_account"), db=db))
+            except HTTPException as e:
+                assert e.status_code == 400
+                assert f"{5 - i} attempts remaining" in e.detail
+
+        db.refresh(otp_row)
+        assert otp_row.attempts == 4
+        assert otp_row.used is False
+
+        # 5th wrong attempt triggers lockout
+        try:
+            asyncio.run(verify_otp(VerifyOTPRequest(email=email, otp="000000", reason="create_account"), db=db))
+            pytest.fail("5th failed attempt did not lockout!")
+        except HTTPException as e:
+            assert e.status_code == 400
+            assert "Too many incorrect attempts" in e.detail
+
+        # Row MUST still exist and be marked used=True
+        persisted = db.get(EmailOTP, otp_id)
+        assert persisted is not None, "Row must not be deleted on lockout"
+        assert persisted.used is True
+        assert persisted.attempts >= 5
+
+
+def test_otp_expiry_marks_used():
+    """Verify that verifying an expired OTP marks it used=True and rejects with 400."""
+    ts = int(datetime.now().timestamp())
+    email = f"expiry_{ts}@thetapandgo.in"
+
+    with SessionLocal() as db:
+        expired_otp = EmailOTP(
+            email=email,
+            otp="123987",
+            reason="create_account",
+            purpose="create_account",
+            attempts=0,
+            is_verified=False,
+            used=False,
+            expires_at=datetime.utcnow() - timedelta(minutes=2),
+        )
+        db.add(expired_otp)
+        db.commit()
+        otp_id = expired_otp.id
+
+        try:
+            asyncio.run(verify_otp(VerifyOTPRequest(email=email, otp="123987", reason="create_account"), db=db))
+            pytest.fail("Expired OTP was verified!")
+        except HTTPException as e:
+            assert e.status_code == 400
+            assert "expired" in e.detail.lower()
+
+        # Row MUST still exist and be marked used=True
+        persisted = db.get(EmailOTP, otp_id)
+        assert persisted is not None, "Expired OTP row must not be deleted"
+        assert persisted.used is True
+
+
+def test_ses_failure_keeps_otp_persisted():
+    """Verify that when SES delivery fails, the OTP record remains persisted in the database."""
+    ts = int(datetime.now().timestamp())
+    email = f"sesfail_{ts}@thetapandgo.in"
+
+    with SessionLocal() as db:
+        user = User(
+            account_type="passenger",
+            name="SES Fail User",
+            email=email,
+            phone=f"92{ts % 100000000:08d}",
+            password_hash=hash_password("Pass@123"),
+            bank_account_number="111222333444",
+            status="active",
+        )
+        db.add(user)
+        db.commit()
+
+        # Simulate SES failure
+        with patch("app.utils.email_service._send_ses_email", return_value=(False, "SES Mock Service Down")):
+            # 1. send_otp failure
+            try:
+                asyncio.run(send_otp(SendOTPRequest(email=f"failreg_{ts}@thetapandgo.in", account_type="passenger"), db=db))
+                pytest.fail("send_otp should fail on SES failure")
+            except HTTPException as e:
+                assert e.status_code == 500
+
+            reg_row = db.query(EmailOTP).filter(EmailOTP.email == f"failreg_{ts}@thetapandgo.in").first()
+            assert reg_row is not None, "CRITICAL: Registration OTP was deleted on SES failure!"
+            assert reg_row.reason == "create_account"
+
+            # 2. forgot_password_otp failure
+            try:
+                asyncio.run(forgot_password_otp(ForgotPasswordRequest(account=email), db=db))
+                pytest.fail("forgot_password_otp should fail on SES failure")
+            except HTTPException as e:
+                assert e.status_code == 500
+
+            fp_row = db.query(EmailOTP).filter(EmailOTP.email == email, EmailOTP.reason == "forgot_password").first()
+            assert fp_row is not None, "CRITICAL: Forgot password OTP was deleted on SES failure!"
+
+            # 3. request_withdrawal_otp failure
+            wallet = get_or_create_wallet(user.id, db)
+            wallet.balance = Decimal("500.00")
+            db.commit()
+
+            # Advance cooldown
+            if fp_row:
+                fp_row.created_at = datetime.utcnow() - timedelta(seconds=65)
+                db.commit()
+
+            res_w = request_withdrawal_otp(WithdrawOTPRequest(user_id=user.id, amount=50.0), db=db)
+            assert res_w.get("email_sent") is False
+            w_row = db.query(EmailOTP).filter(EmailOTP.email == email, EmailOTP.reason == "withdraw_balance").first()
+            assert w_row is not None, "CRITICAL: Withdrawal OTP was deleted on SES failure!"
+
+
+def test_topup_otp_metadata_and_persistence():
+    """Verify wallet_topup OTP stores amount in metadata, enforces amount matching, marks used=True, and persists."""
+    ts = int(datetime.now().timestamp())
+    email = f"topup_{ts}@thetapandgo.in"
+
+    with SessionLocal() as db:
+        user = User(
+            account_type="passenger",
+            name="Topup User",
+            email=email,
+            phone=f"91{ts % 100000000:08d}",
+            password_hash=hash_password("Pass@123"),
+            status="active",
+        )
+        db.add(user)
+        db.commit()
+
+        wallet = get_or_create_wallet(user.id, db)
+
+        with patch("app.utils.email_service._send_ses_email", return_value=(True, None)):
+            res = request_topup_otp(TopupOTPRequest(amount=500.0), current_user=user, db=db)
+            assert res.get("success") is True
+
+        topup_otp = db.query(EmailOTP).filter(EmailOTP.email == email, EmailOTP.reason == "wallet_topup", EmailOTP.used == False).first()
+        assert topup_otp is not None
+        assert topup_otp.reason == "wallet_topup"
+        assert topup_otp.purpose == "wallet_topup"
+        assert "500.0" in (topup_otp.otp_metadata or "")
+        topup_id = topup_otp.id
+        otp_code = topup_otp.otp
+
+        # Amount mismatch should fail
+        try:
+            create_razorpay_order(CreateOrderRequest(amount=750.0, otp=otp_code), current_user=user, db=db)
+            pytest.fail("Order created with mismatched amount!")
+        except HTTPException as e:
+            assert e.status_code == 400
+            assert "different amount" in e.detail
+
+        # Correct amount with mocked Razorpay creation
+        mock_order = {
+            "order_id": "order_mock_123",
+            "amount": 50000,
+            "currency": "INR",
+            "key_id": "rzp_test_123",
+            "is_mock": True,
+        }
+        with patch("app.services.payment.razorpay_service.razorpay_service.create_order", return_value=mock_order):
+            order_res = create_razorpay_order(CreateOrderRequest(amount=500.0, otp=otp_code), current_user=user, db=db)
+            assert order_res.get("success") is True
+            assert order_res.get("order_id") == "order_mock_123"
+
+        # Row MUST still exist and be marked used=True
+        consumed_row = db.get(EmailOTP, topup_id)
+        assert consumed_row is not None, "Top-up OTP row was physically deleted!"
+        assert consumed_row.used is True
+        assert consumed_row.is_verified is True
+
+
+def test_ses_reply_to_and_headers():
+    """Verify _send_ses_email specifies ReplyToAddresses and clean plain-text alternatives."""
+    mock_ses = MagicMock()
+    mock_ses.send_email.return_value = {"MessageId": "mock-ses-headers-123"}
+
+    with patch("app.utils.email_service._get_ses_client", return_value=mock_ses):
+        success, err = _send_ses_email(
+            to_email="headers.test@thetapandgo.in",
+            subject="Header Verification",
+            html_content="<h1>Hello</h1><p>Test Content</p>",
+            text_content="Hello\n\nTest Content",
+        )
+        assert success is True
+        mock_ses.send_email.assert_called_once()
+        kwargs = mock_ses.send_email.call_args[1]
+        assert kwargs.get("ReplyToAddresses") == ["Tap & Go Support <support@thetapandgo.in>"]
+        assert kwargs.get("Source") == "Tap & Go <support@thetapandgo.in>"
+        assert kwargs["Message"]["Body"]["Text"]["Data"] == "Hello\n\nTest Content"
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+

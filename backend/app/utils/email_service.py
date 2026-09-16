@@ -85,10 +85,16 @@ def _strip_html(html: str) -> str:
     return re.sub(r'\n\s*\n', '\n\n', clean).strip()
 
 
-def _send_ses_email(to_email: str, subject: str, html_content: str) -> tuple[bool, Optional[str]]:
+def _send_ses_email(
+    to_email: str,
+    subject: str,
+    html_content: str,
+    text_content: Optional[str] = None,
+) -> tuple[bool, Optional[str]]:
     """
-    Sends an HTML email using Amazon SES via HTTPS (boto3).
+    Sends an HTML email with clean plain-text alternative using Amazon SES via HTTPS (boto3).
     Sole production email-sending mechanism for Tap & Go.
+    Configures From, Reply-To, and plain-text body for high deliverability.
     Never raises uncaught exceptions.
     Returns (success: bool, error_message: Optional[str]).
     """
@@ -98,7 +104,8 @@ def _send_ses_email(to_email: str, subject: str, html_content: str) -> tuple[boo
         return False, "AWS_SECRET_ACCESS_KEY is missing in configuration"
 
     sender = settings.SES_FROM_EMAIL or "Tap & Go <support@thetapandgo.in>"
-    plain_text = _strip_html(html_content)
+    reply_to = ["Tap & Go Support <support@thetapandgo.in>"]
+    plain_text = text_content.strip() if text_content else _strip_html(html_content)
 
     try:
         client = _get_ses_client()
@@ -107,6 +114,7 @@ def _send_ses_email(to_email: str, subject: str, html_content: str) -> tuple[boo
             Destination={
                 "ToAddresses": [to_email],
             },
+            ReplyToAddresses=reply_to,
             Message={
                 "Subject": {
                     "Data": subject,
@@ -143,7 +151,13 @@ def _send_ses_email(to_email: str, subject: str, html_content: str) -> tuple[boo
         return False, safe_err
 
 
-def _send_smtp_email(to_email: str, subject: str, html_content: str) -> tuple[bool, Optional[str]]:
+
+def _send_smtp_email(
+    to_email: str,
+    subject: str,
+    html_content: str,
+    text_content: Optional[str] = None,
+) -> tuple[bool, Optional[str]]:
     """
     Local development fallback SMTP dispatcher.
     Only invoked if AWS SES credentials are not present in the local environment.
@@ -156,8 +170,9 @@ def _send_smtp_email(to_email: str, subject: str, html_content: str) -> tuple[bo
         msg["Subject"] = subject
         msg["From"] = settings.SMTP_FROM_EMAIL
         msg["To"] = to_email
+        msg["Reply-To"] = "Tap & Go Support <support@thetapandgo.in>"
 
-        plain_text = _strip_html(html_content)
+        plain_text = text_content.strip() if text_content else _strip_html(html_content)
         msg.attach(MIMEText(plain_text, "plain", "utf-8"))
         msg.attach(MIMEText(html_content, "html", "utf-8"))
 
@@ -198,6 +213,7 @@ def send_email(
     html_content: str,
     email_type: str = "general",
     reference: Optional[str] = None,
+    text_content: Optional[str] = None,
 ) -> bool:
     """
     Central email delivery dispatcher.
@@ -217,7 +233,7 @@ def send_email(
             success = False
         else:
             try:
-                success, err_msg = _send_ses_email(to_email, subject, html_content)
+                success, err_msg = _send_ses_email(to_email, subject, html_content, text_content=text_content)
             except Exception as e:
                 logger.error(f"[Email] Exception during production Amazon SES delivery to {to_email}: {e}")
                 err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
@@ -226,7 +242,7 @@ def send_email(
         # Local development path:
         if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
             try:
-                success, err_msg = _send_ses_email(to_email, subject, html_content)
+                success, err_msg = _send_ses_email(to_email, subject, html_content, text_content=text_content)
             except Exception as e:
                 logger.error(f"[Email] Exception during Amazon SES delivery to {to_email}: {e}")
                 err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
@@ -235,7 +251,7 @@ def send_email(
             # Local development fallback only
             logger.info(f"[Email] [Local Dev] AWS credentials not detected. Falling back to local dev SMTP for {to_email}")
             try:
-                success, err_msg = _send_smtp_email(to_email, subject, html_content)
+                success, err_msg = _send_smtp_email(to_email, subject, html_content, text_content=text_content)
             except Exception as e:
                 logger.error(f"[Email] Exception during local development SMTP delivery to {to_email}: {e}")
                 err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
@@ -403,11 +419,23 @@ def send_registration_otp(to_email: str, otp: str, account_type: str = "passenge
         title="Verify Your Email",
         body_html=body,
     )
+    plain_text = (
+        f"Tap & Go Account Verification\n\n"
+        f"Hello,\n\n"
+        f"Thank you for registering with Tap & Go as a {role}.\n"
+        f"Your 6-digit verification code is: {otp}\n\n"
+        f"This code expires in 5 minutes.\n\n"
+        f"Security Notice: Never share this code with anyone. Tap & Go staff will never ask for your verification code.\n"
+        f"If you did not request this verification code, you can safely ignore this email.\n\n"
+        f"Tap & Go Smart Cashless Transit Payments\n"
+        f"Support: support@thetapandgo.in"
+    )
     return send_email(
         to_email=to_email,
         subject="Tap & Go - Verify Your Email",
         html_content=html,
         email_type="registration_otp",
+        text_content=plain_text,
     )
 
 
@@ -470,11 +498,22 @@ def send_password_reset_otp(to_email: str, otp: str) -> bool:
         body_html=body,
         accent_bar_gradient="linear-gradient(90deg,#F59E0B,#DC2626)",
     )
+    plain_text = (
+        f"Tap & Go Password Reset\n\n"
+        f"Hello,\n\n"
+        f"We received a request to reset your Tap & Go password.\n"
+        f"Your 6-digit verification code is: {otp}\n\n"
+        f"This code expires in 5 minutes.\n\n"
+        f"Security Warning: If you did not request a password reset, please ignore this email. Never share this code with anyone.\n\n"
+        f"Tap & Go Smart Cashless Transit Payments\n"
+        f"Support: support@thetapandgo.in"
+    )
     return send_email(
         to_email=to_email,
         subject="Tap & Go - Password Reset OTP",
         html_content=html,
         email_type="forgot_password_otp",
+        text_content=plain_text,
     )
 
 
@@ -539,11 +578,24 @@ def send_withdrawal_otp(to_email: str, otp: str, amount: Optional[float] = None)
         body_html=body,
         accent_bar_gradient="linear-gradient(90deg,#6366F1,#4F46E5)",
     )
+    amount_text = f" of ₹{amount:.2f}" if amount and amount > 0 else ""
+    plain_text = (
+        f"Tap & Go Withdrawal Authorization\n\n"
+        f"Hello,\n\n"
+        f"We received a request to withdraw funds{amount_text} from your Tap & Go wallet.\n"
+        f"Your 6-digit authorization code is: {otp}\n\n"
+        f"This code expires in 5 minutes.\n\n"
+        f"Security Warning: If you did not initiate this withdrawal, please secure your account immediately.\n"
+        f"Tap & Go staff will never ask for your authorization code.\n\n"
+        f"Tap & Go Smart Cashless Transit Payments\n"
+        f"Support: support@thetapandgo.in"
+    )
     return send_email(
         to_email=to_email,
         subject="Tap & Go - Authorize Withdrawal",
         html_content=html,
         email_type="withdrawal_otp",
+        text_content=plain_text,
     )
 
 
@@ -1058,11 +1110,22 @@ def send_topup_otp(to_email: str, otp: str, amount: float) -> bool:
         title="Wallet Top-up Verification Code",
         body_html=body,
     )
+    plain_text = (
+        f"Tap & Go Wallet Top-up Verification\n\n"
+        f"Hello,\n\n"
+        f"You requested to add ₹{amount:.2f} to your Tap & Go wallet.\n"
+        f"Your 6-digit verification code is: {otp}\n\n"
+        f"This code is valid for 5 minutes and is single-use only.\n\n"
+        f"Security Warning: If you did not request this top-up, please ignore this email. Never share this code with anyone.\n\n"
+        f"Tap & Go Smart Cashless Transit Payments\n"
+        f"Support: support@thetapandgo.in"
+    )
     return send_email(
         to_email=to_email,
         subject="Tap & Go — Wallet Top-up OTP",
         html_content=html,
         email_type="topup_otp",
+        text_content=plain_text,
     )
 
 

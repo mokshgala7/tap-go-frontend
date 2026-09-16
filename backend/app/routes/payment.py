@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, Header, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app.database import get_db
 from app.models import Transaction, User, Wallet, EmailOTP
@@ -80,7 +80,10 @@ def request_topup_otp(
     # 60-second cooldown check
     existing_otp = db.query(EmailOTP).filter(
         func.lower(EmailOTP.email) == clean_email,
-        EmailOTP.purpose == "wallet_topup"
+        or_(
+            EmailOTP.reason == "wallet_topup",
+            EmailOTP.purpose == "wallet_topup",
+        )
     ).order_by(EmailOTP.created_at.desc()).first()
 
     if existing_otp and existing_otp.created_at:
@@ -92,24 +95,30 @@ def request_topup_otp(
                 detail=f"Please wait {remaining_seconds} seconds before requesting another top-up OTP."
             )
 
+    # Invalidate any prior unconsumed wallet_topup OTPs for this email (used=True)
+    db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        or_(
+            EmailOTP.reason == "wallet_topup",
+            EmailOTP.purpose == "wallet_topup",
+        ),
+        EmailOTP.used == False,
+    ).update({"used": True}, synchronize_session=False)
+
     # Generate 6-digit OTP with 5-minute expiry
     otp_code = f"{random.randint(100000, 999999)}"
     expires_at = datetime.utcnow() + timedelta(minutes=5)
     # Store amount in metadata so /create-order can verify it matches
     otp_metadata = json.dumps({"amount": round(data.amount, 2), "user_id": current_user.id})
 
-    # Clear any prior wallet_topup OTPs for this email
-    db.query(EmailOTP).filter(
-        func.lower(EmailOTP.email) == clean_email,
-        EmailOTP.purpose == "wallet_topup"
-    ).delete()
-
     new_otp = EmailOTP(
         email=current_user.email,
         otp=otp_code,
+        reason="wallet_topup",
         purpose="wallet_topup",
         attempts=0,
         is_verified=False,
+        used=False,
         expires_at=expires_at,
         otp_metadata=otp_metadata,
     )
@@ -161,8 +170,12 @@ def create_razorpay_order(
     clean_email = current_user.email.strip().lower()
     db_otp = db.query(EmailOTP).filter(
         func.lower(EmailOTP.email) == clean_email,
-        EmailOTP.purpose == "wallet_topup"
-    ).first()
+        or_(
+            EmailOTP.reason == "wallet_topup",
+            EmailOTP.purpose == "wallet_topup",
+        ),
+        EmailOTP.used == False,
+    ).order_by(EmailOTP.created_at.desc()).first()
 
     if not db_otp:
         raise HTTPException(
@@ -171,23 +184,23 @@ def create_razorpay_order(
         )
 
     if db_otp.attempts >= 5:
-        db.delete(db_otp)
+        db_otp.used = True
         db.commit()
         raise HTTPException(status_code=400, detail="Too many incorrect OTP attempts. Please request a new OTP.")
 
     if is_otp_expired(db_otp.expires_at):
-        db.delete(db_otp)
+        db_otp.used = True
         db.commit()
         raise HTTPException(status_code=400, detail="Top-up OTP has expired. Please request a new OTP.")
 
     if db_otp.otp != data.otp.strip():
         db_otp.attempts += 1
+        if db_otp.attempts >= 5:
+            db_otp.used = True
         db.commit()
-        remaining = max(0, 5 - db_otp.attempts)
-        if remaining == 0:
-            db.delete(db_otp)
-            db.commit()
+        if db_otp.attempts >= 5:
             raise HTTPException(status_code=400, detail="Too many incorrect OTP attempts. Please request a new OTP.")
+        remaining = max(0, 5 - db_otp.attempts)
         raise HTTPException(status_code=400, detail=f"Invalid top-up OTP. ({remaining} attempts remaining)")
 
     # Verify amount match (OTP is amount-tied)
@@ -197,13 +210,15 @@ def create_razorpay_order(
         stored_user_id = meta.get("user_id")
         if stored_amount is not None and round(stored_amount, 2) != round(data.amount, 2):
             db_otp.attempts += 1
+            if db_otp.attempts >= 5:
+                db_otp.used = True
             db.commit()
             raise HTTPException(
                 status_code=400,
                 detail=f"OTP was issued for a different amount (₹{stored_amount:.2f}). Please request a new OTP for ₹{data.amount:.2f}."
             )
         if stored_user_id is not None and stored_user_id != current_user.id:
-            db.delete(db_otp)
+            db_otp.used = True
             db.commit()
             raise HTTPException(status_code=400, detail="OTP does not match authenticated user.")
     except HTTPException:
@@ -212,8 +227,9 @@ def create_razorpay_order(
         # If metadata is malformed, still allow but log
         logger.warning(f"[TopupOTP] Could not parse otp_metadata for user {current_user.id}")
 
-    # OTP valid and amount-verified — consume it (single-use, atomic)
-    db.delete(db_otp)
+    # OTP valid and amount-verified — consume it (used=True, single-use, persisted)
+    db_otp.is_verified = True
+    db_otp.used = True
     db.commit()
     # ── End OTP gate ────────────────────────────────────────────────────────────
 

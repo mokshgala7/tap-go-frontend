@@ -51,15 +51,20 @@ CREATE TABLE IF NOT EXISTS email_otps (
     id SERIAL PRIMARY KEY,
     email VARCHAR(120) NOT NULL,
     otp VARCHAR(10) NOT NULL,
-    purpose VARCHAR(32) NOT NULL DEFAULT 'registration',
+    reason VARCHAR(32) NOT NULL DEFAULT 'create_account',
+    purpose VARCHAR(32) NOT NULL DEFAULT 'create_account',
     attempts INTEGER NOT NULL DEFAULT 0,
     is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    used BOOLEAN NOT NULL DEFAULT FALSE,
+    otp_metadata TEXT NULL,
     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps(email);
+CREATE INDEX IF NOT EXISTS idx_email_otps_reason ON email_otps(reason);
 CREATE INDEX IF NOT EXISTS idx_email_otps_purpose ON email_otps(purpose);
+CREATE INDEX IF NOT EXISTS idx_email_otps_used ON email_otps(used);
 
 -- 3. ADMINS
 CREATE TABLE IF NOT EXISTS admins (

@@ -29,9 +29,29 @@ def run_database_migrations(eng):
         if "email_otps" in table_names:
             otp_cols = {col["name"] for col in inspector.get_columns("email_otps")}
             with eng.begin() as conn:
+                # Canonical reason column
+                if "reason" not in otp_cols:
+                    try:
+                        conn.execute(text("ALTER TABLE email_otps ADD COLUMN reason VARCHAR(32) DEFAULT 'create_account'"))
+                        # Backfill reason from purpose if existing rows exist
+                        conn.execute(text("""
+                            UPDATE email_otps 
+                            SET reason = CASE 
+                                WHEN purpose = 'registration' THEN 'create_account' 
+                                WHEN purpose = 'withdrawal' THEN 'withdraw_balance' 
+                                WHEN purpose IS NOT NULL AND purpose != '' THEN purpose 
+                                ELSE 'create_account' 
+                            END
+                            WHERE reason IS NULL OR reason = ''
+                        """))
+                        logger.info("[Migration] Added and backfilled column email_otps.reason")
+                    except Exception as ex:
+                        logger.warning(f"[Migration] email_otps.reason: {ex}")
+
+                # Backward-compatibility purpose column
                 if "purpose" not in otp_cols:
                     try:
-                        conn.execute(text("ALTER TABLE email_otps ADD COLUMN purpose VARCHAR(32) DEFAULT 'registration'"))
+                        conn.execute(text("ALTER TABLE email_otps ADD COLUMN purpose VARCHAR(32) DEFAULT 'create_account'"))
                         logger.info("[Migration] Added column email_otps.purpose")
                     except Exception as ex:
                         logger.warning(f"[Migration] email_otps.purpose: {ex}")
@@ -52,6 +72,15 @@ def run_database_migrations(eng):
                     except Exception as ex:
                         logger.warning(f"[Migration] email_otps.is_verified: {ex}")
 
+                # used=True means OTP is no longer usable (consumed, invalidated upon resend, expired, or locked out)
+                if "used" not in otp_cols:
+                    try:
+                        col_type = "TINYINT(1) NOT NULL DEFAULT 0" if dialect == "mysql" else ("BOOLEAN NOT NULL DEFAULT FALSE" if dialect == "postgresql" else "BOOLEAN NOT NULL DEFAULT 0")
+                        conn.execute(text(f"ALTER TABLE email_otps ADD COLUMN used {col_type}"))
+                        logger.info("[Migration] Added column email_otps.used")
+                    except Exception as ex:
+                        logger.warning(f"[Migration] email_otps.used: {ex}")
+
                 # Metadata column for amount-tied OTP (wallet_topup)
                 if "otp_metadata" not in otp_cols:
                     try:
@@ -59,6 +88,21 @@ def run_database_migrations(eng):
                         logger.info("[Migration] Added column email_otps.otp_metadata")
                     except Exception as ex:
                         logger.warning(f"[Migration] email_otps.otp_metadata: {ex}")
+
+                # Ensure indexes exist
+                try:
+                    if dialect == "postgresql":
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_otps_reason ON email_otps(reason)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_otps_used ON email_otps(used)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps(email)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_email_otps_purpose ON email_otps(purpose)"))
+                    elif dialect == "sqlite":
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_email_otps_reason ON email_otps(reason)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_email_otps_used ON email_otps(used)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_email_otps_email ON email_otps(email)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_email_otps_purpose ON email_otps(purpose)"))
+                except Exception as ex:
+                    logger.warning(f"[Migration] email_otps indexes: {ex}")
         else:
             with eng.begin() as conn:
                 if dialect == "postgresql":
@@ -67,14 +111,19 @@ def run_database_migrations(eng):
                             id SERIAL PRIMARY KEY,
                             email VARCHAR(120) NOT NULL,
                             otp VARCHAR(10) NOT NULL,
-                            purpose VARCHAR(32) NOT NULL DEFAULT 'registration',
+                            reason VARCHAR(32) NOT NULL DEFAULT 'create_account',
+                            purpose VARCHAR(32) NOT NULL DEFAULT 'create_account',
                             attempts INTEGER NOT NULL DEFAULT 0,
                             is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+                            used BOOLEAN NOT NULL DEFAULT FALSE,
+                            otp_metadata TEXT NULL,
                             created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                             expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
                         );
                         CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps(email);
+                        CREATE INDEX IF NOT EXISTS idx_email_otps_reason ON email_otps(reason);
                         CREATE INDEX IF NOT EXISTS idx_email_otps_purpose ON email_otps(purpose);
+                        CREATE INDEX IF NOT EXISTS idx_email_otps_used ON email_otps(used);
                     """))
                 elif dialect == "mysql":
                     conn.execute(text("""
@@ -82,13 +131,18 @@ def run_database_migrations(eng):
                             id INT AUTO_INCREMENT PRIMARY KEY,
                             email VARCHAR(120) NOT NULL,
                             otp VARCHAR(10) NOT NULL,
-                            purpose VARCHAR(32) NOT NULL DEFAULT 'registration',
+                            reason VARCHAR(32) NOT NULL DEFAULT 'create_account',
+                            purpose VARCHAR(32) NOT NULL DEFAULT 'create_account',
                             attempts INT NOT NULL DEFAULT 0,
                             is_verified TINYINT(1) NOT NULL DEFAULT 0,
+                            used TINYINT(1) NOT NULL DEFAULT 0,
+                            otp_metadata TEXT NULL,
                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                             expires_at DATETIME NOT NULL,
                             KEY idx_email (email),
-                            KEY idx_purpose (purpose)
+                            KEY idx_reason (reason),
+                            KEY idx_purpose (purpose),
+                            KEY idx_used (used)
                         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                     """))
                 else:  # sqlite
@@ -97,14 +151,19 @@ def run_database_migrations(eng):
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             email VARCHAR(120) NOT NULL,
                             otp VARCHAR(10) NOT NULL,
-                            purpose VARCHAR(32) NOT NULL DEFAULT 'registration',
+                            reason VARCHAR(32) NOT NULL DEFAULT 'create_account',
+                            purpose VARCHAR(32) NOT NULL DEFAULT 'create_account',
                             attempts INTEGER NOT NULL DEFAULT 0,
                             is_verified BOOLEAN NOT NULL DEFAULT 0,
+                            used BOOLEAN NOT NULL DEFAULT 0,
+                            otp_metadata TEXT NULL,
                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                             expires_at DATETIME NOT NULL
                         );
                         CREATE INDEX IF NOT EXISTS ix_email_otps_email ON email_otps(email);
+                        CREATE INDEX IF NOT EXISTS ix_email_otps_reason ON email_otps(reason);
                         CREATE INDEX IF NOT EXISTS ix_email_otps_purpose ON email_otps(purpose);
+                        CREATE INDEX IF NOT EXISTS ix_email_otps_used ON email_otps(used);
                     """))
                 logger.info("[Migration] Created table email_otps")
 
@@ -226,16 +285,7 @@ def run_database_migrations(eng):
         except Exception as admin_ex:
             logger.warning(f"[Warning] ensure_default_admin: {admin_ex}")
 
-        # 7. ENSURE AMAZON REVIEWER USER EXISTS
-        try:
-            from app.database import SessionLocal
-            from app.routes.auth import ensure_amazon_reviewer_user
-            with SessionLocal() as db:
-                ensure_amazon_reviewer_user(db)
-        except Exception as rev_ex:
-            logger.warning(f"[Warning] ensure_amazon_reviewer_user: {rev_ex}")
-
-        # 8. SUPPORT TICKETS TABLE
+        # 7. SUPPORT TICKETS TABLE
         table_names = set(inspect(eng).get_table_names())
         if "support_tickets" not in table_names:
             with eng.begin() as conn:

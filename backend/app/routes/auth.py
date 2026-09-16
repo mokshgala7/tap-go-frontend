@@ -3,11 +3,44 @@ import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, Form, File, UploadFile, HTTPException, status, Header
 from fastapi.responses import JSONResponse
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import EditRequest, User, EmailOTP, UserSession
+
+# Canonical reason constants
+REASON_CREATE_ACCOUNT = "create_account"
+REASON_FORGOT_PASSWORD = "forgot_password"
+REASON_WITHDRAW_BALANCE = "withdraw_balance"
+REASON_WALLET_TOPUP = "wallet_topup"
+
+REASON_ALIASES = {
+    "registration": REASON_CREATE_ACCOUNT,
+    "create_account": REASON_CREATE_ACCOUNT,
+    "forgot_password": REASON_FORGOT_PASSWORD,
+    "reset_password": REASON_FORGOT_PASSWORD,
+    "withdrawal": REASON_WITHDRAW_BALANCE,
+    "withdraw_balance": REASON_WITHDRAW_BALANCE,
+    "wallet_topup": REASON_WALLET_TOPUP,
+    "topup": REASON_WALLET_TOPUP,
+}
+
+def canonicalize_reason(val: Optional[str]) -> str:
+    """Normalizes any reason or legacy purpose string to its canonical reason."""
+    if not val:
+        return REASON_CREATE_ACCOUNT
+    norm = val.strip().lower()
+    return REASON_ALIASES.get(norm, norm)
+
+def legacy_alias_for(canonical: str) -> Optional[str]:
+    """Returns the legacy purpose string corresponding to a canonical reason, if any."""
+    if canonical == REASON_CREATE_ACCOUNT:
+        return "registration"
+    if canonical == REASON_WITHDRAW_BALANCE:
+        return "withdrawal"
+    return None
+
 from app.schemas import UserRegisterForm, UserLoginRequest, SendOTPRequest, EMAIL_REGEX, PHONE_REGEX
 from pydantic import BaseModel
 from app.utils.security import hash_password, verify_password, get_elapsed_seconds, is_otp_expired
@@ -57,7 +90,10 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     Generate a 6-digit OTP and send it via Amazon SES for account registration.
     - 5-minute expiration
     - 60-second resend cooldown
-    - Server-side storage in email_otps
+    - Server-side persistence in email_otps (never physically deleted)
+    - Prior unconsumed OTPs invalidated with used=True
+    - Canonical reason 'create_account', synchronized purpose 'create_account'
+    - OTP record remains persisted even if SES delivery fails
     - No OTP returned in API response
     """
     clean_email = request.email.strip().lower()
@@ -65,10 +101,13 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     if existing_user:
         raise HTTPException(status_code=400, detail="This email address is already registered.")
 
-    # 60-second cooldown check for registration OTP
+    # 60-second cooldown check for account creation OTP
     existing_otp = db.query(EmailOTP).filter(
         func.lower(EmailOTP.email) == clean_email,
-        EmailOTP.purpose == "registration"
+        or_(
+            EmailOTP.reason == REASON_CREATE_ACCOUNT,
+            EmailOTP.purpose.in_([REASON_CREATE_ACCOUNT, "registration"]),
+        )
     ).order_by(EmailOTP.created_at.desc()).first()
 
     if existing_otp and existing_otp.created_at:
@@ -80,22 +119,28 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
                 detail=f"Please wait {remaining_seconds} seconds before requesting another code."
             )
 
+    # Invalidate (used=True) all prior active registration OTPs for this email
+    db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        or_(
+            EmailOTP.reason == REASON_CREATE_ACCOUNT,
+            EmailOTP.purpose.in_([REASON_CREATE_ACCOUNT, "registration"]),
+        ),
+        EmailOTP.used == False,
+    ).update({"used": True}, synchronize_session=False)
+
     # Generate random 6-digit OTP with 5-minute validity
     otp = f"{random.randint(100000, 999999)}"
     expires_at = datetime.utcnow() + timedelta(minutes=5)
 
-    # Invalidate all prior registration OTPs for this email
-    db.query(EmailOTP).filter(
-        func.lower(EmailOTP.email) == clean_email,
-        EmailOTP.purpose == "registration"
-    ).delete()
-
     new_otp = EmailOTP(
         email=clean_email,
         otp=otp,
-        purpose="registration",
+        reason=REASON_CREATE_ACCOUNT,
+        purpose=REASON_CREATE_ACCOUNT,
         attempts=0,
         is_verified=False,
+        used=False,
         expires_at=expires_at,
     )
     db.add(new_otp)
@@ -104,9 +149,7 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     # Deliver via real Amazon SES
     success = send_registration_otp(clean_email, otp, request.account_type)
     if not success:
-        # Rollback so user can retry cleanly
-        db.delete(new_otp)
-        db.commit()
+        # OTP record remains persisted in database per system resilience rules
         last_err = get_last_email_error()
         diag = f": {last_err}" if last_err else ""
         raise HTTPException(
@@ -120,27 +163,34 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     }
 
 
-
 class VerifyOTPRequest(BaseModel):
     email: str
     otp: str
-    purpose: Optional[str] = "registration"
+    purpose: Optional[str] = None
+    reason: Optional[str] = None
 
 
 @router.post("/verify-otp")
 async def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
     """
     Verify OTP on the spot.
-    Validates email, purpose, attempt count (max 5), and 5-minute expiry.
-    Marks is_verified = True so the registration or reset step can proceed.
+    Validates email, reason/purpose, attempt count (max 5), and 5-minute expiry.
+    Prevents cross-purpose OTP usage.
+    Marks is_verified = True.
     """
     clean_email = request.email.strip().lower()
-    clean_purpose = (request.purpose or "registration").strip().lower()
+    target_reason = canonicalize_reason(request.reason or request.purpose or REASON_CREATE_ACCOUNT)
+    legacy_purpose = legacy_alias_for(target_reason)
+
+    purpose_conditions = [EmailOTP.reason == target_reason, EmailOTP.purpose == target_reason]
+    if legacy_purpose:
+        purpose_conditions.append(EmailOTP.purpose == legacy_purpose)
 
     db_otp = db.query(EmailOTP).filter(
         func.lower(EmailOTP.email) == clean_email,
-        EmailOTP.purpose == clean_purpose
-    ).first()
+        or_(*purpose_conditions),
+        EmailOTP.used == False,
+    ).order_by(EmailOTP.created_at.desc()).first()
 
     if not db_otp:
         raise HTTPException(
@@ -150,7 +200,7 @@ async def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
 
     # Max 5 attempts check
     if db_otp.attempts >= 5:
-        db.delete(db_otp)
+        db_otp.used = True
         db.commit()
         raise HTTPException(
             status_code=400,
@@ -159,7 +209,7 @@ async def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
 
     # Expiry check
     if is_otp_expired(db_otp.expires_at):
-        db.delete(db_otp)
+        db_otp.used = True
         db.commit()
         raise HTTPException(
             status_code=400,
@@ -169,15 +219,15 @@ async def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
     # Code mismatch check
     if db_otp.otp != request.otp.strip():
         db_otp.attempts += 1
+        if db_otp.attempts >= 5:
+            db_otp.used = True
         db.commit()
-        remaining = max(0, 5 - db_otp.attempts)
-        if remaining == 0:
-            db.delete(db_otp)
-            db.commit()
+        if db_otp.attempts >= 5:
             raise HTTPException(
                 status_code=400,
                 detail="Too many incorrect attempts. Please request a new code."
             )
+        remaining = max(0, 5 - db_otp.attempts)
         raise HTTPException(
             status_code=400,
             detail=f"Invalid verification code. Please try again. ({remaining} attempts remaining)"
@@ -200,7 +250,9 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
     Generate and send OTP for forgot password flow via Amazon SES.
     - 5-minute expiration
     - 60-second cooldown
-    - Purpose distinct from registration
+    - Canonical reason 'forgot_password' distinct from registration
+    - Unconsumed prior OTPs invalidated with used=True
+    - OTP record remains persisted if SES fails
     - No OTP returned in API response
     """
     clean_account = request.account.strip()
@@ -217,7 +269,10 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
     # 60-second cooldown check
     existing_otp = db.query(EmailOTP).filter(
         func.lower(EmailOTP.email) == clean_email,
-        EmailOTP.purpose == "forgot_password"
+        or_(
+            EmailOTP.reason == REASON_FORGOT_PASSWORD,
+            EmailOTP.purpose == REASON_FORGOT_PASSWORD,
+        )
     ).order_by(EmailOTP.created_at.desc()).first()
 
     if existing_otp and existing_otp.created_at:
@@ -229,22 +284,28 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
                 detail=f"Please wait {remaining_seconds} seconds before requesting another code."
             )
 
+    # Invalidate previous password-reset OTPs (used=True)
+    db.query(EmailOTP).filter(
+        func.lower(EmailOTP.email) == clean_email,
+        or_(
+            EmailOTP.reason == REASON_FORGOT_PASSWORD,
+            EmailOTP.purpose == REASON_FORGOT_PASSWORD,
+        ),
+        EmailOTP.used == False,
+    ).update({"used": True}, synchronize_session=False)
+
     # Generate 6-digit random OTP
     otp = f"{random.randint(100000, 999999)}"
     expires_at = datetime.utcnow() + timedelta(minutes=5)
 
-    # Invalidate previous password-reset OTPs
-    db.query(EmailOTP).filter(
-        func.lower(EmailOTP.email) == clean_email,
-        EmailOTP.purpose == "forgot_password"
-    ).delete()
-
     new_otp = EmailOTP(
         email=user.email,
         otp=otp,
-        purpose="forgot_password",
+        reason=REASON_FORGOT_PASSWORD,
+        purpose=REASON_FORGOT_PASSWORD,
         attempts=0,
         is_verified=False,
+        used=False,
         expires_at=expires_at,
     )
     db.add(new_otp)
@@ -252,8 +313,7 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
 
     email_sent = send_password_reset_otp(user.email, otp)
     if not email_sent:
-        db.delete(new_otp)
-        db.commit()
+        # Record remains persisted in database
         last_err = get_last_email_error()
         diag = f": {last_err}" if last_err else ""
         raise HTTPException(
@@ -283,16 +343,20 @@ class ResetPasswordRequest(BaseModel):
 async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
     """
     Reset user password after OTP verification.
-    - Requires verified forgot_password OTP
+    - Requires active forgot_password OTP
     - Hashes password using bcrypt
-    - Invalidates OTP immediately
+    - Consumes OTP immediately (used=True, never physically deleted)
     - Sends security alert notification
     """
     clean_email = request.email.strip().lower()
     db_otp = db.query(EmailOTP).filter(
         func.lower(EmailOTP.email) == clean_email,
-        EmailOTP.purpose == "forgot_password"
-    ).first()
+        or_(
+            EmailOTP.reason == REASON_FORGOT_PASSWORD,
+            EmailOTP.purpose == REASON_FORGOT_PASSWORD,
+        ),
+        EmailOTP.used == False,
+    ).order_by(EmailOTP.created_at.desc()).first()
 
     if not db_otp:
         raise HTTPException(
@@ -301,7 +365,7 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
         )
 
     if db_otp.attempts >= 5:
-        db.delete(db_otp)
+        db_otp.used = True
         db.commit()
         raise HTTPException(
             status_code=400,
@@ -309,7 +373,7 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
         )
 
     if is_otp_expired(db_otp.expires_at):
-        db.delete(db_otp)
+        db_otp.used = True
         db.commit()
         raise HTTPException(
             status_code=400,
@@ -318,15 +382,15 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
 
     if db_otp.otp != request.otp.strip():
         db_otp.attempts += 1
+        if db_otp.attempts >= 5:
+            db_otp.used = True
         db.commit()
-        remaining = max(0, 5 - db_otp.attempts)
-        if remaining == 0:
-            db.delete(db_otp)
-            db.commit()
+        if db_otp.attempts >= 5:
             raise HTTPException(
                 status_code=400,
                 detail="Too many incorrect attempts. Please request a new code."
             )
+        remaining = max(0, 5 - db_otp.attempts)
         raise HTTPException(
             status_code=400,
             detail=f"Invalid verification code. ({remaining} attempts remaining)"
@@ -339,8 +403,9 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
     # Update password using bcrypt
     user.password_hash = hash_password(request.new_password)
 
-    # Invalidate OTP immediately
-    db.delete(db_otp)
+    # Consume OTP (used=True, single-use, persisted)
+    db_otp.is_verified = True
+    db_otp.used = True
     db.commit()
 
     # Dispatch security notification email safely
@@ -418,25 +483,40 @@ async def register(
     except ValueError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
-    # 2. MANDATORY OTP verification — verified OTP matching purpose='registration'
+    # 2. MANDATORY OTP verification — verified OTP matching reason/purpose='create_account'
     clean_reg_email = validated_data.email.strip().lower()
     db_otp = db.query(EmailOTP).filter(
         func.lower(EmailOTP.email) == clean_reg_email,
-        EmailOTP.purpose == "registration"
-    ).first()
+        or_(
+            EmailOTP.reason == REASON_CREATE_ACCOUNT,
+            EmailOTP.purpose.in_([REASON_CREATE_ACCOUNT, "registration"]),
+        ),
+        EmailOTP.used == False,
+    ).order_by(EmailOTP.created_at.desc()).first()
 
     if not db_otp:
         raise HTTPException(
             status_code=400,
             detail="Email OTP not found. Please click 'Send OTP' and verify your email first."
         )
-    if db_otp.otp != validated_data.email_otp.strip():
-        raise HTTPException(status_code=400, detail="Invalid Email OTP. Please check and try again.")
+    if db_otp.attempts >= 5:
+        db_otp.used = True
+        db.commit()
+        raise HTTPException(status_code=400, detail="Too many incorrect attempts. Please request a new code.")
     if is_otp_expired(db_otp.expires_at):
+        db_otp.used = True
+        db.commit()
         raise HTTPException(status_code=400, detail="Email OTP has expired. Please request a new OTP.")
+    if db_otp.otp != validated_data.email_otp.strip():
+        db_otp.attempts += 1
+        if db_otp.attempts >= 5:
+            db_otp.used = True
+        db.commit()
+        raise HTTPException(status_code=400, detail="Invalid Email OTP. Please check and try again.")
 
-    # Consume the OTP immediately
-    db.delete(db_otp)
+    # Consume the OTP immediately: mark used=True (persisted, never deleted)
+    db_otp.is_verified = True
+    db_otp.used = True
     db.commit()
 
 
@@ -778,106 +858,3 @@ async def request_admin_access(data: AdminAccessRequest, db: Session = Depends(g
         "message": f"Admin access request submitted for {data.request_type}. Pending admin review.",
         "user": user_to_dict(user)
     }
-
-
-def ensure_amazon_reviewer_user(db: Session) -> User:
-    """
-    Ensure the official Amazon App Verification Reviewer user exists
-    in the database with active status, valid credentials, and an initialized wallet.
-    Idempotent across PostgreSQL, MySQL, and SQLite.
-    """
-    from decimal import Decimal
-    from app.models import Wallet, Transaction
-    import uuid
-    import logging
-
-    logger = logging.getLogger("tapgo.auth")
-    email = "amazon.review@thetapandgo.in"
-    phone = "9800000001"
-    password = "TapGo@2026Review"
-
-    user = db.query(User).filter(func.lower(User.email) == email.lower()).first()
-
-    if not user:
-        # Check if phone collision exists; if so, pick a unique safe phone
-        existing_phone = db.query(User).filter(User.phone == phone).first()
-        if existing_phone:
-            phone = f"98{uuid.uuid4().int % 100000000:08d}"
-
-        user = User(
-            account_type="passenger",
-            name="Amazon Reviewer",
-            email=email,
-            phone=phone,
-            password_hash=hash_password(password),
-            address="BKC, Bandra Kurla Complex",
-            city="Mumbai",
-            state="Maharashtra",
-            pincode="400051",
-            aadhaar="999988887777",
-            pan="ABCDE1234F",
-            status="active",
-            qr_identifier="TAPGO-AMZ-REVIEW-QR",
-            nfc_identifier="TAPGO-AMZ-REVIEW-NFC",
-            bank_account_holder="Amazon Reviewer",
-            bank_account_number="918800000001",
-            bank_ifsc="HDFC0001234",
-            bank_upi_id="amazon.review@upi",
-            bank_locked=1,
-            bank_request_status="none",
-            doc_request_status="none",
-            phone_request_status="none",
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        logger.info("[Auth] Created Amazon Verification Reviewer account")
-    else:
-        # Update credentials and active status to guarantee login works
-        user.status = "active"
-        if not verify_password(password, user.password_hash):
-            user.password_hash = hash_password(password)
-        if not user.qr_identifier:
-            user.qr_identifier = "TAPGO-AMZ-REVIEW-QR"
-        if not user.nfc_identifier:
-            user.nfc_identifier = "TAPGO-AMZ-REVIEW-NFC"
-        db.commit()
-        db.refresh(user)
-
-    # Ensure Wallet exists with usable testing balance
-    wallet = db.query(Wallet).filter(Wallet.user_id == user.id).first()
-    if not wallet:
-        wallet = Wallet(
-            user_id=user.id,
-            balance=Decimal("500.00"),
-            is_frozen=False,
-        )
-        db.add(wallet)
-        db.commit()
-        db.refresh(wallet)
-    elif wallet.balance < Decimal("100.00"):
-        wallet.balance = Decimal("500.00")
-        wallet.is_frozen = False
-        db.commit()
-        db.refresh(wallet)
-
-    # Ensure sample completed initial transaction for transaction history navigation
-    existing_txn = db.query(Transaction).filter(Transaction.passenger_id == user.id).first()
-    if not existing_txn:
-        init_txn = Transaction(
-            reference=f"TXN-AMZ-{uuid.uuid4().hex[:8].upper()}",
-            passenger_id=user.id,
-            wallet_id=wallet.id,
-            amount=Decimal("500.00"),
-            payment_method="razorpay",
-            status="completed",
-            otp_verified=True,
-            fraud_status="clear",
-            transaction_type="deposit",
-            description="Initial Verification Balance",
-            balance_after=Decimal("500.00"),
-        )
-        db.add(init_txn)
-        db.commit()
-
-    return user
