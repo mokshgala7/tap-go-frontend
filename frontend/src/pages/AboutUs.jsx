@@ -10,7 +10,7 @@ export function AboutUs() {
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8 sm:space-y-12">
         {/* Header */}
-        <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden">
+        <section className="bg-gradient-to-br from-zinc-900 via-zinc-700 to-zinc-900 rounded-3xl p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 rounded-full blur-3xl pointer-events-none"></div>
           <div className="relative z-10 space-y-4 max-w-3xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-bold uppercase tracking-wider">
@@ -119,7 +119,7 @@ export function AboutUs() {
         </section>
 
         {/* Navigation Quick Actions */}
-        <section className="bg-slate-900 rounded-3xl p-6 sm:p-8 text-white flex flex-col sm:flex-row items-center justify-between gap-4">
+        <section className="bg-zinc-700 rounded-3xl p-6 sm:p-8 text-white flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
             <h3 className="text-xl font-bold text-amber-400">Explore Tap&amp;Go Features</h3>
             <p className="text-xs sm:text-sm text-slate-300">Learn how wallet funding, payments, and driver withdrawals operate on Tap&amp;Go.</p>
