@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '../../routes/navigation.jsx'
-import { useAuth } from '../../context/AuthContext.jsx'
+import { useAuth, hasValidBankDetails } from '../../context/AuthContext.jsx'
+import { useDriverData } from '../../context/DriverContext.jsx'
 import { useDarkMode } from '../../hooks/useDarkMode.js'
 import DriverDashboard from './DriverDashboard.jsx'
 import DriverEarnings from './DriverEarnings.jsx'
 import DriverAccount from './DriverAccount.jsx'
 import { inr } from './format.js'
 import WithdrawModal from '../../components/Payment/WithdrawModal.jsx'
+import BankModal from '../../components/Payment/BankModal.jsx'
 import '../Passenger/Passenger.css'
 import './Driver.css'
 
@@ -16,131 +18,9 @@ const Icon = ({ children, className = '' }) => (
   </span>
 )
 
-
-
-function BankModal({ onClose, flash }) {
-  const { user, saveProfileToDb, requestAdminAccess } = useAuth()
-  const [requesting, setRequesting] = useState(false)
-  const [saving, setSaving] = useState(false)
-
-  const isLocked = Boolean(user?.bank_locked || user?.bank_account_number) && user?.bank_request_status !== 'approved'
-
-  const [form, setForm] = useState({
-    accountHolder: user?.bank_account_holder || '',
-    accountNumber: user?.bank_account_number || '',
-    ifsc: user?.bank_ifsc || '',
-    upiId: user?.bank_upi_id || '',
-  })
-
-  const handleUseExistingDetails = () => {
-    if (user) {
-      setForm({
-        accountHolder: user.bank_account_holder || '',
-        accountNumber: user.bank_account_number || '',
-        ifsc: user.bank_ifsc || '',
-        upiId: user.bank_upi_id || '',
-      })
-    }
-  }
-
-  const update = (key) => (e) => setForm((current) => ({ ...current, [key]: e.target.value }))
-
-  const handleSave = async () => {
-    setSaving(true)
-    const res = await saveProfileToDb({
-      bank_account_holder: form.accountHolder.trim() ? form.accountHolder.trim() : user?.bank_account_holder,
-      bank_account_number: form.accountNumber.trim() ? form.accountNumber.trim() : user?.bank_account_number,
-      bank_ifsc: form.ifsc.trim() ? form.ifsc.trim() : user?.bank_ifsc,
-      bank_upi_id: form.upiId.trim() ? form.upiId.trim() : user?.bank_upi_id,
-    })
-    setSaving(false)
-
-    if (res.success) {
-      onClose()
-      flash('Bank account details saved & locked in database.')
-    } else {
-      flash(res.message || 'Failed to save bank details.')
-    }
-  }
-
-  const handleRequestAccess = async () => {
-    setRequesting(true)
-    const res = await requestAdminAccess('bank', {
-      bank_account_holder: form.accountHolder.trim(),
-      bank_account_number: form.accountNumber.trim(),
-      bank_ifsc: form.ifsc.trim(),
-      bank_upi_id: form.upiId.trim(),
-    })
-    setRequesting(false)
-    if (res.success) {
-      flash('Admin access requested for editing bank account.')
-    } else {
-      flash(res.message || 'Request failed.')
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <h3>Bank Account & Payout Details</h3>
-        <p className="muted" style={{ marginBottom: 16 }}>
-          {isLocked
-            ? '🔒 Bank details are locked after initial save. You must request admin access to make further updates.'
-            : 'Details saved here will be stored in your database profile. Note: Bank details can be saved/edited only ONCE before locking.'}
-        </p>
-
-        {user?.bank_account_number && !isLocked && (
-          <button
-            type="button"
-            className="secondary-btn"
-            style={{ marginBottom: 16, padding: '6px 12px', fontSize: 12, fontWeight: 700, width: '100%', cursor: 'pointer', background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: 8 }}
-            onClick={handleUseExistingDetails}
-          >
-            Use existing details
-          </button>
-        )}
-
-        <label htmlFor="bank-holder">Account Holder Name</label>
-        <input id="bank-holder" value={form.accountHolder} onChange={update('accountHolder')} placeholder="e.g. Full Name" autoComplete="off" />
-
-        <label htmlFor="bank-number">Account Number</label>
-        <input id="bank-number" value={form.accountNumber} onChange={update('accountNumber')} placeholder="Bank Account Number" autoComplete="off" />
-
-        <label htmlFor="bank-ifsc">IFSC Code</label>
-        <input id="bank-ifsc" value={form.ifsc} onChange={update('ifsc')} placeholder="e.g. SBIN0001234" autoComplete="off" />
-
-        <label htmlFor="bank-upi">UPI ID</label>
-        <input id="bank-upi" value={form.upiId} onChange={update('upiId')} placeholder="name@upi" autoComplete="off" />
-
-        <div className="modal-actions" style={{ flexDirection: 'column', gap: 10, marginTop: 22 }}>
-          {isLocked ? (
-            user?.bank_request_status === 'requested' ? (
-              <p className="muted" style={{ fontWeight: 700, color: '#d97706', textAlign: 'center', margin: 0 }}>
-                ⏳ Admin access request pending approval.
-              </p>
-            ) : (
-              <button className="primary" disabled={requesting || !form.accountHolder || !form.accountNumber || !form.ifsc || !form.upiId} onClick={handleRequestAccess}>
-                {requesting ? 'Submitting Request...' : 'Submit Changes for Admin Approval'}
-              </button>
-            )
-          ) : (
-            <button className="primary" disabled={saving || !form.accountHolder || !form.accountNumber || !form.ifsc || !form.upiId} onClick={handleSave}>
-              {saving ? 'Saving to Database...' : 'Save & Lock Bank Account'}
-            </button>
-          )}
-
-          <button className="secondary-btn" onClick={onClose} style={{ width: '100%', color: 'var(--text)', background: 'var(--bg)', border: '1px solid var(--line)' }}>
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function Driver() {
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user, logout, refreshProfile } = useAuth()
   const { withdraw } = useDriverData()
 
   const [tab, setTabState] = useState(() => {
@@ -161,8 +41,12 @@ function Driver() {
   const [modal, setModal] = useState(null)
 
   useEffect(() => {
-    if (!user) navigate('/login')
-  }, [user, navigate])
+    if (!user) {
+      navigate('/login')
+    } else if (user?.id) {
+      refreshProfile()
+    }
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const flash = (message) => {
     setNotice(message)

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useAuth } from '../../context/AuthContext.jsx'
+import { useAuth, hasValidBankDetails } from '../../context/AuthContext.jsx'
 import { useDriverData } from '../../context/DriverContext.jsx'
 import { formatRelativeTime } from '../Passenger/format.js'
 import { inr, tripStatusLabel } from './format.js'
@@ -224,9 +224,11 @@ function DriverDashboard({ flash, openModal, goToEarnings }) {
         <button className="primary" onClick={() => openModal('withdraw')}>
           Withdraw Balance
         </button>
-        <button className="secondary-btn" style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)' }} onClick={() => openModal('bank')}>
-          {user?.bank_account_number ? 'Manage Bank Account' : 'Add Bank Details'}
-        </button>
+        {!hasValidBankDetails(user) && (
+          <button className="secondary-btn" style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)' }} onClick={() => openModal('bank')}>
+            Add Bank Details
+          </button>
+        )}
         <button
           className="secondary-btn"
           style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)' }}

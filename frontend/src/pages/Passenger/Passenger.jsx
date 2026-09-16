@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import jsQR from 'jsqr'
 import { useNavigate } from '../../routes/navigation.jsx'
-import { useAuth, resolveFileUrl } from '../../context/AuthContext.jsx'
+import { useAuth, resolveFileUrl, hasValidBankDetails } from '../../context/AuthContext.jsx'
 import { useWallet } from '../../context/WalletContext.jsx'
 import { useDarkMode } from '../../hooks/useDarkMode.js'
 import { RANGE_OPTIONS, formatRelativeTime, vehicleLabel } from './format.js'
@@ -10,6 +10,7 @@ import WithdrawModal from '../../components/Payment/WithdrawModal.jsx'
 import NFCCardOrderModal from '../../components/NFC/NFCCardOrderModal.jsx'
 import NFCOrderHistoryModal from '../../components/NFC/NFCOrderHistoryModal.jsx'
 import DocumentViewerModal from '../../components/Common/DocumentViewerModal.jsx'
+import BankModal from '../../components/Payment/BankModal.jsx'
 import './Passenger.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
@@ -424,6 +425,7 @@ function Passenger() {
   const [showSupportModal, setShowSupportModal] = useState(false)
   const [showNFCSecurityModal, setShowNFCSecurityModal] = useState(false)
   const [previewDoc, setPreviewDoc] = useState(null)
+  const [showBankModal, setShowBankModal] = useState(false)
 
   const [form, setForm] = useState({
     name: '',
@@ -569,7 +571,7 @@ function Passenger() {
       flash(`Cannot withdraw more than available balance (₹${balance.toFixed(2)}).`)
       return
     }
-    if (!user?.bank_account_number) {
+    if (!hasValidBankDetails(user)) {
       flash('Please save your bank details in Profile first.')
       return
     }
@@ -678,13 +680,10 @@ function Passenger() {
         </b>
       </div>
 
-      {!user?.bank_account_number && (
+      {!hasValidBankDetails(user) && (
         <button
           className="secondary-btn"
-          onClick={() => {
-            setTab('profile')
-            setEditing(true)
-          }}
+          onClick={() => setShowBankModal(true)}
           style={{ marginBottom: 20 }}
         >
           Add Bank Details
@@ -945,7 +944,7 @@ function Passenger() {
   )
 
 
-  const isBankLocked = Boolean(user?.bank_locked || user?.bank_account_number)
+  const isBankLocked = hasValidBankDetails(user) && Boolean(user?.bank_locked)
 
   const saveProfile = async () => {
     const bankDetails = {
@@ -986,6 +985,7 @@ function Passenger() {
       }),
     })
     if (res.success) {
+      await refreshProfile()
       setEditing(false)
       setForm({
         name: '',
@@ -1036,8 +1036,7 @@ function Passenger() {
   }
 
   const handleAdminBankRequest = async () => {
-    setForm((current) => ({ ...current, bank_account_holder: '', bank_account_number: '', bank_ifsc: '', bank_upi_id: '' }))
-    setEditing(true)
+    setShowBankModal(true)
   }
 
   const handleAdminDocRequest = async () => {
@@ -1175,7 +1174,16 @@ function Passenger() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 28, marginBottom: 12 }}>
         <h2 style={{ margin: 0 }}>Bank &amp; Refund Details</h2>
-        {isBankLocked && (
+        {!hasValidBankDetails(user) ? (
+          <button
+            type="button"
+            className="secondary-btn"
+            style={{ padding: '6px 14px', fontSize: 13, fontWeight: 700 }}
+            onClick={() => setShowBankModal(true)}
+          >
+            Add Bank Details
+          </button>
+        ) : isBankLocked && (
           <span className="field-tag readonly" style={{ background: user?.bank_request_status === 'approved' ? '#dff4e8' : user?.bank_request_status === 'rejected' ? '#fde7eb' : '#FFF3C4', color: user?.bank_request_status === 'approved' ? '#1f9d55' : user?.bank_request_status === 'rejected' ? '#9f1730' : '#906500' }}>
             {user?.bank_request_status === 'approved'
               ? 'Admin Approval Granted (Editable Once)'
@@ -1481,6 +1489,14 @@ function Passenger() {
 
       {previewDoc && (
         <DocumentViewerModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
+      )}
+
+      {showBankModal && (
+        <BankModal
+          onClose={() => setShowBankModal(false)}
+          flash={flash}
+          title="Bank & Refund Details"
+        />
       )}
 
       {notice && <div className="toast">✓ {notice}</div>}

@@ -44,6 +44,24 @@ function readStoredUser() {
   }
 }
 
+export function hasValidBankDetails(user) {
+  if (!user) return false
+  const holder = typeof user.bank_account_holder === 'string' ? user.bank_account_holder.trim() : ''
+  const number = typeof user.bank_account_number === 'string' ? user.bank_account_number.trim() : ''
+  const ifsc = typeof user.bank_ifsc === 'string' ? user.bank_ifsc.trim() : ''
+
+  if (!holder || holder === '—' || holder.toLowerCase() === 'null' || holder.toLowerCase() === 'undefined') {
+    return false
+  }
+  if (!number || number === '—' || number.toLowerCase() === 'null' || number.toLowerCase() === 'undefined') {
+    return false
+  }
+  if (!ifsc || ifsc === '—' || ifsc.toLowerCase() === 'null' || ifsc.toLowerCase() === 'undefined') {
+    return false
+  }
+  return true
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => readStoredUser())
 
@@ -55,6 +73,26 @@ export function AuthProvider({ children }) {
     }
     localStorage.removeItem(STORAGE_KEY)
   }, [user])
+
+  // Automatically sync authenticated user details with database on initial mount
+  useEffect(() => {
+    const stored = readStoredUser()
+    if (stored?.id) {
+      const token = sessionStorage.getItem(TOKEN_KEY)
+      const headers = {}
+      if (token) headers['Authorization'] = `Bearer ${token}`
+      fetch(`${API_BASE}/api/auth/profile/${stored.id}`, { headers })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.success && data?.user) {
+            const nextUser = normalizeUser(data.user)
+            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser))
+            setUser(nextUser)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [])
 
   const login = async ({ account, password }) => {
     try {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useAuth, resolveFileUrl } from '../../context/AuthContext.jsx'
+import { useAuth, resolveFileUrl, hasValidBankDetails } from '../../context/AuthContext.jsx'
 import { useDriverData } from '../../context/DriverContext.jsx'
 import DocumentViewerModal from '../../components/Common/DocumentViewerModal.jsx'
 import { inr } from './format.js'
@@ -227,13 +227,13 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
 
   const set = (key) => (value) => setForm((current) => ({ ...current, [key]: value }))
 
-  const isBankLocked = Boolean(user?.bank_locked || user?.bank_account_number)
+  const isBankLocked = hasValidBankDetails(user) && Boolean(user?.bank_locked)
 
   const save = async () => {
     const bankDetails = {
       bank_account_holder: form.bank_account_holder.trim(),
       bank_account_number: form.bank_account_number.trim(),
-      bank_ifsc: form.bank_ifsc.trim(),
+      bank_ifsc: form.bank_ifsc.trim().toUpperCase(),
       bank_upi_id: form.bank_upi_id.trim(),
     }
     const hasBankProposal = Object.values(bankDetails).some(Boolean)
@@ -269,6 +269,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
     })
 
     if (res.success) {
+      await refreshProfile()
       setEditing(false)
       setForm({
         name: '',

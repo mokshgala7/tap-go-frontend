@@ -840,20 +840,26 @@ async def update_profile(data: ProfileUpdateRequest, current_user: User = Depend
         )
         if not all(isinstance(value, str) and value.strip() for value in bank_values):
             raise HTTPException(status_code=400, detail="All bank details are required.")
-        if user.bank_locked:
+
+        has_existing_bank = bool(
+            user.bank_account_number and str(user.bank_account_number).strip() and
+            user.bank_account_holder and str(user.bank_account_holder).strip() and
+            user.bank_ifsc and str(user.bank_ifsc).strip()
+        )
+        if has_existing_bank and user.bank_locked:
             raise HTTPException(
                 status_code=400,
                 detail="Bank details are locked. Submit a bank-details change request for administrator approval."
             )
 
         if data.bank_account_holder is not None:
-            user.bank_account_holder = data.bank_account_holder
+            user.bank_account_holder = data.bank_account_holder.strip()
         if data.bank_account_number is not None:
-            user.bank_account_number = data.bank_account_number
+            user.bank_account_number = data.bank_account_number.strip()
         if data.bank_ifsc is not None:
-            user.bank_ifsc = data.bank_ifsc
+            user.bank_ifsc = data.bank_ifsc.strip().upper()
         if data.bank_upi_id is not None:
-            user.bank_upi_id = data.bank_upi_id
+            user.bank_upi_id = data.bank_upi_id.strip()
 
         # Lock after the initial database-backed bank-details save.
         if user.bank_account_number:
@@ -882,7 +888,7 @@ async def request_admin_access(data: AdminAccessRequest, current_user: User = De
     user = current_user
 
     if data.request_type == "bank":
-        if not user.bank_account_number:
+        if not (user.bank_account_number and str(user.bank_account_number).strip()):
             raise HTTPException(status_code=400, detail="Save initial bank details before requesting a change.")
         required_fields = {"bank_account_holder", "bank_account_number", "bank_ifsc", "bank_upi_id"}
         if not data.bank_details or not required_fields.issubset(data.bank_details) or not all(data.bank_details[field].strip() for field in required_fields):
