@@ -225,7 +225,7 @@ function DriverDashboard({ flash, openModal, goToEarnings }) {
           Withdraw Balance
         </button>
         <button className="secondary-btn" style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)' }} onClick={() => openModal('bank')}>
-          Add / Manage Bank Account
+          {user?.bank_account_number ? 'Manage Bank Account' : 'Add Bank Details'}
         </button>
         <button
           className="secondary-btn"

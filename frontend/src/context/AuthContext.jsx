@@ -146,7 +146,7 @@ export function AuthProvider({ children }) {
     }
   }
 
-  const requestAdminAccess = async (requestType) => {
+  const requestAdminAccess = async (requestType, bankDetails) => {
     if (!user?.id) return { success: false, message: 'User not logged in' }
     try {
       const token = sessionStorage.getItem(TOKEN_KEY)
@@ -156,7 +156,7 @@ export function AuthProvider({ children }) {
       const res = await fetch(`${API_BASE}/api/auth/request-admin-access`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ user_id: user.id, request_type: requestType }),
+        body: JSON.stringify({ user_id: user.id, request_type: requestType, ...(bankDetails ? { bank_details: bankDetails } : {}) }),
       })
       const data = await res.json()
       if (res.ok && data.success) {

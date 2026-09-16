@@ -8,6 +8,7 @@ from datetime import datetime
 from decimal import Decimal
 from io import StringIO
 import csv
+import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
@@ -391,6 +392,18 @@ def review_edit_request(request_id: int, payload: EditReview, admin: Admin = Dep
         request_state = "approved" if payload.action == "approve" else "rejected"
         if request.field_name == "bank":
             user.bank_request_status = request_state
+            if payload.action == "approve":
+                try:
+                    bank_details = json.loads(request.new_value or "{}")
+                    required_fields = ("bank_account_holder", "bank_account_number", "bank_ifsc", "bank_upi_id")
+                    if not all(isinstance(bank_details.get(field), str) and bank_details[field].strip() for field in required_fields):
+                        raise ValueError("missing bank details")
+                except (json.JSONDecodeError, ValueError):
+                    raise HTTPException(status_code=400, detail="Bank change request has invalid details.")
+                for field in required_fields:
+                    setattr(user, field, bank_details[field].strip())
+                user.bank_locked = 1
+                user.bank_request_status = "none"
         elif request.field_name == "documents":
             user.doc_request_status = request_state
         elif request.field_name == "phone":

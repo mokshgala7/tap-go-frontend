@@ -1,5 +1,6 @@
 import os
 import uuid
+import json
 from typing import Optional
 from fastapi import APIRouter, Depends, Form, File, UploadFile, HTTPException, status, Header
 from fastapi.responses import JSONResponse
@@ -831,10 +832,18 @@ async def update_profile(data: ProfileUpdateRequest, current_user: User = Depend
     ])
 
     if bank_changed:
-        if user.bank_locked and user.bank_request_status != "approved":
+        bank_values = (
+            data.bank_account_holder if data.bank_account_holder is not None else user.bank_account_holder,
+            data.bank_account_number if data.bank_account_number is not None else user.bank_account_number,
+            data.bank_ifsc if data.bank_ifsc is not None else user.bank_ifsc,
+            data.bank_upi_id if data.bank_upi_id is not None else user.bank_upi_id,
+        )
+        if not all(isinstance(value, str) and value.strip() for value in bank_values):
+            raise HTTPException(status_code=400, detail="All bank details are required.")
+        if user.bank_locked:
             raise HTTPException(
                 status_code=400,
-                detail="Bank details are locked. You must request admin access to edit bank details again."
+                detail="Bank details are locked. Submit a bank-details change request for administrator approval."
             )
 
         if data.bank_account_holder is not None:
@@ -846,11 +855,9 @@ async def update_profile(data: ProfileUpdateRequest, current_user: User = Depend
         if data.bank_upi_id is not None:
             user.bank_upi_id = data.bank_upi_id
 
-        # Lock after initial edit if bank account number exists
+        # Lock after the initial database-backed bank-details save.
         if user.bank_account_number:
             user.bank_locked = 1
-            if user.bank_request_status == "approved":
-                user.bank_request_status = "none"
 
     db.commit()
     db.refresh(user)
@@ -864,15 +871,29 @@ async def update_profile(data: ProfileUpdateRequest, current_user: User = Depend
 class AdminAccessRequest(BaseModel):
     user_id: int
     request_type: str  # "bank" or "documents"
+    bank_details: Optional[dict[str, str]] = None
 
 
 @router.post("/request-admin-access")
-async def request_admin_access(data: AdminAccessRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == data.user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
+async def request_admin_access(data: AdminAccessRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.id != data.user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to request changes for another user.")
+
+    user = current_user
 
     if data.request_type == "bank":
+        if not user.bank_account_number:
+            raise HTTPException(status_code=400, detail="Save initial bank details before requesting a change.")
+        required_fields = {"bank_account_holder", "bank_account_number", "bank_ifsc", "bank_upi_id"}
+        if not data.bank_details or not required_fields.issubset(data.bank_details) or not all(data.bank_details[field].strip() for field in required_fields):
+            raise HTTPException(status_code=400, detail="Provide all proposed bank details for administrator review.")
+        pending_request = db.query(EditRequest).filter(
+            EditRequest.user_id == user.id,
+            EditRequest.field_name == "bank",
+            EditRequest.status == "pending",
+        ).first()
+        if pending_request:
+            raise HTTPException(status_code=400, detail="A bank-details change request is already pending review.")
         user.bank_request_status = "requested"
     elif data.request_type == "documents":
         user.doc_request_status = "requested"
@@ -884,9 +905,14 @@ async def request_admin_access(data: AdminAccessRequest, db: Session = Depends(g
     db.add(EditRequest(
         user_id=user.id,
         field_name=data.request_type,
-        previous_value=None,
-        new_value=None,
-        reason=f"Requested administrator access to update {data.request_type} details.",
+        previous_value=json.dumps({
+            "bank_account_holder": user.bank_account_holder,
+            "bank_account_number": user.bank_account_number,
+            "bank_ifsc": user.bank_ifsc,
+            "bank_upi_id": user.bank_upi_id,
+        }) if data.request_type == "bank" else None,
+        new_value=json.dumps(data.bank_details) if data.request_type == "bank" else None,
+        reason=f"Requested administrator review to update {data.request_type} details.",
     ))
 
     db.commit()

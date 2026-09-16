@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '../../routes/navigation.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
-import { useDriverData } from '../../context/DriverContext.jsx'
 import { useDarkMode } from '../../hooks/useDarkMode.js'
 import DriverDashboard from './DriverDashboard.jsx'
 import DriverEarnings from './DriverEarnings.jsx'
@@ -21,17 +20,16 @@ const Icon = ({ children, className = '' }) => (
 
 function BankModal({ onClose, flash }) {
   const { user, saveProfileToDb, requestAdminAccess } = useAuth()
-  const { saveBankDetails } = useDriverData()
   const [requesting, setRequesting] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const isLocked = Boolean(user?.bank_locked || user?.bank_account_number) && user?.bank_request_status !== 'approved'
 
   const [form, setForm] = useState({
-    accountHolder: '',
-    accountNumber: '',
-    ifsc: '',
-    upiId: '',
+    accountHolder: user?.bank_account_holder || '',
+    accountNumber: user?.bank_account_number || '',
+    ifsc: user?.bank_ifsc || '',
+    upiId: user?.bank_upi_id || '',
   })
 
   const handleUseExistingDetails = () => {
@@ -58,7 +56,6 @@ function BankModal({ onClose, flash }) {
     setSaving(false)
 
     if (res.success) {
-      saveBankDetails(form)
       onClose()
       flash('Bank account details saved & locked in database.')
     } else {
@@ -68,7 +65,12 @@ function BankModal({ onClose, flash }) {
 
   const handleRequestAccess = async () => {
     setRequesting(true)
-    const res = await requestAdminAccess('bank')
+    const res = await requestAdminAccess('bank', {
+      bank_account_holder: form.accountHolder.trim(),
+      bank_account_number: form.accountNumber.trim(),
+      bank_ifsc: form.ifsc.trim(),
+      bank_upi_id: form.upiId.trim(),
+    })
     setRequesting(false)
     if (res.success) {
       flash('Admin access requested for editing bank account.')
@@ -99,16 +101,16 @@ function BankModal({ onClose, flash }) {
         )}
 
         <label htmlFor="bank-holder">Account Holder Name</label>
-        <input id="bank-holder" value={form.accountHolder} disabled={isLocked} onChange={update('accountHolder')} placeholder="e.g. Full Name" autoComplete="off" />
+        <input id="bank-holder" value={form.accountHolder} onChange={update('accountHolder')} placeholder="e.g. Full Name" autoComplete="off" />
 
         <label htmlFor="bank-number">Account Number</label>
-        <input id="bank-number" value={form.accountNumber} disabled={isLocked} onChange={update('accountNumber')} placeholder="Bank Account Number" autoComplete="off" />
+        <input id="bank-number" value={form.accountNumber} onChange={update('accountNumber')} placeholder="Bank Account Number" autoComplete="off" />
 
         <label htmlFor="bank-ifsc">IFSC Code</label>
-        <input id="bank-ifsc" value={form.ifsc} disabled={isLocked} onChange={update('ifsc')} placeholder="e.g. SBIN0001234" autoComplete="off" />
+        <input id="bank-ifsc" value={form.ifsc} onChange={update('ifsc')} placeholder="e.g. SBIN0001234" autoComplete="off" />
 
         <label htmlFor="bank-upi">UPI ID</label>
-        <input id="bank-upi" value={form.upiId} disabled={isLocked} onChange={update('upiId')} placeholder="name@upi" autoComplete="off" />
+        <input id="bank-upi" value={form.upiId} onChange={update('upiId')} placeholder="name@upi" autoComplete="off" />
 
         <div className="modal-actions" style={{ flexDirection: 'column', gap: 10, marginTop: 22 }}>
           {isLocked ? (
@@ -117,12 +119,12 @@ function BankModal({ onClose, flash }) {
                 ⏳ Admin access request pending approval.
               </p>
             ) : (
-              <button className="primary" disabled={requesting} onClick={handleRequestAccess}>
-                {requesting ? 'Submitting Request...' : 'Request Admin Access to Edit'}
+              <button className="primary" disabled={requesting || !form.accountHolder || !form.accountNumber || !form.ifsc || !form.upiId} onClick={handleRequestAccess}>
+                {requesting ? 'Submitting Request...' : 'Submit Changes for Admin Approval'}
               </button>
             )
           ) : (
-            <button className="primary" disabled={saving || !form.accountNumber} onClick={handleSave}>
+            <button className="primary" disabled={saving || !form.accountHolder || !form.accountNumber || !form.ifsc || !form.upiId} onClick={handleSave}>
               {saving ? 'Saving to Database...' : 'Save & Lock Bank Account'}
             </button>
           )}

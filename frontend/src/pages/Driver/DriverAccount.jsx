@@ -230,6 +230,29 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
   const isBankLocked = Boolean(user?.bank_locked || user?.bank_account_number)
 
   const save = async () => {
+    const bankDetails = {
+      bank_account_holder: form.bank_account_holder.trim(),
+      bank_account_number: form.bank_account_number.trim(),
+      bank_ifsc: form.bank_ifsc.trim(),
+      bank_upi_id: form.bank_upi_id.trim(),
+    }
+    const hasBankProposal = Object.values(bankDetails).some(Boolean)
+    if (!isBankLocked && hasBankProposal && !Object.values(bankDetails).every(Boolean)) {
+      flash('Provide all bank details before saving.')
+      return
+    }
+    if (isBankLocked && hasBankProposal) {
+      if (!Object.values(bankDetails).every(Boolean)) {
+        flash('Provide all bank details for administrator review.')
+        return
+      }
+      const request = await requestAdminAccess('bank', bankDetails)
+      if (!request.success) {
+        flash(request.message || 'Failed to submit bank-details change request.')
+        return
+      }
+    }
+
     const res = await saveProfileToDb({
       name: form.name.trim() ? form.name.trim() : user?.name,
       email: form.email.trim() ? form.email.trim() : user?.email,
@@ -237,10 +260,12 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
       city: form.city.trim() ? form.city.trim() : user?.city,
       emergency_contact_name: form.emergency_contact_name.trim() ? form.emergency_contact_name.trim() : user?.emergency_contact_name,
       emergency_contact_phone: form.emergency_contact_phone.trim() ? form.emergency_contact_phone.trim() : user?.emergency_contact_phone,
-      bank_account_holder: form.bank_account_holder.trim() ? form.bank_account_holder.trim() : user?.bank_account_holder,
-      bank_account_number: form.bank_account_number.trim() ? form.bank_account_number.trim() : user?.bank_account_number,
-      bank_ifsc: form.bank_ifsc.trim() ? form.bank_ifsc.trim() : user?.bank_ifsc,
-      bank_upi_id: form.bank_upi_id.trim() ? form.bank_upi_id.trim() : user?.bank_upi_id,
+      ...(!isBankLocked && {
+        bank_account_holder: bankDetails.bank_account_holder || user?.bank_account_holder,
+        bank_account_number: bankDetails.bank_account_number || user?.bank_account_number,
+        bank_ifsc: bankDetails.bank_ifsc || user?.bank_ifsc,
+        bank_upi_id: bankDetails.bank_upi_id || user?.bank_upi_id,
+      }),
     })
 
     if (res.success) {
@@ -258,7 +283,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
         bank_ifsc: '',
         bank_upi_id: '',
       })
-      flash('Account & profile details updated in database.')
+      flash(hasBankProposal && isBankLocked ? 'Bank-details change submitted for administrator approval.' : 'Account & profile details updated in database.')
     } else {
       flash(res.message || 'Failed to save profile.')
     }
@@ -297,14 +322,8 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
   }
 
   const handleAdminBankRequest = async () => {
-    setRequestingBank(true)
-    const res = await requestAdminAccess('bank')
-    setRequestingBank(false)
-    if (res.success) {
-      flash('Admin access requested for bank details update.')
-    } else {
-      flash(res.message || 'Failed to send request.')
-    }
+    setForm((current) => ({ ...current, bank_account_holder: '', bank_account_number: '', bank_ifsc: '', bank_upi_id: '' }))
+    setEditing(true)
   }
 
   const handleAdminDocRequest = async () => {
@@ -445,7 +464,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
           label="Account Holder"
           value={form.bank_account_holder}
           displayValue={user?.bank_account_holder}
-          editable={!isBankLocked || user?.bank_request_status === 'approved'}
+          editable
           editing={editing}
           onChange={set('bank_account_holder')}
         />
@@ -453,7 +472,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
           label="Account Number"
           value={form.bank_account_number}
           displayValue={user?.bank_account_number ? (user.bank_account_number.length > 4 ? `XXXX XXXX ${user.bank_account_number.slice(-4)}` : user.bank_account_number) : '—'}
-          editable={!isBankLocked || user?.bank_request_status === 'approved'}
+          editable
           editing={editing}
           onChange={set('bank_account_number')}
         />
@@ -461,7 +480,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
           label="IFSC Code"
           value={form.bank_ifsc}
           displayValue={user?.bank_ifsc}
-          editable={!isBankLocked || user?.bank_request_status === 'approved'}
+          editable
           editing={editing}
           onChange={set('bank_ifsc')}
         />
@@ -469,7 +488,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
           label="UPI ID"
           value={form.bank_upi_id}
           displayValue={user?.bank_upi_id}
-          editable={!isBankLocked || user?.bank_request_status === 'approved'}
+          editable
           editing={editing}
           onChange={set('bank_upi_id')}
           placeholder="name@upi"
@@ -499,7 +518,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
                 disabled={requestingBank}
                 onClick={handleAdminBankRequest}
               >
-                {requestingBank ? 'Sending Request...' : 'Request Admin Access to Edit Bank Details'}
+                {requestingBank ? 'Sending Request...' : 'Request Bank Details Change'}
               </button>
             </div>
           )}
