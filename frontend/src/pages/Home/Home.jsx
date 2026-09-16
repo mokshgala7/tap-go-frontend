@@ -111,7 +111,7 @@ function Home() {
 
             <div className="flex flex-col items-center justify-center gap-gutter pt-4 sm:flex-row">
               <Link
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-primary-container bg-transparent px-8 py-4 text-title-md font-title-md text-primary-container sm:w-auto"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-primary-container bg-transparent px-8 py-4 text-title-md font-title-md text-primary-container sm:w-auto hover:bg-slate-50 transition-colors"
                 to="/login"
               >
                 Log in
@@ -121,7 +121,7 @@ function Home() {
               </Link>
 
               <Link
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-yellow-400 px-8 py-4 text-title-md font-title-md text-black sm:w-auto"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-yellow-400 px-8 py-4 text-title-md font-title-md text-black sm:w-auto hover:bg-yellow-500 transition-colors"
                 to="/register"
               >
                 Register

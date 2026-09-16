@@ -1,0 +1,182 @@
+/* Fullscreen Intro Video Splash Screen */
+
+.tapgo-intro-splash {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 999999;
+  background-color: #000000;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              visibility 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tapgo-intro-splash.tapgo-intro-exiting {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Fullscreen Video occupying 100% of viewport */
+.tapgo-intro-video-fullscreen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  display: block;
+  background-color: #000000;
+  z-index: 1;
+}
+
+/* Subtle top gradient shadow for controls visibility */
+.tapgo-intro-top-gradient {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 140px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.65) 0%, rgba(0, 0, 0, 0) 100%);
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Floating Controls Container */
+.tapgo-intro-controls {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  z-index: 50;
+}
+
+@media (max-width: 640px) {
+  .tapgo-intro-controls {
+    top: 1rem;
+    right: 1rem;
+    gap: 0.5rem;
+  }
+}
+
+/* Floating Brand Badge (Top Left) */
+.tapgo-intro-badge {
+  position: absolute;
+  top: 1.5rem;
+  left: 1.5rem;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.9rem;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .tapgo-intro-badge {
+    top: 1rem;
+    left: 1rem;
+    padding: 0.35rem 0.7rem;
+  }
+}
+
+.tapgo-intro-badge-title {
+  font-size: 0.875rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+}
+
+.tapgo-intro-badge-title span {
+  color: #fbbf24;
+}
+
+/* Audio Mute/Unmute Pill */
+.tapgo-intro-audio-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35);
+  gap: 0.4rem;
+}
+
+.tapgo-intro-audio-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+/* Small Skip Button */
+.tapgo-intro-skip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1.15rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 9999px;
+  cursor: pointer;
+  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.5);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tapgo-intro-skip-btn:hover {
+  background: #fbbf24;
+  color: #000000;
+  border-color: #fbbf24;
+  box-shadow: 0 0 25px rgba(251, 191, 36, 0.6), 0 6px 20px rgba(0, 0, 0, 0.5);
+  transform: translateY(-1px) scale(1.03);
+}
+
+.tapgo-intro-skip-btn:active {
+  transform: translateY(0px) scale(0.97);
+}
+
+/* Skip Progress Line Indicator */
+.tapgo-intro-skip-progress-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  z-index: 40;
+}
+
+.tapgo-intro-skip-progress-fill {
+  height: 100%;
+  background: #fbbf24;
+  box-shadow: 0 0 8px #fbbf24;
+  transition: width 0.08s linear;
+}
