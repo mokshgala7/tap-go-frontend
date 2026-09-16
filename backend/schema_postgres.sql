@@ -264,3 +264,83 @@ CREATE INDEX IF NOT EXISTS idx_email_logs_recipient ON email_logs(recipient);
 CREATE INDEX IF NOT EXISTS idx_email_logs_email_type ON email_logs(email_type);
 CREATE INDEX IF NOT EXISTS idx_email_logs_reference ON email_logs(reference);
 CREATE INDEX IF NOT EXISTS idx_email_logs_created_at ON email_logs(created_at);
+
+-- 15. USER SESSIONS
+CREATE TABLE IF NOT EXISTS user_sessions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    revoked_at TIMESTAMP WITHOUT TIME ZONE NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_token_hash ON user_sessions(token_hash);
+
+-- 16. SUPPORT TICKETS
+CREATE TABLE IF NOT EXISTS support_tickets (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(120) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    category VARCHAR(50) NOT NULL DEFAULT 'other',
+    priority VARCHAR(20) NOT NULL DEFAULT 'medium',
+    subject VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'open',
+    admin_reply TEXT NULL,
+    replied_by INTEGER NULL REFERENCES admins(id),
+    replied_at TIMESTAMP WITHOUT TIME ZONE NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_created_at ON support_tickets(created_at);
+
+-- 17. NFC CARDS
+CREATE TABLE IF NOT EXISTS nfc_cards (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    card_reference VARCHAR(64) NOT NULL UNIQUE,
+    card_type VARCHAR(50) NOT NULL DEFAULT 'standard_nfc',
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    blocked_reason TEXT NULL,
+    block_requested_at TIMESTAMP WITHOUT TIME ZONE NULL,
+    nfc_order_id INTEGER NULL REFERENCES nfc_card_orders(id),
+    replacement_order_id INTEGER NULL REFERENCES nfc_card_orders(id),
+    issued_at TIMESTAMP WITHOUT TIME ZONE NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_nfc_cards_user_id ON nfc_cards(user_id);
+CREATE INDEX IF NOT EXISTS idx_nfc_cards_status ON nfc_cards(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_nfc_cards_ref ON nfc_cards(card_reference);
+
+-- 18. WITHDRAWAL REQUESTS
+CREATE TABLE IF NOT EXISTS withdrawal_requests (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    wallet_id INTEGER NOT NULL REFERENCES wallets(id),
+    hold_transaction_id INTEGER NULL REFERENCES transactions(id),
+    amount NUMERIC(12, 2) NOT NULL,
+    destination_desc TEXT NOT NULL,
+    reference VARCHAR(64) NOT NULL UNIQUE,
+    otp_verified BOOLEAN NOT NULL DEFAULT TRUE,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    admin_id INTEGER NULL REFERENCES admins(id),
+    admin_note TEXT NULL,
+    reviewed_at TIMESTAMP WITHOUT TIME ZONE NULL,
+    paid_at TIMESTAMP WITHOUT TIME ZONE NULL,
+    idempotency_key VARCHAR(128) NULL UNIQUE,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_wr_user_id ON withdrawal_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_wr_status ON withdrawal_requests(status);
+CREATE INDEX IF NOT EXISTS idx_wr_reference ON withdrawal_requests(reference);
