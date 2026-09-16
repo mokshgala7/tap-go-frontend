@@ -344,7 +344,7 @@ function ForgotPassword() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                       </SvgIcon>
                     </div>
-                    <input className="peer w-full bg-transparent px-12 py-4 pt-6 text-gray-900 font-medium focus:outline-none" placeholder=" " value={account} onChange={(event) => setAccount(event.target.value)} />
+                    <input className="peer w-full bg-transparent px-12 py-4 pt-8 pb-3 text-gray-900 font-medium focus:outline-none" placeholder=" " value={account} onChange={(event) => setAccount(event.target.value)} />
                     <label className="absolute left-12 top-4 text-gray-400 text-xs font-semibold transition-all peer-placeholder-shown:text-sm peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-focus:top-4 peer-focus:-translate-y-0 peer-focus:text-xs peer-focus:text-yellow-600 pointer-events-none">Email Address OR Mobile Number</label>
                     {validAccount && (
                       <div className="absolute right-5 top-1/2 transform -translate-y-1/2 text-green-500 z-10">
