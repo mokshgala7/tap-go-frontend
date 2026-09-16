@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from '../routes/navigation.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import Footer from '../components/Common/Footer.jsx'
@@ -46,20 +46,7 @@ function Login() {
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState(initialErrors)
   const [successMessage, setSuccessMessage] = useState('')
-  const loginVideoRef = useRef(null)
 
-  useEffect(() => {
-    const video = loginVideoRef.current
-    if (!video) return
-    video.muted = true
-    video.defaultMuted = true
-    video.setAttribute('playsinline', '')
-    video.setAttribute('webkit-playsinline', '')
-    const playPromise = video.play()
-    if (playPromise !== undefined) {
-      playPromise.catch(() => {})
-    }
-  }, [])
 
   useEffect(() => {
     const reviewNotice = sessionStorage.getItem('tapgo_registration_notice')
@@ -154,19 +141,11 @@ function Login() {
         <section className="login-layout" aria-label="Tap&Go login">
           <div className="login-visual" aria-hidden="true">
             <div className="login-illustration-wrap">
-              <video
-                ref={loginVideoRef}
-                className="login-video"
-                src="/intro_video.mp4"
-                autoPlay
-                loop
-                muted
-                playsInline
-                poster="/intro_poster.jpg"
-              >
-                <source src="/intro_video.mp4" type="video/mp4" />
-                <source src="/taxi_and_autorickshaw_like_the.mov" type="video/quicktime" />
-              </video>
+              <img
+                className="login-illustration"
+                src={illustration}
+                alt="Tap&Go smart mobility illustration"
+              />
             </div>
           </div>
 
