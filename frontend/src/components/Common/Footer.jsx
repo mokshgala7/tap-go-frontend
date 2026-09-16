@@ -5,7 +5,7 @@ function Footer() {
   return (
     <footer
       id="footer"
-      className="mt-auto w-full border-t border-slate-200 bg-slate-900 text-slate-300 py-12"
+      className="mt-auto w-full border-t border-slate-200 bg-neutral-800 text-slate-300 py-12"
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 space-y-10">
         {/* Top Grid Section */}

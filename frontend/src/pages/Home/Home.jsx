@@ -217,7 +217,7 @@ function Home() {
 
         {/* Need Help Support CTA Section */}
         <section className="mx-auto w-full max-w-7xl px-6 py-12">
-          <div className="rounded-3xl bg-slate-900 p-8 sm:p-10 text-white flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="rounded-3xl bg-neutral-800 p-8 sm:p-10 text-white flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="space-y-2 max-w-2xl">
               <h3 className="text-2xl font-bold text-amber-400">Need Help?</h3>
               <p className="text-slate-300 text-sm leading-relaxed">
