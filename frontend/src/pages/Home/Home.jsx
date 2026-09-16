@@ -238,7 +238,7 @@ function Home() {
         {/* Compliance Footer Banner Disclosure */}
         <section className="w-full bg-slate-100 border-t border-slate-200 py-6 text-center px-4">
           <p className="text-xs text-slate-600 max-w-4xl mx-auto leading-relaxed">
-            <strong className="text-slate-900">Academic Project Disclosure:</strong> Tap&amp;Go is a student / final-year academic project developed by Moksh Gala at SVKM’s Shri Bhagubai Mafatlal Polytechnic. The platform is presented for technological demonstration and evaluation and is not a registered commercial payment institution.
+            <strong className="text-slate-900">Academic Project Disclosure:</strong> Tap&amp;Go is a student / final-year academic project developed by Moksh Gala,Arham Fofriya and Vansh Gala at SVKM’s Shri Bhagubai Mafatlal Polytechnic. The platform is presented for technological demonstration and evaluation and is not a registered commercial payment institution.
           </p>
         </section>
       </main>

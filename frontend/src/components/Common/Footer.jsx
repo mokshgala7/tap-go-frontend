@@ -123,7 +123,7 @@ function Footer() {
 
         {/* Bottom Bar */}
         <div className="border-t border-slate-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
-          <p>© 2026 Tap&amp;Go. Student / Final-Year Academic Project by Moksh Gala (SVKM Bhagubai Polytechnic).</p>
+          <p>© 2026 Tap&amp;Go. Student / Final-Year Academic Project by Moksh Gala,Arham Fofaria and Vansh Gala(SVKM Bhagubai Polytechnic).</p>
           <div className="flex gap-4">
             <Link to="/privacy" className="hover:text-slate-200">Privacy</Link>
             <Link to="/terms" className="hover:text-slate-200">Terms</Link>

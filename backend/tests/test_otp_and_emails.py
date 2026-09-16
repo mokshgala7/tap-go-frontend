@@ -439,18 +439,31 @@ def test_all_branded_email_helpers():
 
 
 def test_local_development_smtp_fallback():
-    """Verify that if AWS credentials are absent in local dev, send_email falls back to local dev SMTP."""
+    """Verify that if AWS credentials are absent in local dev, send_email falls back to local dev SMTP when configured."""
     with patch.object(settings.__class__, "IS_PRODUCTION", False):
         with patch.object(settings.__class__, "AWS_ACCESS_KEY_ID", ""):
             with patch.object(settings.__class__, "AWS_SECRET_ACCESS_KEY", ""):
-                with patch("app.utils.email_service._send_smtp_email", return_value=(True, None)) as mock_smtp:
-                    res = send_email(
-                        to_email="dev@example.com",
-                        subject="Dev Subject",
-                        html_content="<p>Dev</p>",
-                    )
-                    assert res is True
-                    mock_smtp.assert_called_once()
+                with patch.object(settings.__class__, "SMTP_HOST", "smtp.local.test"):
+                    with patch.object(settings.__class__, "SMTP_USER", "local-user@example.com"):
+                        with patch.object(settings.__class__, "SMTP_PASSWORD", "local-test-password"):
+                            with patch("app.utils.email_service._send_smtp_email", return_value=(True, None)) as mock_smtp:
+                                res = send_email(
+                                    to_email="dev@example.com",
+                                    subject="Dev Subject",
+                                    html_content="<p>Dev</p>",
+                                )
+                                assert res is True
+                                mock_smtp.assert_called_once()
+
+
+def test_no_hardcoded_smtp_credentials_or_obsolete_defaults():
+    """Verify that SMTP settings have no hardcoded Gmail defaults or credentials."""
+    with patch.dict(os.environ, {}, clear=True):
+        # Fresh instance or property checks with clean environment
+        assert settings.SMTP_HOST == "" or "gmail" not in settings.SMTP_HOST.lower()
+        assert settings.SMTP_PASSWORD == ""
+        assert "mokshgala070" not in settings.SMTP_USER.lower()
+
 
 
 # ============================================================================

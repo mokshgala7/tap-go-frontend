@@ -98,15 +98,18 @@ class Settings:
         raw = os.getenv("SES_REPLY_TO_EMAIL", "").strip()
         return raw if raw else None
 
-    # --- Legacy SMTP settings (retained for backward compatibility, not used for email delivery) ---
+    # --- Local development SMTP fallback settings (environment variables only, no hardcoded secrets) ---
     @property
     def SMTP_HOST(self) -> str:
-        return os.getenv("SMTP_HOST", "smtp.gmail.com")
-
+        return os.getenv("SMTP_HOST", "").strip()
 
     @property
     def SMTP_PORT(self) -> int:
-        return int(os.getenv("SMTP_PORT", "587"))
+        val = os.getenv("SMTP_PORT", "587").strip()
+        try:
+            return int(val)
+        except ValueError:
+            return 587
 
     # --- Supabase Storage Configuration ---
     @property
@@ -123,37 +126,20 @@ class Settings:
 
     @property
     def SMTP_USER(self) -> str:
-        return (
-            os.getenv("SMTP_USER")
-            or os.getenv("GMAIL_USER")
-            or os.getenv("GMAIL_EMAIL")
-            or os.getenv("EMAIL_USER")
-            or os.getenv("EMAIL")
-            or os.getenv("MAIL_USER")
-            or os.getenv("IMAP_USER")
-            or "tapandgosupport@gmail.com"
-        ).strip()
+        return os.getenv("SMTP_USER", "").strip()
 
     @property
     def SMTP_PASSWORD(self) -> str:
-        return (
-            os.getenv("SMTP_PASSWORD")
-            or os.getenv("GMAIL_APP_PASSWORD")
-            or os.getenv("GMAIL_PASSWORD")
-            or os.getenv("EMAIL_PASSWORD")
-            or os.getenv("EMAIL_PASS")
-            or os.getenv("SMTP_PASS")
-            or os.getenv("APP_PASSWORD")
-            or os.getenv("MAIL_PASSWORD")
-            or os.getenv("OUTLOOK_APP_PASSWORD")
-            or os.getenv("IMAP_PASSWORD")
-            or ""
-        ).strip()
+        return os.getenv("SMTP_PASSWORD", "").strip()
 
     @property
     def SMTP_FROM_EMAIL(self) -> str:
-        user = self.SMTP_USER or "tapandgosupport@gmail.com"
-        return os.getenv("SMTP_FROM_EMAIL") or f"Tap & Go <{user}>"
+        raw = os.getenv("SMTP_FROM_EMAIL", "").strip()
+        if raw:
+            return raw
+        if self.SMTP_USER:
+            return f"Tap & Go <{self.SMTP_USER}>"
+        return ""
 
     @property
     def RESEND_API_KEY(self) -> str:
@@ -189,70 +175,7 @@ class Settings:
         auth = f"{self.DB_USER}:{self.DB_PASSWORD}" if self.DB_PASSWORD else self.DB_USER
         return f"{driver}://{auth}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
-    @property
-    def OUTLOOK_CLIENT_ID(self) -> str:
-        return os.getenv("OUTLOOK_CLIENT_ID", "")
 
-    @property
-    def OUTLOOK_CLIENT_SECRET(self) -> str:
-        return os.getenv("OUTLOOK_CLIENT_SECRET", "")
-
-    @property
-    def OUTLOOK_TENANT_ID(self) -> str:
-        return os.getenv("OUTLOOK_TENANT_ID", "common")
-
-    @property
-    def OUTLOOK_REFRESH_TOKEN(self) -> str:
-        return os.getenv("OUTLOOK_REFRESH_TOKEN", "")
-
-    @property
-    def GMAIL_IMAP_SERVER(self) -> str:
-        return os.getenv("GMAIL_IMAP_SERVER") or os.getenv("IMAP_HOST") or "imap.gmail.com"
-
-    @property
-    def GMAIL_IMAP_PORT(self) -> int:
-        val = os.getenv("GMAIL_IMAP_PORT") or os.getenv("IMAP_PORT") or "993"
-        return int(val)
-
-    @property
-    def GMAIL_USER(self) -> str:
-        return (os.getenv("GMAIL_USER") or os.getenv("GMAIL_EMAIL") or os.getenv("SMTP_USER") or os.getenv("OUTLOOK_EMAIL") or os.getenv("IMAP_USER") or "").strip()
-
-    @property
-    def GMAIL_APP_PASSWORD(self) -> str:
-        return (os.getenv("GMAIL_APP_PASSWORD") or os.getenv("GMAIL_PASSWORD") or os.getenv("SMTP_PASSWORD") or os.getenv("OUTLOOK_APP_PASSWORD") or os.getenv("IMAP_PASSWORD") or "").strip()
-
-    @property
-    def OUTLOOK_IMAP_SERVER(self) -> str:
-        return self.GMAIL_IMAP_SERVER
-
-    @property
-    def OUTLOOK_IMAP_PORT(self) -> int:
-        return self.GMAIL_IMAP_PORT
-
-    @property
-    def OUTLOOK_EMAIL(self) -> str:
-        return self.GMAIL_USER
-
-    @property
-    def OUTLOOK_APP_PASSWORD(self) -> str:
-        return self.GMAIL_APP_PASSWORD
-
-    @property
-    def IMAP_HOST(self) -> str:
-        return self.GMAIL_IMAP_SERVER
-
-    @property
-    def IMAP_PORT(self) -> int:
-        return self.GMAIL_IMAP_PORT
-
-    @property
-    def IMAP_USER(self) -> str:
-        return self.GMAIL_USER
-
-    @property
-    def IMAP_PASSWORD(self) -> str:
-        return self.GMAIL_APP_PASSWORD
 
     @property
     def RAZORPAY_KEY_ID(self) -> str:

@@ -33,7 +33,7 @@ export function TermsConditions() {
             <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 text-xs sm:text-sm font-semibold space-y-1">
               <p className="font-bold text-amber-900">Academic Project Notice:</p>
               <p>
-                Tap&amp;Go is a student / final-year project developed by Moksh Gala, a Diploma student in Computer Science &amp; Engineering at SVKM’s Shri Bhagubai Mafatlal Polytechnic. It is designed for demonstration and technological evaluation purposes and is not a licensed financial institution or RBI-regulated payment aggregator.
+                Tap&amp;Go is a student / final-year project developed by Moksh Gala,Arham Fofaria and Vansh Gala, a Diploma student in Computer Science &amp; Engineering at SVKM’s Shri Bhagubai Mafatlal Polytechnic. It is designed for demonstration and technological evaluation purposes and is not a licensed financial institution or RBI-regulated payment aggregator.
               </p>
             </div>
           </section>

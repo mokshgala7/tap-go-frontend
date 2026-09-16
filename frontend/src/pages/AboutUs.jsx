@@ -108,7 +108,7 @@ export function AboutUs() {
             Project Background
           </h2>
           <p className="text-slate-700 leading-relaxed text-sm sm:text-base">
-            Tap&amp;Go is a student / final-year project developed by <strong>Moksh Gala</strong>, a Diploma student in Computer Science &amp; Engineering at <strong>SVKM’s Shri Bhagubai Mafatlal Polytechnic</strong> (Mumbai, Maharashtra).
+            Tap&amp;Go is a student / final-year project developed by <strong>Moksh Gala,Arham Fofriya and Vansh Gala</strong>, a Diploma student in Computer Science &amp; Engineering at <strong>SVKM’s Shri Bhagubai Mafatlal Polytechnic</strong> (Mumbai, Maharashtra).
           </p>
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs sm:text-sm leading-relaxed space-y-1">
             <p className="font-bold text-slate-900">Academic Project Disclosure:</p>
