@@ -224,6 +224,7 @@ def send_email(
     Falls back to local SMTP only if AWS SES credentials are absent in development.
     Records delivery status in email_logs.
     """
+    to_email = (to_email or "").strip()
     _set_last_email_error(None)
     success = False
     err_msg = None
@@ -452,6 +453,7 @@ def send_password_reset_otp(to_email: str, otp: str) -> bool:
     Subject: 'Tap & Go - Password Reset OTP'
     Expires in 5 minutes.
     """
+    to_email = (to_email or "").strip()
     otp_cells = "".join([
         f'''<td align="center" style="padding:0 3px;">
             <div style="width:44px;height:54px;line-height:54px;text-align:center;

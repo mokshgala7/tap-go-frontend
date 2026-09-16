@@ -179,6 +179,18 @@ async def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
     Marks is_verified = True.
     """
     clean_email = request.email.strip().lower()
+    clean_digits = "".join(ch for ch in clean_email if ch.isdigit())
+    phone_10 = clean_digits[-10:] if len(clean_digits) >= 10 else clean_digits
+
+    # If input is a phone number, resolve to user's registered email
+    if "@" not in clean_email:
+        user_match = db.query(User).filter(
+            (func.trim(User.phone) == clean_email) |
+            (func.trim(User.phone) == phone_10)
+        ).first()
+        if user_match and user_match.email:
+            clean_email = user_match.email.strip().lower()
+
     target_reason = canonicalize_reason(request.reason or request.purpose or REASON_CREATE_ACCOUNT)
     legacy_purpose = legacy_alias_for(target_reason)
 
@@ -187,7 +199,7 @@ async def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
         purpose_conditions.append(EmailOTP.purpose == legacy_purpose)
 
     db_otp = db.query(EmailOTP).filter(
-        func.lower(EmailOTP.email) == clean_email,
+        func.trim(func.lower(EmailOTP.email)) == clean_email,
         or_(*purpose_conditions),
         EmailOTP.used == False,
     ).order_by(EmailOTP.created_at.desc()).first()
@@ -256,11 +268,19 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
     - No OTP returned in API response
     """
     clean_account = request.account.strip()
+    clean_account_lower = clean_account.lower()
+
+    # Support normalized phone lookup (stripping +91, 91, leading 0, spaces, dashes)
+    clean_digits = "".join(ch for ch in clean_account if ch.isdigit())
+    phone_10 = clean_digits[-10:] if len(clean_digits) >= 10 else clean_digits
+
     user = db.query(User).filter(
-        (func.lower(User.email) == clean_account.lower()) | (User.phone == clean_account)
+        (func.trim(func.lower(User.email)) == clean_account_lower) |
+        (func.trim(User.phone) == clean_account) |
+        (func.trim(User.phone) == phone_10)
     ).first()
 
-    if not user or not user.email:
+    if not user or not user.email or not user.email.strip():
         # Security: don't reveal if email/phone exists
         return {"success": True, "message": "If the account exists, a verification code will be sent."}
 
@@ -268,7 +288,7 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
 
     # 60-second cooldown check
     existing_otp = db.query(EmailOTP).filter(
-        func.lower(EmailOTP.email) == clean_email,
+        func.trim(func.lower(EmailOTP.email)) == clean_email,
         or_(
             EmailOTP.reason == REASON_FORGOT_PASSWORD,
             EmailOTP.purpose == REASON_FORGOT_PASSWORD,
@@ -286,7 +306,7 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
 
     # Invalidate previous password-reset OTPs (used=True)
     db.query(EmailOTP).filter(
-        func.lower(EmailOTP.email) == clean_email,
+        func.trim(func.lower(EmailOTP.email)) == clean_email,
         or_(
             EmailOTP.reason == REASON_FORGOT_PASSWORD,
             EmailOTP.purpose == REASON_FORGOT_PASSWORD,
@@ -299,7 +319,7 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
     expires_at = datetime.utcnow() + timedelta(minutes=5)
 
     new_otp = EmailOTP(
-        email=user.email,
+        email=clean_email,
         otp=otp,
         reason=REASON_FORGOT_PASSWORD,
         purpose=REASON_FORGOT_PASSWORD,
@@ -311,7 +331,7 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
     db.add(new_otp)
     db.commit()
 
-    email_sent = send_password_reset_otp(user.email, otp)
+    email_sent = send_password_reset_otp(clean_email, otp)
     if not email_sent:
         # Record remains persisted in database
         last_err = get_last_email_error()
@@ -322,13 +342,13 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
         )
 
     # Mask email for UI display: m****@gmail.com
-    parts = user.email.split("@")
-    masked_email = f"{parts[0][:1]}****@{parts[1]}" if len(parts) == 2 else user.email
+    parts = clean_email.split("@")
+    masked_email = f"{parts[0][:1]}****@{parts[1]}" if len(parts) == 2 else clean_email
 
     return {
         "success": True,
         "message": "Verification code sent to your email. Please check your inbox.",
-        "email": user.email,
+        "email": clean_email,
         "masked_email": masked_email,
     }
 
@@ -349,8 +369,20 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
     - Sends security alert notification
     """
     clean_email = request.email.strip().lower()
+    clean_digits = "".join(ch for ch in clean_email if ch.isdigit())
+    phone_10 = clean_digits[-10:] if len(clean_digits) >= 10 else clean_digits
+
+    # If input is a phone number, resolve to user's registered email
+    if "@" not in clean_email:
+        user_match = db.query(User).filter(
+            (func.trim(User.phone) == clean_email) |
+            (func.trim(User.phone) == phone_10)
+        ).first()
+        if user_match and user_match.email:
+            clean_email = user_match.email.strip().lower()
+
     db_otp = db.query(EmailOTP).filter(
-        func.lower(EmailOTP.email) == clean_email,
+        func.trim(func.lower(EmailOTP.email)) == clean_email,
         or_(
             EmailOTP.reason == REASON_FORGOT_PASSWORD,
             EmailOTP.purpose == REASON_FORGOT_PASSWORD,
@@ -396,7 +428,11 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
             detail=f"Invalid verification code. ({remaining} attempts remaining)"
         )
 
-    user = db.query(User).filter(func.lower(User.email) == clean_email).first()
+    user = db.query(User).filter(
+        (func.trim(func.lower(User.email)) == clean_email) |
+        (func.trim(User.phone) == clean_email) |
+        (func.trim(User.phone) == phone_10)
+    ).first()
     if not user:
         raise HTTPException(status_code=404, detail="User account not found.")
 
@@ -410,12 +446,14 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
 
     # Dispatch security notification email safely
     try:
-        send_security_alert_email(
-            to_email=user.email,
-            user_name=user.name,
-            title="Password Changed Successfully",
-            details="Your Tap & Go password has been reset successfully. You can now sign in using your new credentials.",
-        )
+        user_email = (user.email or clean_email).strip()
+        if "@" in user_email:
+            send_security_alert_email(
+                to_email=user_email,
+                user_name=user.name,
+                title="Password Changed Successfully",
+                details="Your Tap & Go password has been reset successfully. You can now sign in using your new credentials.",
+            )
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"[SecurityAlert] Password reset email notice failed: {e}")

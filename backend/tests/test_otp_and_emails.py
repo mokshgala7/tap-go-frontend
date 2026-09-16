@@ -322,6 +322,84 @@ def test_forgot_password_otp_flow():
             assert verify_password("OldPassword@123", user.password_hash) is False
 
 
+def test_driver_forgot_password_otp_flow():
+    """Verify Driver forgot-password OTP flow works with whitespace tolerance, phone lookup, and password reset."""
+    ts = int(datetime.now().timestamp())
+    clean_driver_email = f"driver_fp_{ts}@thetapandgo.in"
+    driver_phone = f"81{ts % 100000000:08d}"
+
+    with SessionLocal() as db:
+        # Create Driver user with potential whitespace in email as stored in DB
+        driver = User(
+            account_type="driver",
+            name="Driver Test User",
+            email=f"  {clean_driver_email}  ",
+            phone=f"  {driver_phone}  ",
+            password_hash=hash_password("OldDriverPass@123"),
+            status="active",
+        )
+        db.add(driver)
+        db.commit()
+
+        # Test A: Request OTP using email with whitespace / different casing
+        with patch("app.utils.email_service._send_ses_email", return_value=(True, None)) as mock_ses:
+            fp_req = ForgotPasswordRequest(account=f" {clean_driver_email.upper()} ")
+            fp_res = asyncio.run(forgot_password_otp(fp_req, db=db))
+            assert fp_res.get("success") is True
+            assert fp_res.get("email") == clean_driver_email
+            assert "otp" not in fp_res
+
+            # Verify OTP record in DB
+            driver_otp = db.query(EmailOTP).filter(
+                EmailOTP.email == clean_driver_email,
+                EmailOTP.reason == "forgot_password",
+            ).first()
+            assert driver_otp is not None
+            assert driver_otp.used is False
+            assert len(driver_otp.otp) == 6
+
+            # Verify email service was called with clean email
+            mock_ses.assert_called_once()
+            called_args = mock_ses.call_args[0]
+            assert called_args[0] == clean_driver_email
+
+            # Test B: Verify OTP
+            v_res = asyncio.run(verify_otp(VerifyOTPRequest(
+                email=clean_driver_email,
+                otp=driver_otp.otp,
+                reason="forgot_password"
+            ), db=db))
+            assert v_res.get("success") is True
+
+            # Test C: Reset Driver password
+            r_res = asyncio.run(reset_password(ResetPasswordRequest(
+                email=clean_driver_email,
+                otp=driver_otp.otp,
+                new_password="NewDriverPass@2026",
+            ), db=db))
+            assert r_res.get("success") is True
+
+            # Verify OTP consumed
+            db.refresh(driver_otp)
+            assert driver_otp.used is True
+            assert driver_otp.is_verified is True
+
+            # Verify Driver password updated
+            db.refresh(driver)
+            assert verify_password("NewDriverPass@2026", driver.password_hash) is True
+            assert verify_password("OldDriverPass@123", driver.password_hash) is False
+
+        # Test D: Also verify phone lookup generates OTP for Driver
+        driver_otp.created_at = datetime.utcnow() - timedelta(seconds=65)
+        db.commit()
+
+        with patch("app.utils.email_service._send_ses_email", return_value=(True, None)):
+            fp_phone_req = ForgotPasswordRequest(account=f"+91 {driver_phone}")
+            fp_phone_res = asyncio.run(forgot_password_otp(fp_phone_req, db=db))
+            assert fp_phone_res.get("success") is True
+            assert fp_phone_res.get("email") == clean_driver_email
+
+
 # ============================================================================
 # TEST 4: Financial Resiliency: SES Failure MUST NOT Rollback Transactions
 # ============================================================================

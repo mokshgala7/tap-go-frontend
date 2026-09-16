@@ -157,7 +157,7 @@ function ForgotPassword() {
       const res = await fetch(`${API_BASE}/api/auth/forgot-password-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account })
+        body: JSON.stringify({ account: account.trim() })
       })
       const data = await res.json()
       
@@ -208,7 +208,7 @@ function ForgotPassword() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          email: resolvedEmail || account, 
+          email: (resolvedEmail || account).trim(), 
           otp: otp.join(''),
           purpose: "forgot_password"
         })
@@ -236,7 +236,7 @@ function ForgotPassword() {
       const res = await fetch(`${API_BASE}/api/auth/forgot-password-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account })
+        body: JSON.stringify({ account: account.trim() })
       })
       const data = await res.json()
       setLoading('')
@@ -262,7 +262,7 @@ function ForgotPassword() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          email: resolvedEmail || account, 
+          email: (resolvedEmail || account).trim(), 
           otp: otp.join(''),
           new_password: newPassword
         })
