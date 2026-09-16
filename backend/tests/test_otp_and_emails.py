@@ -98,7 +98,8 @@ def test_ses_mocked_successful_send():
         assert "verified.test@thetapandgo.in" in call_kwargs["Destination"]["ToAddresses"]
         assert "Test Subject" == call_kwargs["Message"]["Subject"]["Data"]
         assert "<p>Test Body</p>" == call_kwargs["Message"]["Body"]["Html"]["Data"]
-        assert call_kwargs.get("ReplyToAddresses") == ["Tap & Go Support <support@thetapandgo.in>"]
+        assert call_kwargs.get("Source") == "Tap & Go <tapandgosupport@gmail.com>"
+        assert call_kwargs.get("ReplyToAddresses") is None
 
     # Verify central send_email dispatcher logs to EmailLog
     with patch("app.utils.email_service._get_ses_client", return_value=mock_ses):
@@ -904,11 +905,18 @@ def test_topup_otp_metadata_and_persistence():
         assert consumed_row.is_verified is True
 
 
-def test_ses_reply_to_and_headers():
-    """Verify _send_ses_email specifies ReplyToAddresses and clean plain-text alternatives."""
+def test_ses_sender_remains_production_gmail():
+    """Requirement 16: Verify production SES sender remains tapandgosupport@gmail.com and does not invent unverified Reply-To."""
+    from app.config import settings
+
+    # Config verification
+    assert "tapandgosupport@gmail.com" in settings.SES_FROM_EMAIL
+    assert settings.SES_SENDER_EMAIL == "tapandgosupport@gmail.com"
+
     mock_ses = MagicMock()
     mock_ses.send_email.return_value = {"MessageId": "mock-ses-headers-123"}
 
+    # Case 1: Default call without configured reply-to -> Source is tapandgosupport@gmail.com, ReplyToAddresses is None
     with patch("app.utils.email_service._get_ses_client", return_value=mock_ses):
         success, err = _send_ses_email(
             to_email="headers.test@thetapandgo.in",
@@ -919,9 +927,69 @@ def test_ses_reply_to_and_headers():
         assert success is True
         mock_ses.send_email.assert_called_once()
         kwargs = mock_ses.send_email.call_args[1]
-        assert kwargs.get("ReplyToAddresses") == ["Tap & Go Support <support@thetapandgo.in>"]
-        assert kwargs.get("Source") == "Tap & Go <support@thetapandgo.in>"
+        assert kwargs.get("Source") == "Tap & Go <tapandgosupport@gmail.com>"
+        assert kwargs.get("ReplyToAddresses") is None
         assert kwargs["Message"]["Body"]["Text"]["Data"] == "Hello\n\nTest Content"
+
+    # Case 2: When SES_REPLY_TO_EMAIL is intentionally configured in settings
+    mock_ses.reset_mock()
+    with patch.object(settings.__class__, "SES_REPLY_TO_EMAIL", "custom-reply@thetapandgo.in"):
+        with patch("app.utils.email_service._get_ses_client", return_value=mock_ses):
+            success, err = _send_ses_email(
+                to_email="headers.test@thetapandgo.in",
+                subject="Header Verification With Reply-To",
+                html_content="<h1>Hello</h1><p>Test Content</p>",
+                text_content="Hello\n\nTest Content",
+            )
+            assert success is True
+            kwargs = mock_ses.send_email.call_args[1]
+            assert kwargs.get("ReplyToAddresses") == ["custom-reply@thetapandgo.in"]
+
+
+def test_plain_text_otp_formatting():
+    """Requirement 17: Verify plain-text OTP formatting has clean 6-digit code, no fragmentation, and support email."""
+    # Test registration OTP
+    with patch("app.utils.email_service.send_email") as mock_send:
+        mock_send.return_value = True
+        send_registration_otp("passenger@thetapandgo.in", "482019", "passenger")
+        mock_send.assert_called_once()
+        text = mock_send.call_args[1]["text_content"]
+        assert "482019" in text
+        assert "4\n8\n2\n0\n1\n9" not in text
+        assert "Support: tapandgosupport@gmail.com" in text
+        assert "support@thetapandgo.in" not in text
+
+    # Test password reset OTP
+    with patch("app.utils.email_service.send_email") as mock_send:
+        mock_send.return_value = True
+        send_password_reset_otp("passenger@thetapandgo.in", "739104")
+        mock_send.assert_called_once()
+        text = mock_send.call_args[1]["text_content"]
+        assert "739104" in text
+        assert "Support: tapandgosupport@gmail.com" in text
+        assert "support@thetapandgo.in" not in text
+
+    # Test withdrawal OTP
+    with patch("app.utils.email_service.send_email") as mock_send:
+        mock_send.return_value = True
+        send_withdrawal_otp("passenger@thetapandgo.in", "102938", 500.0)
+        mock_send.assert_called_once()
+        text = mock_send.call_args[1]["text_content"]
+        assert "102938" in text
+        assert "₹500.00" in text
+        assert "Support: tapandgosupport@gmail.com" in text
+        assert "support@thetapandgo.in" not in text
+
+    # Test topup OTP
+    with patch("app.utils.email_service.send_email") as mock_send:
+        mock_send.return_value = True
+        send_topup_otp("passenger@thetapandgo.in", "847291", 250.0)
+        mock_send.assert_called_once()
+        text = mock_send.call_args[1]["text_content"]
+        assert "847291" in text
+        assert "₹250.00" in text
+        assert "Support: tapandgosupport@gmail.com" in text
+        assert "support@thetapandgo.in" not in text
 
 
 if __name__ == "__main__":

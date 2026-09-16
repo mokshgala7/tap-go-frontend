@@ -103,19 +103,17 @@ def _send_ses_email(
     if not settings.AWS_SECRET_ACCESS_KEY:
         return False, "AWS_SECRET_ACCESS_KEY is missing in configuration"
 
-    sender = settings.SES_FROM_EMAIL or "Tap & Go <support@thetapandgo.in>"
-    reply_to = ["Tap & Go Support <support@thetapandgo.in>"]
+    sender = settings.SES_FROM_EMAIL or "Tap & Go <tapandgosupport@gmail.com>"
     plain_text = text_content.strip() if text_content else _strip_html(html_content)
 
     try:
         client = _get_ses_client()
-        response = client.send_email(
-            Source=sender,
-            Destination={
+        send_params = {
+            "Source": sender,
+            "Destination": {
                 "ToAddresses": [to_email],
             },
-            ReplyToAddresses=reply_to,
-            Message={
+            "Message": {
                 "Subject": {
                     "Data": subject,
                     "Charset": "UTF-8",
@@ -131,7 +129,11 @@ def _send_ses_email(
                     },
                 },
             },
-        )
+        }
+        if getattr(settings, "SES_REPLY_TO_EMAIL", None):
+            send_params["ReplyToAddresses"] = [settings.SES_REPLY_TO_EMAIL]
+
+        response = client.send_email(**send_params)
         message_id = response.get("MessageId", "unknown")
         logger.info(f"[Email] Successfully delivered email to {to_email} via Amazon SES (MessageId: {message_id})")
         return True, None
@@ -170,7 +172,8 @@ def _send_smtp_email(
         msg["Subject"] = subject
         msg["From"] = settings.SMTP_FROM_EMAIL
         msg["To"] = to_email
-        msg["Reply-To"] = "Tap & Go Support <support@thetapandgo.in>"
+        if getattr(settings, "SES_REPLY_TO_EMAIL", None):
+            msg["Reply-To"] = settings.SES_REPLY_TO_EMAIL
 
         plain_text = text_content.strip() if text_content else _strip_html(html_content)
         msg.attach(MIMEText(plain_text, "plain", "utf-8"))
@@ -428,7 +431,7 @@ def send_registration_otp(to_email: str, otp: str, account_type: str = "passenge
         f"Security Notice: Never share this code with anyone. Tap & Go staff will never ask for your verification code.\n"
         f"If you did not request this verification code, you can safely ignore this email.\n\n"
         f"Tap & Go Smart Cashless Transit Payments\n"
-        f"Support: support@thetapandgo.in"
+        f"Support: tapandgosupport@gmail.com"
     )
     return send_email(
         to_email=to_email,
@@ -506,7 +509,7 @@ def send_password_reset_otp(to_email: str, otp: str) -> bool:
         f"This code expires in 5 minutes.\n\n"
         f"Security Warning: If you did not request a password reset, please ignore this email. Never share this code with anyone.\n\n"
         f"Tap & Go Smart Cashless Transit Payments\n"
-        f"Support: support@thetapandgo.in"
+        f"Support: tapandgosupport@gmail.com"
     )
     return send_email(
         to_email=to_email,
@@ -588,7 +591,7 @@ def send_withdrawal_otp(to_email: str, otp: str, amount: Optional[float] = None)
         f"Security Warning: If you did not initiate this withdrawal, please secure your account immediately.\n"
         f"Tap & Go staff will never ask for your authorization code.\n\n"
         f"Tap & Go Smart Cashless Transit Payments\n"
-        f"Support: support@thetapandgo.in"
+        f"Support: tapandgosupport@gmail.com"
     )
     return send_email(
         to_email=to_email,
@@ -1118,7 +1121,7 @@ def send_topup_otp(to_email: str, otp: str, amount: float) -> bool:
         f"This code is valid for 5 minutes and is single-use only.\n\n"
         f"Security Warning: If you did not request this top-up, please ignore this email. Never share this code with anyone.\n\n"
         f"Tap & Go Smart Cashless Transit Payments\n"
-        f"Support: support@thetapandgo.in"
+        f"Support: tapandgosupport@gmail.com"
     )
     return send_email(
         to_email=to_email,
