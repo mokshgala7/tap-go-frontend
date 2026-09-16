@@ -12,11 +12,13 @@ export function resolveFileUrl(filePath) {
   if (filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('data:')) {
     return filePath
   }
-  if (filePath.startsWith('uploads/')) {
-    return `${API_BASE}/${filePath.replace(/^\//, '')}`
+  const clean = filePath.replace(/^\/+/, '')
+  if (clean.startsWith('uploads/')) {
+    return `${API_BASE}/${clean}`
   }
-  return null
+  return `${API_BASE}/uploads/${clean}`
 }
+
 
 function normalizeUser(userData) {
   if (!userData) return null

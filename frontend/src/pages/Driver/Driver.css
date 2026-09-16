@@ -283,6 +283,8 @@
   padding: 14px 16px;
   display: grid;
   gap: 5px;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .field-card .field-top {

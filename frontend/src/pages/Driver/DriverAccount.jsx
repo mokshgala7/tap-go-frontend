@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth, resolveFileUrl } from '../../context/AuthContext.jsx'
 import { useDriverData } from '../../context/DriverContext.jsx'
+import DocumentViewerModal from '../../components/Common/DocumentViewerModal.jsx'
 import { inr } from './format.js'
 
 const Icon = ({ children, className = '' }) => (
@@ -27,13 +28,48 @@ function FieldCard({ label, value, displayValue, editable, editing, onChange, pl
   )
 }
 
-function DocCard({ title, path, type = 'Document' }) {
+function DocCard({ title, path, type = 'Document', onPreview }) {
   const fileUrl = resolveFileUrl(path)
-  const isImage = path && (path.endsWith('.png') || path.endsWith('.jpg') || path.endsWith('.jpeg') || path.endsWith('.webp') || path.startsWith('data:image'))
+  const cleanPath = (path ? path.split('?')[0].split('#')[0] : '').toLowerCase()
+  const isImage = path && (
+    cleanPath.endsWith('.png') ||
+    cleanPath.endsWith('.jpg') ||
+    cleanPath.endsWith('.jpeg') ||
+    cleanPath.endsWith('.webp') ||
+    cleanPath.endsWith('.gif') ||
+    path.startsWith('data:image')
+  )
+
+  const fileName = (() => {
+    if (!path) return ''
+    try {
+      const clean = path.split('?')[0].split('#')[0]
+      const raw = clean.split('/').pop() || 'Document'
+      return decodeURIComponent(raw)
+    } catch {
+      return 'Document'
+    }
+  })()
+
+  const handleOpen = (e) => {
+    if (onPreview && path) {
+      e.preventDefault()
+      onPreview({ title, path, type })
+    }
+  }
 
   return (
-    <div className="field-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-      <div>
+    <div
+      className="field-card"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        minWidth: 0,
+        boxSizing: 'border-box',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
         <div className="field-top">
           <span className="field-label">{title}</span>
           <span className={`field-tag ${path ? 'editable' : 'readonly'}`}>
@@ -41,24 +77,70 @@ function DocCard({ title, path, type = 'Document' }) {
           </span>
         </div>
         {path ? (
-          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              marginTop: 10,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              minWidth: 0,
+              cursor: onPreview ? 'pointer' : 'default',
+            }}
+            onClick={handleOpen}
+          >
             {isImage ? (
               <img
                 src={fileUrl}
                 alt={title}
-                style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover', border: '1px solid var(--line)' }}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 8,
+                  objectFit: 'cover',
+                  border: '1px solid var(--line)',
+                  flexShrink: 0,
+                  background: '#f3f4f6',
+                }}
               />
             ) : (
-              <div style={{ width: 44, height: 44, borderRadius: 8, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyCenter: 'center' }}>
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 8,
+                  background: '#f3f4f6',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
                 <Icon className="text-gray-500">description</Icon>
               </div>
             )}
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', wordBreak: 'break-all' }}>
-              {path.split('/').pop()}
-            </span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: 'var(--text)',
+                  display: 'block',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: '100%',
+                }}
+                title={fileName}
+              >
+                {fileName}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                {isImage ? 'Image Document' : 'Document'}
+              </span>
+            </div>
           </div>
         ) : (
-          <span className="field-value" style={{ marginTop: 4 }}>Not uploaded</span>
+          <span className="field-value" style={{ marginTop: 8 }}>Not uploaded</span>
         )}
       </div>
 
@@ -67,14 +149,16 @@ function DocCard({ title, path, type = 'Document' }) {
           href={fileUrl}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={handleOpen}
           style={{
             marginTop: 12,
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 6,
-            padding: '6px 12px',
-            fontSize: 12,
+            minHeight: 44,
+            padding: '10px 14px',
+            fontSize: 13,
             fontWeight: 800,
             color: 'var(--text)',
             background: 'var(--bg)',
@@ -82,9 +166,11 @@ function DocCard({ title, path, type = 'Document' }) {
             borderRadius: 8,
             textDecoration: 'none',
             cursor: 'pointer',
+            boxSizing: 'border-box',
+            width: '100%',
           }}
         >
-          <Icon style={{ fontSize: 16 }}>visibility</Icon> View Document
+          <Icon style={{ fontSize: 17 }}>visibility</Icon> View {type}
         </a>
       )}
     </div>
@@ -99,6 +185,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
   const [requestingBank, setRequestingBank] = useState(false)
   const [requestingDoc, setRequestingDoc] = useState(false)
   const [requestingPhone, setRequestingPhone] = useState(false)
+  const [previewDoc, setPreviewDoc] = useState(null)
 
   const [form, setForm] = useState({
     name: '',
@@ -421,12 +508,12 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
 
       <h2>Uploaded Verification Documents</h2>
       <div className="field-grid">
-        <DocCard title="Profile Photo" path={user?.profile_photo} type="Image" />
-        <DocCard title="Govt ID / Aadhaar / PAN" path={user?.id_document} type="Document" />
-        <DocCard title="Digital Signature" path={user?.signature_document} type="Signature" />
-        <DocCard title="RC Book Document" path={user?.rc_document} type="Document" />
-        <DocCard title="Driving Licence Document" path={user?.licence_document} type="Document" />
-        <DocCard title="Insurance Document" path={user?.insurance_document} type="Document" />
+        <DocCard title="Profile Photo" path={user?.profile_photo} type="Image" onPreview={setPreviewDoc} />
+        <DocCard title="Govt ID / Aadhaar / PAN" path={user?.id_document} type="Document" onPreview={setPreviewDoc} />
+        <DocCard title="Digital Signature" path={user?.signature_document} type="Signature" onPreview={setPreviewDoc} />
+        <DocCard title="RC Book Document" path={user?.rc_document} type="Document" onPreview={setPreviewDoc} />
+        <DocCard title="Driving Licence Document" path={user?.licence_document} type="Document" onPreview={setPreviewDoc} />
+        <DocCard title="Insurance Document" path={user?.insurance_document} type="Document" onPreview={setPreviewDoc} />
       </div>
 
       <div style={{ marginTop: 12 }}>
@@ -490,6 +577,10 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
         <Icon>logout</Icon>
         Sign Out
       </button>
+
+      {previewDoc && (
+        <DocumentViewerModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
+      )}
     </>
   )
 }

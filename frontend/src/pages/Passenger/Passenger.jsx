@@ -9,6 +9,7 @@ import RazorpayAddMoneyModal from '../../components/Payment/RazorpayAddMoneyModa
 import WithdrawModal from '../../components/Payment/WithdrawModal.jsx'
 import NFCCardOrderModal from '../../components/NFC/NFCCardOrderModal.jsx'
 import NFCOrderHistoryModal from '../../components/NFC/NFCOrderHistoryModal.jsx'
+import DocumentViewerModal from '../../components/Common/DocumentViewerModal.jsx'
 import './Passenger.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
@@ -31,47 +32,156 @@ const DEMO_TRIP = {
   fare: 58,
 }
 
-function PassengerDocCard({ title, path }) {
+function PassengerDocCard({ title, path, type = 'Document', onPreview }) {
   const fileUrl = resolveFileUrl(path)
-  const isImage = path && (path.endsWith('.png') || path.endsWith('.jpg') || path.endsWith('.jpeg') || path.endsWith('.webp') || path.startsWith('data:image'))
+  const cleanPath = (path ? path.split('?')[0].split('#')[0] : '').toLowerCase()
+  const isImage = path && (
+    cleanPath.endsWith('.png') ||
+    cleanPath.endsWith('.jpg') ||
+    cleanPath.endsWith('.jpeg') ||
+    cleanPath.endsWith('.webp') ||
+    cleanPath.endsWith('.gif') ||
+    path.startsWith('data:image')
+  )
+
+  const fileName = (() => {
+    if (!path) return ''
+    try {
+      const clean = path.split('?')[0].split('#')[0]
+      const raw = clean.split('/').pop() || 'Document'
+      return decodeURIComponent(raw)
+    } catch {
+      return 'Document'
+    }
+  })()
+
+  const handleOpen = (e) => {
+    if (onPreview && path) {
+      e.preventDefault()
+      onPreview({ title, path, type })
+    }
+  }
 
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 16, padding: 14, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', color: 'var(--muted)' }}>{title}</span>
-          <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: path ? 'rgba(31, 157, 85, 0.12)' : 'rgba(253, 211, 77, 0.14)', color: path ? '#1f9d55' : 'var(--yellow)' }}>
+    <div
+      style={{
+        background: 'var(--card)',
+        border: '1px solid var(--line)',
+        borderRadius: 16,
+        padding: 14,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        minWidth: 0,
+        boxSizing: 'border-box',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', color: 'var(--muted)' }}>
+            {title}
+          </span>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              padding: '2px 8px',
+              borderRadius: 99,
+              background: path ? 'rgba(31, 157, 85, 0.12)' : 'rgba(253, 211, 77, 0.14)',
+              color: path ? '#1f9d55' : 'var(--yellow)',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+            }}
+          >
             {path ? 'Verified' : 'Missing'}
           </span>
         </div>
+
         {path ? (
-          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              marginTop: 10,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              minWidth: 0,
+              cursor: onPreview ? 'pointer' : 'default',
+            }}
+            onClick={handleOpen}
+          >
             {isImage ? (
-              <img src={fileUrl} alt={title} style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', border: '1px solid var(--line)' }} />
+              <img
+                src={fileUrl}
+                alt={title}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 8,
+                  objectFit: 'cover',
+                  border: '1px solid var(--line)',
+                  flexShrink: 0,
+                  background: '#f3f4f6',
+                }}
+              />
             ) : (
-              <div style={{ width: 40, height: 40, borderRadius: 8, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyCenter: 'center' }}>
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 8,
+                  background: '#f3f4f6',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
                 <Icon className="text-gray-500">description</Icon>
               </div>
             )}
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', wordBreak: 'break-all' }}>{path.split('/').pop()}</span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: 'var(--text)',
+                  display: 'block',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: '100%',
+                }}
+                title={fileName}
+              >
+                {fileName}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                {isImage ? 'Image Document' : 'Document'}
+              </span>
+            </div>
           </div>
         ) : (
-          <span style={{ display: 'block', marginTop: 6, fontSize: 14, fontWeight: 700 }}>Not uploaded</span>
+          <span style={{ display: 'block', marginTop: 8, fontSize: 14, fontWeight: 700, color: 'var(--muted)' }}>
+            Not uploaded
+          </span>
         )}
       </div>
+
       {path && (
         <a
           href={fileUrl}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={handleOpen}
           style={{
-            marginTop: 10,
+            marginTop: 12,
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 6,
-            padding: '6px 12px',
-            fontSize: 12,
+            minHeight: 44,
+            padding: '10px 14px',
+            fontSize: 13,
             fontWeight: 800,
             color: 'var(--text)',
             background: 'var(--bg)',
@@ -79,9 +189,11 @@ function PassengerDocCard({ title, path }) {
             borderRadius: 8,
             textDecoration: 'none',
             cursor: 'pointer',
+            boxSizing: 'border-box',
+            width: '100%',
           }}
         >
-          <Icon style={{ fontSize: 15 }}>visibility</Icon> View File
+          <Icon style={{ fontSize: 17 }}>visibility</Icon> View {type}
         </a>
       )}
     </div>
@@ -311,6 +423,7 @@ function Passenger() {
   // New: Support Ticket and NFC Security Modal
   const [showSupportModal, setShowSupportModal] = useState(false)
   const [showNFCSecurityModal, setShowNFCSecurityModal] = useState(false)
+  const [previewDoc, setPreviewDoc] = useState(null)
 
   const [form, setForm] = useState({
     name: '',
@@ -1136,9 +1249,12 @@ function Passenger() {
 
       <h2>Uploaded Verification Documents</h2>
       <div className="field-grid">
-        <PassengerDocCard title="Profile Photo" path={user?.profile_photo} />
-        <PassengerDocCard title="Govt ID / Aadhaar / PAN" path={user?.id_document} />
-        <PassengerDocCard title="Digital Signature" path={user?.signature_document} />
+        <PassengerDocCard title="Profile Photo" path={user?.profile_photo} type="Image" onPreview={setPreviewDoc} />
+        <PassengerDocCard title="Govt ID / Aadhaar / PAN" path={user?.id_document} type="Document" onPreview={setPreviewDoc} />
+        <PassengerDocCard title="Digital Signature" path={user?.signature_document} type="Signature" onPreview={setPreviewDoc} />
+        {user?.rc_document && <PassengerDocCard title="RC Book Document" path={user?.rc_document} type="Document" onPreview={setPreviewDoc} />}
+        {user?.licence_document && <PassengerDocCard title="Driving Licence Document" path={user?.licence_document} type="Document" onPreview={setPreviewDoc} />}
+        {user?.insurance_document && <PassengerDocCard title="Insurance Document" path={user?.insurance_document} type="Document" onPreview={setPreviewDoc} />}
       </div>
 
 
@@ -1326,6 +1442,10 @@ function Passenger() {
 
       {showNFCSecurityModal && (
         <NFCSecurityModal user={user} onClose={() => setShowNFCSecurityModal(false)} />
+      )}
+
+      {previewDoc && (
+        <DocumentViewerModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
       )}
 
       {notice && <div className="toast">✓ {notice}</div>}

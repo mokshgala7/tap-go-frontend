@@ -639,4 +639,86 @@
   }
 }
 
+/* ---------- Account & Document Field Grid (Responsive) ---------- */
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 11px;
+}
+
+@media (max-width: 640px) {
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.field-card {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: 0 6px 18px rgba(16, 34, 51, 0.05);
+  padding: 14px 16px;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.field-card .field-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-card .field-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.field-card .field-value {
+  font-size: 16px;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.field-card input {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  padding: 4px 0;
+  width: 100%;
+}
+
+.field-tag {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.field-tag.readonly {
+  color: #6a5300;
+  background: rgba(253, 211, 77, 0.25);
+}
+
+.field-tag.editable {
+  color: #1f9d55;
+  background: rgba(31, 157, 85, 0.12);
+}
+
+.tapgo-dark .field-tag.readonly {
+  color: var(--yellow);
+  background: rgba(253, 211, 77, 0.14);
+}
+
 
