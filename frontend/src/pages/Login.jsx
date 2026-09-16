@@ -256,9 +256,6 @@ function Login() {
                 <p>
                   Don&apos;t have an account? <Link to="/register">Sign Up</Link>
                 </p>
-                <p>
-                  Platform administrator? <Link to="/admin">Open Admin Console</Link>
-                </p>
                 {successMessage && (
                   <p className="login-success" role="status">
                     {successMessage}
