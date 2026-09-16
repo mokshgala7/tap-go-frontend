@@ -307,3 +307,26 @@ def update_card_order_status(
         "message": f"Order status updated to {data.order_status}.",
         "order": order_to_dict(order)
     }
+
+
+# ── Dedicated router for /api/admin/card-order ───────────────────────────────
+admin_router = APIRouter(prefix="/api/admin/card-order", tags=["nfc_card_orders_admin"])
+
+@admin_router.get("/admin/all")
+@admin_router.get("/all")
+def get_all_card_orders_aliased(
+    x_admin_id: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
+    return get_all_card_orders(x_admin_id, db)
+
+@admin_router.patch("/admin/{order_id}/status")
+@admin_router.patch("/{order_id}/status")
+def update_card_order_status_aliased(
+    order_id: int,
+    data: StatusUpdateRequest,
+    x_admin_id: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
+    return update_card_order_status(order_id, data, x_admin_id, db)
+

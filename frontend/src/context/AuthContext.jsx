@@ -49,6 +49,7 @@ export function hasValidBankDetails(user) {
   const holder = typeof user.bank_account_holder === 'string' ? user.bank_account_holder.trim() : ''
   const number = typeof user.bank_account_number === 'string' ? user.bank_account_number.trim() : ''
   const ifsc = typeof user.bank_ifsc === 'string' ? user.bank_ifsc.trim() : ''
+  const upi = typeof user.bank_upi_id === 'string' ? user.bank_upi_id.trim() : ''
 
   if (!holder || holder === '—' || holder.toLowerCase() === 'null' || holder.toLowerCase() === 'undefined') {
     return false
@@ -57,6 +58,9 @@ export function hasValidBankDetails(user) {
     return false
   }
   if (!ifsc || ifsc === '—' || ifsc.toLowerCase() === 'null' || ifsc.toLowerCase() === 'undefined') {
+    return false
+  }
+  if (!upi || upi === '—' || upi.toLowerCase() === 'null' || upi.toLowerCase() === 'undefined') {
     return false
   }
   return true

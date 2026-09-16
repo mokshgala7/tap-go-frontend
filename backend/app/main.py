@@ -504,6 +504,19 @@ def run_database_migrations(eng):
                 _exec_safe(eng, "CREATE INDEX IF NOT EXISTS ix_wr_status ON withdrawal_requests(status)", "ix wr status")
             logger.info("[Migration] Created table withdrawal_requests")
 
+        # 6. SUPPORT TICKETS COLUMNS
+        if "support_tickets" in table_names:
+            st_cols = {col["name"] for col in inspector.get_columns("support_tickets")}
+            if "admin_reply" not in st_cols:
+                _exec_safe(eng, "ALTER TABLE support_tickets ADD COLUMN admin_reply TEXT NULL", "add support_tickets.admin_reply")
+            if "replied_by" not in st_cols:
+                _exec_safe(eng, "ALTER TABLE support_tickets ADD COLUMN replied_by INT NULL", "add support_tickets.replied_by")
+            if "replied_at" not in st_cols:
+                _exec_safe(eng, "ALTER TABLE support_tickets ADD COLUMN replied_at DATETIME NULL" if dialect != "postgresql" else "ALTER TABLE support_tickets ADD COLUMN replied_at TIMESTAMP WITHOUT TIME ZONE NULL", "add support_tickets.replied_at")
+            if "admin_response" in st_cols:
+                _exec_safe(eng, "UPDATE support_tickets SET admin_reply = admin_response WHERE admin_reply IS NULL AND admin_response IS NOT NULL", "backfill support_tickets.admin_reply")
+
+
     except Exception as e:
         logger.error(f"[Database Migration Critical] Startup migration error: {e}")
 
@@ -555,7 +568,9 @@ app.include_router(wallet.router)
 app.include_router(payment.router)
 app.include_router(payment.debug_router)
 app.include_router(card_order.router)
+app.include_router(card_order.admin_router)
 app.include_router(support.router)
+app.include_router(support.admin_router)
 app.include_router(nfc_security.router)
 
 @app.get("/")

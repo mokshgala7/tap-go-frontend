@@ -80,6 +80,7 @@ function Driver() {
         notifications={notifications}
         setNotifications={setNotifications}
         onLogout={handleLogout}
+        openModal={setModal}
       />
     ) : (
       <DriverDashboard flash={flash} openModal={setModal} goToEarnings={() => setTab('earnings')} />

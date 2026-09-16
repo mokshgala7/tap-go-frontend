@@ -261,13 +261,18 @@
 }
 
 .secondary-btn {
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.15));
   border-radius: 12px;
   padding: 14px 20px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: var(--card, #ffffff);
+  color: var(--text, #17222f);
   font-weight: 800;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.secondary-btn:hover {
+  opacity: 0.9;
 }
 
 .wallet-note {

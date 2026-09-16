@@ -225,7 +225,16 @@ function DriverDashboard({ flash, openModal, goToEarnings }) {
           Withdraw Balance
         </button>
         {!hasValidBankDetails(user) && (
-          <button className="secondary-btn" style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)' }} onClick={() => openModal('bank')}>
+          <button
+            className="secondary-btn"
+            style={{
+              color: '#0f172a',
+              background: 'linear-gradient(135deg, #FDD34D 0%, #F59E0B 100%)',
+              border: 'none',
+              fontWeight: 800,
+            }}
+            onClick={() => openModal('bank')}
+          >
             Add Bank Details
           </button>
         )}
@@ -240,6 +249,59 @@ function DriverDashboard({ flash, openModal, goToEarnings }) {
           View Statements
         </button>
       </div>
+
+      {!hasValidBankDetails(user) && (
+        <div
+          className="bank-alert-card"
+          style={{
+            background: 'linear-gradient(135deg, rgba(253, 211, 77, 0.14) 0%, rgba(245, 158, 11, 0.08) 100%)',
+            border: '1px solid rgba(245, 158, 11, 0.45)',
+            borderRadius: 16,
+            padding: '16px 20px',
+            marginTop: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 14,
+            flexWrap: 'wrap',
+            boxShadow: '0 4px 16px rgba(245, 158, 11, 0.08)',
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 18 }}>🏦</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Payout Account Setup</span>
+            </div>
+            <h3 style={{ margin: '2px 0 4px', fontSize: 16, fontWeight: 800, color: 'var(--text, #0f172a)' }}>Add Your Bank Details</h3>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--muted, #64748b)' }}>
+              Link your bank account and UPI ID to withdraw your fare earnings.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => openModal('bank')}
+            style={{
+              background: 'linear-gradient(135deg, #FDD34D 0%, #F59E0B 100%)',
+              color: '#0f172a',
+              fontWeight: 900,
+              fontSize: 13,
+              padding: '12px 22px',
+              borderRadius: 12,
+              border: 'none',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 14px rgba(245, 158, 11, 0.35)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <span>Add Bank Details</span>
+            <span>&rarr;</span>
+          </button>
+        </div>
+      )}
 
       <div className="section-head" style={{ marginTop: 34 }}>
         <h2 style={{ margin: 0 }}>Transaction History</h2>

@@ -681,13 +681,56 @@ function Passenger() {
       </div>
 
       {!hasValidBankDetails(user) && (
-        <button
-          className="secondary-btn"
-          onClick={() => setShowBankModal(true)}
-          style={{ marginBottom: 20 }}
+        <div
+          className="bank-alert-card"
+          style={{
+            background: 'linear-gradient(135deg, rgba(253, 211, 77, 0.14) 0%, rgba(245, 158, 11, 0.08) 100%)',
+            border: '1px solid rgba(245, 158, 11, 0.45)',
+            borderRadius: 16,
+            padding: '16px 20px',
+            marginBottom: 20,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 14,
+            flexWrap: 'wrap',
+            boxShadow: '0 4px 16px rgba(245, 158, 11, 0.08)',
+          }}
         >
-          Add Bank Details
-        </button>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 18 }}>🏦</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Payout &amp; Refund Setup</span>
+            </div>
+            <h3 style={{ margin: '2px 0 4px', fontSize: 16, fontWeight: 800, color: 'var(--text, #0f172a)' }}>Add Your Bank Details</h3>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--muted, #64748b)' }}>
+              Link your bank account and UPI ID to enable seamless refunds and cashouts.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => setShowBankModal(true)}
+            style={{
+              background: 'linear-gradient(135deg, #FDD34D 0%, #F59E0B 100%)',
+              color: '#0f172a',
+              fontWeight: 900,
+              fontSize: 13,
+              padding: '12px 22px',
+              borderRadius: 12,
+              border: 'none',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 14px rgba(245, 158, 11, 0.35)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <span>Add Bank Details</span>
+            <span>&rarr;</span>
+          </button>
+        </div>
       )}
 
       {/* NFC Card Ordering Banner */}
@@ -1178,7 +1221,17 @@ function Passenger() {
           <button
             type="button"
             className="secondary-btn"
-            style={{ padding: '6px 14px', fontSize: 13, fontWeight: 700 }}
+            style={{
+              padding: '8px 16px',
+              fontSize: 13,
+              fontWeight: 800,
+              color: '#0f172a',
+              background: 'linear-gradient(135deg, #FDD34D 0%, #F59E0B 100%)',
+              border: 'none',
+              borderRadius: 10,
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(245, 158, 11, 0.25)',
+            }}
             onClick={() => setShowBankModal(true)}
           >
             Add Bank Details

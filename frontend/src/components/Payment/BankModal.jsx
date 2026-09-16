@@ -328,18 +328,26 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
               ) : (
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || !form.accountHolder?.trim() || !form.accountNumber?.trim() || !form.ifsc?.trim() || !form.upiId?.trim()}
                   style={{
                     width: '100%',
                     padding: '12px 16px',
                     borderRadius: 12,
-                    background: '#f59e0b',
-                    color: '#111',
+                    background: (form.accountHolder?.trim() && form.accountNumber?.trim() && form.ifsc?.trim() && form.upiId?.trim())
+                      ? 'linear-gradient(135deg, #FDD34D 0%, #F59E0B 100%)'
+                      : 'var(--line, #e2e8f0)',
+                    color: (form.accountHolder?.trim() && form.accountNumber?.trim() && form.ifsc?.trim() && form.upiId?.trim())
+                      ? '#0f172a'
+                      : 'var(--muted, #94a3b8)',
                     border: 'none',
                     fontWeight: 800,
                     fontSize: 14,
-                    cursor: saving ? 'not-allowed' : 'pointer',
+                    cursor: saving || !form.accountHolder?.trim() || !form.accountNumber?.trim() || !form.ifsc?.trim() || !form.upiId?.trim() ? 'not-allowed' : 'pointer',
                     opacity: saving ? 0.7 : 1,
+                    boxShadow: (form.accountHolder?.trim() && form.accountNumber?.trim() && form.ifsc?.trim() && form.upiId?.trim())
+                      ? '0 4px 14px rgba(245, 158, 11, 0.3)'
+                      : 'none',
+                    transition: 'all 0.2s ease',
                   }}
                 >
                   {saving ? 'Saving to Database...' : 'Save & Lock Bank Account'}

@@ -163,3 +163,39 @@ def test_admin_change_request(setup_bank_db):
     assert edit_req is not None
     assert edit_req.status == "pending"
     assert "999988887777" in edit_req.new_value
+
+
+def test_all_4_bank_fields_required_and_reject_placeholders(setup_bank_db):
+    data = setup_bank_db
+    token = data["driver_token"]
+
+    # 1. Reject if UPI is missing
+    res = client.put(
+        "/api/auth/profile",
+        json={
+            "user_id": data["driver"].id,
+            "bank_account_holder": "Driver One",
+            "bank_account_number": "123456789012",
+            "bank_ifsc": "SBIN0001234",
+            "bank_upi_id": ""
+        },
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert res.status_code == 400
+    assert "required" in res.json()["detail"].lower()
+
+    # 2. Reject if placeholder '—' is provided
+    res_placeholder = client.put(
+        "/api/auth/profile",
+        json={
+            "user_id": data["driver"].id,
+            "bank_account_holder": "—",
+            "bank_account_number": "123456789012",
+            "bank_ifsc": "SBIN0001234",
+            "bank_upi_id": "driver@upi"
+        },
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert res_placeholder.status_code == 400
+    assert "required" in res_placeholder.json()["detail"].lower()
+

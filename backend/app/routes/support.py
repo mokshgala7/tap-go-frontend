@@ -222,3 +222,41 @@ def admin_update_ticket_status(
     db.commit()
     db.refresh(ticket)
     return {"success": True, "ticket": ticket_to_dict(ticket)}
+
+
+# ── Dedicated router for /api/admin/support ──────────────────────────────────
+admin_router = APIRouter(prefix="/api/admin/support", tags=["Support Admin"])
+
+@admin_router.get("/admin/all")
+@admin_router.get("/all")
+def admin_list_tickets_aliased(
+    ticket_status: Optional[str] = Query(default=None),
+    priority: Optional[str] = Query(default=None),
+    category: Optional[str] = Query(default=None),
+    page: int = 1,
+    page_size: int = 20,
+    admin: Admin = Depends(current_admin),
+    db: Session = Depends(get_db),
+):
+    return admin_list_tickets(ticket_status, priority, category, page, page_size, admin, db)
+
+@admin_router.patch("/admin/{ticket_id}/reply")
+@admin_router.patch("/{ticket_id}/reply")
+def admin_reply_ticket_aliased(
+    ticket_id: int,
+    data: AdminReplyRequest,
+    admin: Admin = Depends(current_admin),
+    db: Session = Depends(get_db),
+):
+    return admin_reply_ticket(ticket_id, data, admin, db)
+
+@admin_router.patch("/admin/{ticket_id}/status")
+@admin_router.patch("/{ticket_id}/status")
+def admin_update_ticket_status_aliased(
+    ticket_id: int,
+    data: AdminStatusRequest,
+    admin: Admin = Depends(current_admin),
+    db: Session = Depends(get_db),
+):
+    return admin_update_ticket_status(ticket_id, data, admin, db)
+

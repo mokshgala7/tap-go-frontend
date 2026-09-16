@@ -838,13 +838,14 @@ async def update_profile(data: ProfileUpdateRequest, current_user: User = Depend
             data.bank_ifsc if data.bank_ifsc is not None else user.bank_ifsc,
             data.bank_upi_id if data.bank_upi_id is not None else user.bank_upi_id,
         )
-        if not all(isinstance(value, str) and value.strip() for value in bank_values):
-            raise HTTPException(status_code=400, detail="All bank details are required.")
+        if not all(isinstance(value, str) and value.strip() and value.strip() not in ("—", "null", "undefined") for value in bank_values):
+            raise HTTPException(status_code=400, detail="All bank details (Account Holder, Account Number, IFSC, UPI ID) are required.")
 
         has_existing_bank = bool(
-            user.bank_account_number and str(user.bank_account_number).strip() and
-            user.bank_account_holder and str(user.bank_account_holder).strip() and
-            user.bank_ifsc and str(user.bank_ifsc).strip()
+            user.bank_account_number and str(user.bank_account_number).strip() and str(user.bank_account_number).strip() not in ("—", "null", "undefined") and
+            user.bank_account_holder and str(user.bank_account_holder).strip() and str(user.bank_account_holder).strip() not in ("—", "null", "undefined") and
+            user.bank_ifsc and str(user.bank_ifsc).strip() and str(user.bank_ifsc).strip() not in ("—", "null", "undefined") and
+            user.bank_upi_id and str(user.bank_upi_id).strip() and str(user.bank_upi_id).strip() not in ("—", "null", "undefined")
         )
         if has_existing_bank and user.bank_locked:
             raise HTTPException(
@@ -862,7 +863,7 @@ async def update_profile(data: ProfileUpdateRequest, current_user: User = Depend
             user.bank_upi_id = data.bank_upi_id.strip()
 
         # Lock after the initial database-backed bank-details save.
-        if user.bank_account_number:
+        if user.bank_account_number and user.bank_account_holder and user.bank_ifsc and user.bank_upi_id:
             user.bank_locked = 1
 
     db.commit()

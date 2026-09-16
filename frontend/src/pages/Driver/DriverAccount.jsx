@@ -177,7 +177,7 @@ function DocCard({ title, path, type = 'Document', onPreview }) {
   )
 }
 
-function DriverAccount({ flash, dark, setDark, notifications, setNotifications, onLogout }) {
+function DriverAccount({ flash, dark, setDark, notifications, setNotifications, onLogout, openModal }) {
   const { user, saveProfileToDb, requestAdminAccess, refreshProfile } = useAuth()
   const { walletBalance } = useDriverData()
 
@@ -447,7 +447,26 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
 
       <div className="section-head" style={{ marginTop: 34 }}>
         <h2 style={{ margin: 0 }}>Bank &amp; Payout Details</h2>
-        {isBankLocked && (
+        {!hasValidBankDetails(user) ? (
+          <button
+            type="button"
+            className="secondary-btn"
+            style={{
+              padding: '8px 16px',
+              fontSize: 13,
+              fontWeight: 800,
+              color: '#0f172a',
+              background: 'linear-gradient(135deg, #FDD34D 0%, #F59E0B 100%)',
+              border: 'none',
+              borderRadius: 10,
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(245, 158, 11, 0.25)',
+            }}
+            onClick={() => openModal?.('bank')}
+          >
+            Add Bank Details
+          </button>
+        ) : isBankLocked && (
           <span className="field-tag readonly" style={{ background: user?.bank_request_status === 'approved' ? '#dff4e8' : user?.bank_request_status === 'rejected' ? '#fde7eb' : '#FFF3C4', color: user?.bank_request_status === 'approved' ? '#1f9d55' : user?.bank_request_status === 'rejected' ? '#9f1730' : '#906500' }}>
             {user?.bank_request_status === 'approved'
               ? 'Admin Approval Granted (Editable Once)'
