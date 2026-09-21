@@ -734,24 +734,71 @@ function Passenger() {
       )}
 
       {/* NFC Card Ordering Banner */}
-      <div style={{ background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)', borderRadius: 16, padding: '16px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <span style={{ fontSize: 11, fontWeight: 800, color: '#fde047', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Transit Hardware</span>
-          <h3 style={{ margin: '2px 0 4px', fontSize: 17, color: '#fff' }}>Get Your Tap&amp;Go NFC Card</h3>
-          <p style={{ margin: 0, fontSize: 13, color: '#cbd5e1' }}>Physical NFC smart card (₹50) with location-based shipping</p>
+      <div style={{
+        background: 'linear-gradient(135deg, #262626 0%, #171717 100%)',
+        borderRadius: 18,
+        border: '1px solid rgba(251, 191, 36, 0.22)',
+        padding: '20px 24px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
+        flexWrap: 'wrap',
+        gap: 16,
+        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{
+            width: 46,
+            height: 46,
+            borderRadius: 12,
+            background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 22,
+            flexShrink: 0,
+            boxShadow: '0 4px 14px rgba(245, 158, 11, 0.35)',
+          }}>💳</div>
+          <div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Transit Hardware</span>
+            <h3 style={{ margin: '2px 0 4px', fontSize: 18, fontWeight: 800, color: '#ffffff' }}>Get Your Tap&amp;Go NFC Card</h3>
+            <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>Physical NFC smart card (₹50) with location-based shipping</p>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 10 }}>
           <button
             type="button"
             onClick={() => setShowNFCHistoryModal(true)}
-            style={{ padding: '8px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+            style={{
+              padding: '10px 18px',
+              borderRadius: 12,
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.16)',
+              color: '#ffffff',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+            }}
           >
             My Orders
           </button>
           <button
             type="button"
             onClick={() => setShowNFCOrderModal(true)}
-            style={{ padding: '8px 16px', borderRadius: 10, background: '#fde047', color: '#0f172a', fontSize: 12, fontWeight: 900, border: 0, cursor: 'pointer' }}
+            style={{
+              padding: '10px 20px',
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+              color: '#0a0a0a',
+              fontSize: 13,
+              fontWeight: 900,
+              border: 0,
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(245, 158, 11, 0.35)',
+              transition: 'all 0.2s ease',
+            }}
           >
             Order Card (₹50)
           </button>
@@ -759,18 +806,75 @@ function Passenger() {
       </div>
 
       {/* Support & NFC Security Quick Actions */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, margin: '8px 0 4px' }}>
-        <button onClick={() => setShowSupportModal(true)}
-          style={{ padding: '14px 12px', background: 'linear-gradient(135deg,#1e3a5f,#0b1420)', borderRadius: 14, border: 'none', color: '#fff', textAlign: 'left', cursor: 'pointer' }}>
-          <div style={{ fontSize: 20, marginBottom: 4 }}>🎫</div>
-          <div style={{ fontWeight: 700, fontSize: 13 }}>Contact Support</div>
-          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>Submit a ticket</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+        <button
+          onClick={() => setShowSupportModal(true)}
+          style={{
+            padding: '16px 18px',
+            background: 'linear-gradient(135deg, #262626 0%, #1c1c1c 100%)',
+            borderRadius: 16,
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            color: '#ffffff',
+            textAlign: 'left',
+            cursor: 'pointer',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <div style={{
+            width: 42,
+            height: 42,
+            borderRadius: 12,
+            background: 'rgba(251, 191, 36, 0.12)',
+            border: '1px solid rgba(251, 191, 36, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 20,
+            flexShrink: 0,
+          }}>🎫</div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 14, color: '#ffffff' }}>Contact Support</div>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>Submit a ticket</div>
+          </div>
         </button>
-        <button onClick={() => setShowNFCSecurityModal(true)}
-          style={{ padding: '14px 12px', background: 'linear-gradient(135deg,#1a2e4a,#0b1420)', borderRadius: 14, border: 'none', color: '#fff', textAlign: 'left', cursor: 'pointer' }}>
-          <div style={{ fontSize: 20, marginBottom: 4 }}>💳</div>
-          <div style={{ fontWeight: 700, fontSize: 13 }}>NFC Card Security</div>
-          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>Block / report lost</div>
+
+        <button
+          onClick={() => setShowNFCSecurityModal(true)}
+          style={{
+            padding: '16px 18px',
+            background: 'linear-gradient(135deg, #262626 0%, #1c1c1c 100%)',
+            borderRadius: 16,
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            color: '#ffffff',
+            textAlign: 'left',
+            cursor: 'pointer',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <div style={{
+            width: 42,
+            height: 42,
+            borderRadius: 12,
+            background: 'rgba(251, 191, 36, 0.12)',
+            border: '1px solid rgba(251, 191, 36, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 20,
+            flexShrink: 0,
+          }}>🛡️</div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 14, color: '#ffffff' }}>NFC Card Security</div>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>Block / report lost</div>
+          </div>
         </button>
       </div>
 
@@ -849,7 +953,16 @@ function Passenger() {
             <button
               className="secondary-btn"
               onClick={() => setShowNFCOrderModal(true)}
-              style={{ background: '#1e1b4b', color: '#fde047', border: '1px solid #312e81', fontWeight: 800 }}
+              style={{
+                background: 'rgba(255, 255, 255, 0.16)',
+                color: '#ffffff',
+                border: '1.5px solid rgba(255, 255, 255, 0.35)',
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
+                fontWeight: 800,
+                transition: 'all 0.2s ease',
+              }}
             >
               Order NFC Card (₹50)
             </button>
@@ -912,65 +1025,75 @@ function Passenger() {
       {/* Tap&Go Gateway-Neutral Payment Architecture Guide */}
       <div style={{
         marginTop: 28,
-        borderRadius: 24,
-        overflow: 'hidden',
-        background: 'var(--card)',
-        border: '1px solid rgba(99,102,241,0.18)',
-        boxShadow: '0 8px 40px rgba(16,34,51,0.10)',
+        borderRadius: 20,
+        background: 'linear-gradient(135deg, #262626 0%, #171717 100%)',
+        border: '1px solid rgba(251, 191, 36, 0.25)',
+        padding: '24px 28px',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.24)',
       }}>
         {/* Header */}
-        <div style={{
-          background: 'linear-gradient(135deg,#1C1C2E 0%,#2d2d4e 100%)',
-          padding: '22px 28px',
-          display: 'flex', alignItems: 'center', gap: 14,
-        }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20 }}>
           <div style={{
-            width: 44, height: 44, borderRadius: 12,
-            background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 22, flexShrink: 0,
+            width: 46,
+            height: 46,
+            borderRadius: 12,
+            background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 22,
+            flexShrink: 0,
+            boxShadow: '0 4px 14px rgba(245, 158, 11, 0.35)',
           }}>💳</div>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               <span style={{
-                padding: '2px 10px', borderRadius: 20,
-                background: 'linear-gradient(90deg,#6366f1,#8b5cf6)',
-                color: '#fff', fontSize: 10, fontWeight: 900, letterSpacing: '0.15em',
+                padding: '3px 12px',
+                borderRadius: 20,
+                background: 'rgba(251, 191, 36, 0.15)',
+                border: '1px solid rgba(251, 191, 36, 0.3)',
+                color: '#fbbf24',
+                fontSize: 10,
+                fontWeight: 900,
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase',
               }}>PAYMENT ARCHITECTURE</span>
             </div>
-            <div style={{ fontSize: 18, fontWeight: 900, color: '#fff', letterSpacing: '-0.01em' }}>
+            <h3 style={{ margin: '4px 0 4px', fontSize: 19, fontWeight: 800, color: '#ffffff' }}>
               Tap&amp;Go Wallet Payment Workflow
-            </div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 2, fontWeight: 600 }}>
+            </h3>
+            <p style={{ margin: 0, fontSize: 13, color: '#cbd5e1', lineHeight: 1.5 }}>
               External payment gateways fund the wallet. Normal ride payments move directly from passenger wallet to driver wallet.
-            </div>
+            </p>
           </div>
         </div>
 
-        {/* Gold accent bar */}
-        <div style={{ height: 3, background: 'linear-gradient(90deg,#FDD34D,#f59e0b,#6366f1)' }} />
+        {/* Brand Accent Divider */}
+        <div style={{ height: 2, background: 'linear-gradient(90deg, #fbbf24 0%, #f59e0b 40%, rgba(251, 191, 36, 0.05) 100%)', borderRadius: 2, marginBottom: 20 }} />
 
-        <div style={{ padding: '28px 28px 24px' }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))',
-            gap: 16,
-            marginBottom: 20,
-          }}>
-            {[
-              ['1️⃣ Add Money', 'Payment Gateway → Tap&Go Wallet', 'Fund your passenger wallet using any supported payment gateway.'],
-              ['2️⃣ Pay for Ride', 'Passenger Wallet → Driver Wallet', 'Tap NFC card or scan QR. Fares transfer instantly between wallets.'],
-              ['3️⃣ Driver Payout', 'Tap&Go Wallet → Supported Withdrawal', 'Drivers withdraw earned wallet funds to their linked account.'],
-            ].map(([title, subtitle, desc]) => (
-              <div key={title} style={{
-                padding: 16, borderRadius: 16, border: '1px solid var(--line)', background: 'rgba(255,255,255,0.03)'
-              }}>
-                <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 4 }}>{title}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', textTransform: 'uppercase', marginBottom: 6 }}>{subtitle}</div>
-                <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{desc}</div>
-              </div>
-            ))}
-          </div>
+        {/* Steps Grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: 14,
+        }}>
+          {[
+            ['1️⃣ Add Money', 'Payment Gateway → Tap&Go Wallet', 'Fund your passenger wallet using any supported payment gateway.'],
+            ['2️⃣ Pay for Ride', 'Passenger Wallet → Driver Wallet', 'Tap NFC card or scan QR. Fares transfer instantly between wallets.'],
+            ['3️⃣ Driver Payout', 'Tap&Go Wallet → Supported Withdrawal', 'Drivers withdraw earned wallet funds to their linked account.'],
+          ].map(([title, subtitle, desc]) => (
+            <div key={title} style={{
+              padding: '16px 18px',
+              borderRadius: 14,
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'rgba(255, 255, 255, 0.04)',
+              transition: 'all 0.2s ease',
+            }}>
+              <div style={{ fontWeight: 800, fontSize: 14, color: '#ffffff', marginBottom: 4 }}>{title}</div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>{subtitle}</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>{desc}</div>
+            </div>
+          ))}
         </div>
       </div>
 
