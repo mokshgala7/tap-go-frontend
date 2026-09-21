@@ -909,13 +909,6 @@ function Passenger() {
         </div>
       </div>
 
-      <div className="wallet-note" style={{ marginTop: 20 }}>
-        <b>How wallet payments work</b>
-        <p className="muted" style={{ margin: 0 }}>
-          Fares move wallet-to-wallet: your balance goes down and the driver&apos;s goes up instantly. All transactions are recorded in MySQL.
-        </p>
-      </div>
-
       {/* Tap&Go Gateway-Neutral Payment Architecture Guide */}
       <div style={{
         marginTop: 28,
