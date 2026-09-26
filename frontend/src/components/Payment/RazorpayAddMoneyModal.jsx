@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
 
@@ -17,7 +17,7 @@ function loadRazorpayScript() {
   })
 }
 
-export function RazorpayAddMoneyModal({ user, onClose, onSuccess }) {
+export function RazorpayAddMoneyModal({ user, onClose, onSuccess, onFailure }) {
   const [step, setStep] = useState(1)   // 1: amount + request OTP,  2: enter OTP + proceed
   const [amount, setAmount] = useState(250)
   const [otp, setOtp] = useState('')
@@ -25,6 +25,7 @@ export function RazorpayAddMoneyModal({ user, onClose, onSuccess }) {
   const [error, setError] = useState('')
   const [statusMessage, setStatusMessage] = useState('')
   const [cooldown, setCooldown] = useState(0)
+  const isProcessingPaymentRef = useRef(false)
 
   const PRESET_AMOUNTS = [100, 250, 500, 1000]
 
@@ -101,9 +102,20 @@ export function RazorpayAddMoneyModal({ user, onClose, onSuccess }) {
         prefill: { name: user.name || '', email: user.email || '', contact: user.phone || '' },
         theme: { color: '#0b1420' },
         modal: {
-          ondismiss: () => { setLoading(false); setStatusMessage(''); setError('Payment checkout cancelled.') },
+          ondismiss: () => {
+            setLoading(false)
+            setStatusMessage('')
+            setError('Payment checkout cancelled.')
+            if (onFailure) {
+              setTimeout(() => {
+                onFailure('Payment checkout cancelled.')
+              }, 800)
+            }
+          },
         },
         handler: async (response) => {
+          if (isProcessingPaymentRef.current) return
+          isProcessingPaymentRef.current = true
           setStatusMessage('Verifying payment signature with server...')
           try {
             const verifyRes = await fetch(`${API_BASE}/api/payment/verify-payment`, {
@@ -120,24 +132,47 @@ export function RazorpayAddMoneyModal({ user, onClose, onSuccess }) {
             const verifyData = await verifyRes.json()
             if (verifyRes.ok && verifyData.success) {
               setStatusMessage('Payment verified! Crediting wallet...')
-              await onSuccess?.(verifyData.balance)
-              setTimeout(() => onClose?.(), 1000)
+              try {
+                await onSuccess?.(verifyData.balance)
+              } catch (sErr) {
+                console.error('onSuccess callback error:', sErr)
+              }
+              onClose?.()
             } else {
+              isProcessingPaymentRef.current = false
               throw new Error(verifyData.detail || verifyData.message || 'Payment verification failed.')
             }
-          } catch (vErr) { setError(vErr.message || 'Verification failed.'); setLoading(false); setStatusMessage('') }
+          } catch (vErr) {
+            isProcessingPaymentRef.current = false
+            setError(vErr.message || 'Verification failed.')
+            setLoading(false)
+            setStatusMessage('')
+            if (onFailure) {
+              setTimeout(() => {
+                onFailure(vErr.message || 'Payment verification failed.')
+              }, 1200)
+            }
+          }
         },
       }
 
       const rzp = new window.Razorpay(options)
       rzp.on('payment.failed', (resp) => {
-        setError(resp.error?.description || 'Payment failed. Please try again.')
-        setLoading(false); setStatusMessage('')
+        const failReason = resp.error?.description || 'Payment failed. Please try again.'
+        setError(failReason)
+        setLoading(false)
+        setStatusMessage('')
+        if (onFailure) {
+          setTimeout(() => {
+            onFailure(failReason)
+          }, 1200)
+        }
       })
       rzp.open()
     } catch (err) {
       setError(err.message || 'Could not launch payment.')
-      setLoading(false); setStatusMessage('')
+      setLoading(false)
+      setStatusMessage('')
     }
   }
 

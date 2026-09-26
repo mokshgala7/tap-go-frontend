@@ -13,7 +13,10 @@ export function WalletProvider({ children }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const fetchWallet = useCallback(async () => {
+  const fetchWallet = useCallback(async (optimisticBalance) => {
+    if (typeof optimisticBalance === 'number' && !isNaN(optimisticBalance)) {
+      setBalance(optimisticBalance)
+    }
     if (!user?.id) {
       setBalance(0)
       setIsFrozen(false)

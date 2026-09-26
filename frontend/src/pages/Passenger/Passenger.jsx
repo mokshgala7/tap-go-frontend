@@ -390,7 +390,7 @@ function NFCSecurityModal({ user, onClose }) {
 function Passenger() {
   const navigate = useNavigate()
   const { user, logout, saveProfileToDb, requestAdminAccess, refreshProfile } = useAuth()
-  const { balance, isFrozen, transactions, addMoney, withdraw, payFare } = useWallet()
+  const { balance, isFrozen, transactions, addMoney, withdraw, payFare, refreshWallet } = useWallet()
 
   const [tab, setTabState] = useState(() => {
     return sessionStorage.getItem('passenger_tab') || 'home'
@@ -1612,8 +1612,13 @@ function Passenger() {
           user={user}
           onClose={() => setShowRazorpayModal(false)}
           onSuccess={async (newBalance) => {
+            setShowRazorpayModal(false)
             flash(`Wallet credited successfully! Current Balance: ₹${Number(newBalance || 0).toFixed(2)}`)
-            await refreshWallet?.()
+            await refreshWallet?.(newBalance)
+          }}
+          onFailure={(errMsg) => {
+            setShowRazorpayModal(false)
+            if (errMsg) flash(errMsg)
           }}
         />
       )}
