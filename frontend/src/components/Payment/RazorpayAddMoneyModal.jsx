@@ -201,7 +201,6 @@ export function RazorpayAddMoneyModal({ user, onClose, onSuccess }) {
 
               <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 text-xs text-slate-600 space-y-1">
                 <div className="flex justify-between"><span>Top-up Amount:</span><strong className="text-slate-900">₹{Number(amount || 0).toFixed(2)}</strong></div>
-                <div className="flex justify-between"><span>Payment Gateway Fee:</span><strong className="text-emerald-600 font-bold">FREE (₹0.00)</strong></div>
                 <div className="flex justify-between border-t border-slate-200 pt-1.5 font-bold text-slate-900 text-sm"><span>Total Payable:</span><span>₹{Number(amount || 0).toFixed(2)}</span></div>
               </div>
 
