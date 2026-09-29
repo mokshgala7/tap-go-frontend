@@ -12,15 +12,16 @@ const Icon = ({ children, className = '' }) => (
 )
 
 function FieldCard({ label, value, displayValue, editable, editing, onChange, placeholder, lockedReason }) {
+  const isEditing = editable && editing
   return (
     <div className="field-card">
       <div className="field-top">
         <span className="field-label">{label}</span>
-        <span className={`field-tag ${editable && editing ? 'editable' : 'readonly'}`}>
-          {editable ? (lockedReason ? lockedReason : 'Editable') : 'Read-only'}
+        <span className={`field-tag ${isEditing ? 'editable' : 'readonly'}`}>
+          {isEditing ? 'Editable' : (lockedReason || 'Locked')}
         </span>
       </div>
-      {editable && editing ? (
+      {isEditing ? (
         <input value={value} placeholder={placeholder || `Enter ${label}`} onChange={(e) => onChange(e.target.value)} autoComplete="off" />
       ) : (
         <span className="field-value">{displayValue !== undefined && displayValue !== null && displayValue !== '' ? displayValue : (value || '\u2014')}</span>
@@ -180,6 +181,26 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
   const [previewDoc, setPreviewDoc] = useState(null)
   const [showDocUploadModal, setShowDocUploadModal] = useState(false)
 
+  const [bankForm, setBankForm] = useState({
+    bank_account_holder: user?.bank_account_holder || '',
+    bank_account_number: user?.bank_account_number || '',
+    bank_ifsc: user?.bank_ifsc || '',
+    bank_upi_id: user?.bank_upi_id || '',
+  })
+  const [savingBank, setSavingBank] = useState(false)
+  const [bankError, setBankError] = useState('')
+
+  useEffect(() => {
+    if (user) {
+      setBankForm({
+        bank_account_holder: user.bank_account_holder || '',
+        bank_account_number: user.bank_account_number || '',
+        bank_ifsc: user.bank_ifsc || '',
+        bank_upi_id: user.bank_upi_id || '',
+      })
+    }
+  }, [user?.bank_account_holder, user?.bank_account_number, user?.bank_ifsc, user?.bank_upi_id])
+
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -220,7 +241,74 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
 
   const set = (key) => (value) => setForm((current) => ({ ...current, [key]: value }))
 
-  const isBankLocked = hasValidBankDetails(user) && Boolean(user?.bank_locked)
+  const hasBank = hasValidBankDetails(user)
+  const isBankApproved = user?.bank_request_status === 'approved'
+  const isBankPending = user?.bank_request_status === 'requested'
+  const isBankLocked = hasBank && !isBankApproved
+
+  const handleSaveBankDetails = async (e) => {
+    e?.preventDefault()
+    setBankError('')
+
+    const holder = (bankForm.bank_account_holder !== undefined && bankForm.bank_account_holder !== null && bankForm.bank_account_holder !== '' ? bankForm.bank_account_holder : (user?.bank_account_holder || '')).trim()
+    const number = (bankForm.bank_account_number !== undefined && bankForm.bank_account_number !== null && bankForm.bank_account_number !== '' ? bankForm.bank_account_number : (user?.bank_account_number || '')).trim()
+    const ifsc = (bankForm.bank_ifsc !== undefined && bankForm.bank_ifsc !== null && bankForm.bank_ifsc !== '' ? bankForm.bank_ifsc : (user?.bank_ifsc || '')).trim().toUpperCase()
+    const upi = (bankForm.bank_upi_id !== undefined && bankForm.bank_upi_id !== null && bankForm.bank_upi_id !== '' ? bankForm.bank_upi_id : (user?.bank_upi_id || '')).trim()
+
+    if (!holder) {
+      setBankError('Account Holder Name is required.')
+      return
+    }
+    if (holder.length < 2) {
+      setBankError('Please enter a valid Account Holder Name.')
+      return
+    }
+    if (!number) {
+      setBankError('Bank Account Number is required.')
+      return
+    }
+    if (!/^\d{8,20}$/.test(number)) {
+      setBankError('Enter a valid Bank Account Number (8-20 digits).')
+      return
+    }
+    if (!ifsc) {
+      setBankError('IFSC Code is required.')
+      return
+    }
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) {
+      setBankError('Enter a valid 11-character IFSC code (e.g. SBIN0001234).')
+      return
+    }
+    if (!upi) {
+      setBankError('UPI ID is required.')
+      return
+    }
+    if (!isValidUpi(upi)) {
+      setBankError('Enter a valid UPI ID (e.g. name@upi).')
+      return
+    }
+
+    setSavingBank(true)
+    try {
+      const payload = {
+        bank_account_holder: holder,
+        bank_account_number: number,
+        bank_ifsc: ifsc,
+        bank_upi_id: upi,
+      }
+      const res = await saveProfileToDb(payload)
+      setSavingBank(false)
+      if (res.success) {
+        await refreshProfile()
+        flash('Bank details updated successfully.')
+      } else {
+        setBankError(res.message || 'Failed to update bank details.')
+      }
+    } catch {
+      setSavingBank(false)
+      setBankError('Failed to connect to server. Please try again.')
+    }
+  }
 
   const save = async () => {
     const payload = {
@@ -238,18 +326,21 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
     }
 
     // Include bank details if bank was never locked OR permission is approved
-    const canEditBank = !isBankLocked || user?.bank_request_status === 'approved'
+    const canEditBank = !isBankLocked || isBankApproved
     if (canEditBank) {
-      if (form.bank_account_holder?.trim()) payload.bank_account_holder = form.bank_account_holder.trim()
-      if (form.bank_account_number?.trim()) payload.bank_account_number = form.bank_account_number.trim()
-      if (form.bank_ifsc?.trim()) payload.bank_ifsc = form.bank_ifsc.trim().toUpperCase()
-      if (form.bank_upi_id?.trim()) {
-        const u = form.bank_upi_id.trim()
-        if (!isValidUpi(u)) {
+      const bh = bankForm.bank_account_holder?.trim() || form.bank_account_holder?.trim()
+      const bn = bankForm.bank_account_number?.trim() || form.bank_account_number?.trim()
+      const bi = (bankForm.bank_ifsc?.trim() || form.bank_ifsc?.trim() || '').toUpperCase()
+      const bu = bankForm.bank_upi_id?.trim() || form.bank_upi_id?.trim()
+      if (bh) payload.bank_account_holder = bh
+      if (bn) payload.bank_account_number = bn
+      if (bi) payload.bank_ifsc = bi
+      if (bu) {
+        if (!isValidUpi(bu)) {
           flash('Enter a valid UPI ID (e.g. name@upi).')
           return
         }
-        payload.bank_upi_id = u
+        payload.bank_upi_id = bu
       }
     }
 
@@ -459,7 +550,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
 
       <div className="section-head" style={{ marginTop: 34 }}>
         <h2 style={{ margin: 0 }}>Bank &amp; Payout Details</h2>
-        {!hasValidBankDetails(user) ? (
+        {!hasBank ? (
           <button
             type="button"
             className="secondary-btn"
@@ -478,65 +569,157 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
           >
             Add Bank Details
           </button>
-        ) : isBankLocked && (
-          <span className="field-tag readonly" style={{ background: user?.bank_request_status === 'approved' ? '#dff4e8' : user?.bank_request_status === 'rejected' ? '#fde7eb' : '#FFF3C4', color: user?.bank_request_status === 'approved' ? '#1f9d55' : user?.bank_request_status === 'rejected' ? '#9f1730' : '#906500' }}>
-            {user?.bank_request_status === 'approved'
-              ? 'Admin Approval Granted (Editable Once)'
-              : user?.bank_request_status === 'requested'
-              ? 'Request Pending Admin Review'
-              : user?.bank_request_status === 'rejected'
-              ? 'Request Rejected'
-              : 'Locked (Editable Once)'}
+        ) : isBankApproved ? (
+          <span className="field-tag editable" style={{ background: '#dff4e8', color: '#1f9d55' }}>
+            Admin Approval Granted
+          </span>
+        ) : isBankPending ? (
+          <span className="field-tag readonly" style={{ background: '#FFF3C4', color: '#906500' }}>
+            Request Pending Admin Review
+          </span>
+        ) : user?.bank_request_status === 'rejected' ? (
+          <span className="field-tag readonly" style={{ background: '#fde7eb', color: '#9f1730' }}>
+            Request Rejected
+          </span>
+        ) : (
+          <span className="field-tag readonly">
+            Locked
           </span>
         )}
       </div>
 
       <div className="field-grid" style={{ marginTop: 12 }}>
-        <FieldCard
-          label="Account Holder"
-          value={form.bank_account_holder}
-          displayValue={user?.bank_account_holder}
-          editable={!isBankLocked || user?.bank_request_status === 'approved'}
-          editing={editing && (!isBankLocked || user?.bank_request_status === 'approved')}
-          onChange={set('bank_account_holder')}
-        />
-        <FieldCard
-          label="Account Number"
-          value={form.bank_account_number}
-          displayValue={user?.bank_account_number ? (user.bank_account_number.length > 4 ? `XXXX XXXX ${user.bank_account_number.slice(-4)}` : user.bank_account_number) : '—'}
-          editable={!isBankLocked || user?.bank_request_status === 'approved'}
-          editing={editing && (!isBankLocked || user?.bank_request_status === 'approved')}
-          onChange={set('bank_account_number')}
-        />
-        <FieldCard
-          label="IFSC Code"
-          value={form.bank_ifsc}
-          displayValue={user?.bank_ifsc}
-          editable={!isBankLocked || user?.bank_request_status === 'approved'}
-          editing={editing && (!isBankLocked || user?.bank_request_status === 'approved')}
-          onChange={set('bank_ifsc')}
-        />
-        <FieldCard
-          label="UPI ID"
-          value={form.bank_upi_id}
-          displayValue={user?.bank_upi_id}
-          editable={!isBankLocked || user?.bank_request_status === 'approved'}
-          editing={editing && (!isBankLocked || user?.bank_request_status === 'approved')}
-          onChange={set('bank_upi_id')}
-          placeholder="name@upi"
-        />
+        <div className="field-card">
+          <div className="field-top">
+            <span className="field-label">Account Holder</span>
+            <span className={`field-tag ${isBankApproved ? 'editable' : 'readonly'}`}>
+              {isBankApproved ? 'Editable' : 'Locked'}
+            </span>
+          </div>
+          {isBankApproved ? (
+            <input
+              value={bankForm.bank_account_holder}
+              onChange={(e) => {
+                setBankError('')
+                setBankForm(f => ({ ...f, bank_account_holder: e.target.value }))
+              }}
+              placeholder="Account Holder Name"
+              autoComplete="off"
+            />
+          ) : (
+            <span className="field-value">{user?.bank_account_holder || '—'}</span>
+          )}
+        </div>
+
+        <div className="field-card">
+          <div className="field-top">
+            <span className="field-label">Account Number</span>
+            <span className={`field-tag ${isBankApproved ? 'editable' : 'readonly'}`}>
+              {isBankApproved ? 'Editable' : 'Locked'}
+            </span>
+          </div>
+          {isBankApproved ? (
+            <input
+              value={bankForm.bank_account_number}
+              onChange={(e) => {
+                setBankError('')
+                setBankForm(f => ({ ...f, bank_account_number: e.target.value }))
+              }}
+              placeholder="Bank Account Number"
+              autoComplete="off"
+            />
+          ) : (
+            <span className="field-value">
+              {user?.bank_account_number
+                ? user.bank_account_number.length > 4
+                  ? `XXXX XXXX ${user.bank_account_number.slice(-4)}`
+                  : user.bank_account_number
+                : '—'}
+            </span>
+          )}
+        </div>
+
+        <div className="field-card">
+          <div className="field-top">
+            <span className="field-label">IFSC Code</span>
+            <span className={`field-tag ${isBankApproved ? 'editable' : 'readonly'}`}>
+              {isBankApproved ? 'Editable' : 'Locked'}
+            </span>
+          </div>
+          {isBankApproved ? (
+            <input
+              value={bankForm.bank_ifsc}
+              onChange={(e) => {
+                setBankError('')
+                setBankForm(f => ({ ...f, bank_ifsc: e.target.value.toUpperCase() }))
+              }}
+              placeholder="IFSC Code (e.g. SBIN0001234)"
+              autoComplete="off"
+            />
+          ) : (
+            <span className="field-value">{user?.bank_ifsc || '—'}</span>
+          )}
+        </div>
+
+        <div className="field-card">
+          <div className="field-top">
+            <span className="field-label">UPI ID</span>
+            <span className={`field-tag ${isBankApproved ? 'editable' : 'readonly'}`}>
+              {isBankApproved ? 'Editable' : 'Locked'}
+            </span>
+          </div>
+          {isBankApproved ? (
+            <input
+              value={bankForm.bank_upi_id}
+              onChange={(e) => {
+                setBankError('')
+                setBankForm(f => ({ ...f, bank_upi_id: e.target.value }))
+              }}
+              placeholder="name@upi"
+              autoComplete="off"
+            />
+          ) : (
+            <span className="field-value">{user?.bank_upi_id || '—'}</span>
+          )}
+        </div>
       </div>
 
-      {isBankLocked && (
+      {bankError && (
+        <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: '#fde7eb', color: '#9f1730', fontSize: 13, fontWeight: 600 }}>
+          ⚠️ {bankError}
+        </div>
+      )}
+
+      {hasBank && (
         <div style={{ marginTop: 12 }}>
-          {user?.bank_request_status === 'requested' ? (
-            <p className="muted" style={{ fontWeight: 700, color: '#d97706' }}>
-              ⏳ Bank edit request submitted to Admin. Awaiting access authorization.
+          {isBankPending ? (
+            <p className="muted" style={{ fontWeight: 700, color: '#d97706', margin: 0 }}>
+              ⏳ Bank change request pending admin approval
             </p>
-          ) : user?.bank_request_status === 'approved' ? (
-            <p style={{ fontWeight: 700, color: '#1f9d55' }}>
-              ✅ Admin approval granted! Click &quot;Edit details&quot; above to update your bank info.
-            </p>
+          ) : isBankApproved ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+              <p style={{ fontWeight: 700, color: '#1f9d55', margin: 0 }}>
+                ✓ Admin approval granted
+              </p>
+              <div>
+                <button
+                  type="button"
+                  className="primary-btn"
+                  style={{
+                    padding: '10px 24px',
+                    fontSize: 14,
+                    fontWeight: 800,
+                    borderRadius: 10,
+                    cursor: savingBank ? 'not-allowed' : 'pointer',
+                    opacity: savingBank ? 0.7 : 1,
+                  }}
+                  disabled={savingBank}
+                  onClick={handleSaveBankDetails}
+                >
+                  {savingBank ? 'Saving Bank Details...' : 'Save Bank Details'}
+                </button>
+              </div>
+            </div>
           ) : (
             <div>
               {user?.bank_request_status === 'rejected' && (
@@ -545,6 +728,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
                 </p>
               )}
               <button
+                type="button"
                 className="secondary-btn"
                 style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)', marginTop: 4 }}
                 disabled={requestingBank}
