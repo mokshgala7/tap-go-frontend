@@ -42,7 +42,7 @@ def legacy_alias_for(canonical: str) -> Optional[str]:
         return "withdrawal"
     return None
 
-from app.schemas import UserRegisterForm, UserLoginRequest, SendOTPRequest, EMAIL_REGEX, PHONE_REGEX
+from app.schemas import UserRegisterForm, UserLoginRequest, SendOTPRequest, EMAIL_REGEX, PHONE_REGEX, UPI_REGEX
 from pydantic import BaseModel
 from app.utils.security import hash_password, verify_password, get_elapsed_seconds, is_otp_expired
 import hashlib
@@ -893,6 +893,9 @@ async def update_profile(data: ProfileUpdateRequest, current_user: User = Depend
             if not (holder and number and ifsc and upi and all(v not in ("—", "null", "undefined") for v in (holder, number, ifsc, upi))):
                 raise HTTPException(status_code=400, detail="All bank details (Account Holder, Account Number, IFSC, UPI ID) are required.")
 
+            if not UPI_REGEX.match(upi):
+                raise HTTPException(status_code=400, detail="Enter a valid UPI ID (e.g. name@upi).")
+
             user.bank_account_holder = holder
             user.bank_account_number = number
             user.bank_ifsc = ifsc
@@ -900,6 +903,8 @@ async def update_profile(data: ProfileUpdateRequest, current_user: User = Depend
             user.bank_locked = 1
             user.bank_request_status = "none"  # Permission consumed, locks again
         elif not user.bank_locked and holder and number and ifsc and upi and all(v not in ("—", "null", "undefined") for v in (holder, number, ifsc, upi)):
+            if not UPI_REGEX.match(upi):
+                raise HTTPException(status_code=400, detail="Enter a valid UPI ID (e.g. name@upi).")
             # Initial database save when bank details were complete and not locked yet
             user.bank_account_holder = holder
             user.bank_account_number = number
@@ -945,6 +950,10 @@ async def request_admin_access(data: AdminAccessRequest, current_user: User = De
     if request_type == "bank":
         if user.bank_request_status == "requested" or pending_request:
             raise HTTPException(status_code=400, detail="Your bank change request is already pending review.")
+        if data.bank_details and isinstance(data.bank_details, dict) and "bank_upi_id" in data.bank_details:
+            b_upi = str(data.bank_details["bank_upi_id"]).strip()
+            if b_upi and not UPI_REGEX.match(b_upi):
+                raise HTTPException(status_code=400, detail="Enter a valid UPI ID (e.g. name@upi).")
         user.bank_request_status = "requested"
     elif request_type == "documents":
         if user.doc_request_status == "requested" or pending_request:

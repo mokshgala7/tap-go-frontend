@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useAuth, hasValidBankDetails } from '../../context/AuthContext.jsx'
+import { useAuth, hasValidBankDetails, isValidUpi } from '../../context/AuthContext.jsx'
 
 export default function BankModal({ onClose, flash, title = 'Bank Account & Payout Details' }) {
   const { user, saveProfileToDb, requestAdminAccess, refreshProfile } = useAuth()
@@ -64,7 +64,7 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
       setError('UPI ID is required.')
       return false
     }
-    if (!/^[a-zA-Z0-9.\-_]{2,49}@[a-zA-Z]{2,49}$/.test(upi)) {
+    if (!isValidUpi(upi)) {
       setError('Enter a valid UPI ID (e.g. name@upi).')
       return false
     }

@@ -9,6 +9,7 @@ AADHAAR_REGEX = re.compile(r"^[0-9]{12}$")
 PAN_REGEX = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 VEHICLE_REG_REGEX = re.compile(r"^[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}$")
 DL_REGEX = re.compile(r"^[A-Z]{2}[0-9]{13}$")
+UPI_REGEX = re.compile(r"^[a-zA-Z0-9.\-_]{2,50}@[a-zA-Z0-9.\-_]{2,50}$")
 
 class UserRegisterForm(BaseModel):
     account_type: str = "passenger"

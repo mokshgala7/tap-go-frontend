@@ -57,6 +57,13 @@ export function getDocumentDisplayName(userName, typeOrTitle) {
   return `${name} — ${docLabel}`
 }
 
+export const UPI_REGEX = /^[a-zA-Z0-9.\-_]{2,50}@[a-zA-Z0-9.\-_]{2,50}$/
+
+export function isValidUpi(val) {
+  if (!val || typeof val !== 'string') return false
+  return UPI_REGEX.test(val.trim())
+}
+
 
 function normalizeUser(userData) {
   if (!userData) return null

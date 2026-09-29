@@ -199,3 +199,66 @@ def test_all_4_bank_fields_required_and_reject_placeholders(setup_bank_db):
     assert res_placeholder.status_code == 400
     assert "required" in res_placeholder.json()["detail"].lower()
 
+
+def test_upi_validation_accepts_bank_handles_and_rejects_malformed(setup_bank_db):
+    data = setup_bank_db
+    token = data["driver_token"]
+
+    valid_upis = [
+        "8779914564@kotak811",
+        "name@upi",
+        "username@oksbi",
+        "9876543210@ybl",
+        "user@hdfcbank",
+        "user@axisbank",
+        " 8779914564@kotak811 ",
+    ]
+
+    invalid_upis = [
+        "8779914564",
+        "@kotak811",
+        "8779914564@",
+        "8779914564@@kotak811",
+        "spaces @upi",
+    ]
+
+    # Test that valid UPIs succeed
+    for upi in valid_upis:
+        res = client.put(
+            "/api/auth/profile",
+            json={
+                "user_id": data["driver"].id,
+                "bank_account_holder": "Driver Test",
+                "bank_account_number": "123456789012",
+                "bank_ifsc": "SBIN0001234",
+                "bank_upi_id": upi
+            },
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        assert res.status_code == 200, f"Valid UPI rejected: {upi} -> {res.text}"
+        assert res.json()["user"]["bank_upi_id"] == upi.strip()
+
+        # Unlock for next iteration
+        db = TestingSessionLocal()
+        driver = db.query(User).filter_by(id=data["driver"].id).first()
+        driver.bank_locked = 0
+        driver.bank_request_status = "approved"
+        db.commit()
+        db.close()
+
+    # Test that invalid UPIs fail
+    for upi in invalid_upis:
+        res = client.put(
+            "/api/auth/profile",
+            json={
+                "user_id": data["driver"].id,
+                "bank_account_holder": "Driver Test",
+                "bank_account_number": "123456789012",
+                "bank_ifsc": "SBIN0001234",
+                "bank_upi_id": upi
+            },
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        assert res.status_code == 400, f"Invalid UPI was incorrectly accepted: {upi}"
+        assert "upi" in res.json()["detail"].lower()
+

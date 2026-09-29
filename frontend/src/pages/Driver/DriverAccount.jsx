@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useAuth, resolveFileUrl, hasValidBankDetails, getDocumentDisplayName } from '../../context/AuthContext.jsx'
+import { useAuth, resolveFileUrl, hasValidBankDetails, getDocumentDisplayName, isValidUpi } from '../../context/AuthContext.jsx'
 import { useDriverData } from '../../context/DriverContext.jsx'
 import DocumentViewerModal from '../../components/Common/DocumentViewerModal.jsx'
 import DocumentUploadModal from '../../components/Common/DocumentUploadModal.jsx'
@@ -243,7 +243,14 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
       if (form.bank_account_holder?.trim()) payload.bank_account_holder = form.bank_account_holder.trim()
       if (form.bank_account_number?.trim()) payload.bank_account_number = form.bank_account_number.trim()
       if (form.bank_ifsc?.trim()) payload.bank_ifsc = form.bank_ifsc.trim().toUpperCase()
-      if (form.bank_upi_id?.trim()) payload.bank_upi_id = form.bank_upi_id.trim()
+      if (form.bank_upi_id?.trim()) {
+        const u = form.bank_upi_id.trim()
+        if (!isValidUpi(u)) {
+          flash('Enter a valid UPI ID (e.g. name@upi).')
+          return
+        }
+        payload.bank_upi_id = u
+      }
     }
 
     const res = await saveProfileToDb(payload)
