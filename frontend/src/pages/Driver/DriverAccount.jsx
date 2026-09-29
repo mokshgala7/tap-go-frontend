@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useAuth, resolveFileUrl, hasValidBankDetails } from '../../context/AuthContext.jsx'
+import { useAuth, resolveFileUrl, hasValidBankDetails, getDocumentDisplayName } from '../../context/AuthContext.jsx'
 import { useDriverData } from '../../context/DriverContext.jsx'
 import DocumentViewerModal from '../../components/Common/DocumentViewerModal.jsx'
 import DocumentUploadModal from '../../components/Common/DocumentUploadModal.jsx'
@@ -29,7 +29,10 @@ function FieldCard({ label, value, displayValue, editable, editing, onChange, pl
   )
 }
 
-function DocCard({ title, path, type = 'Document', onPreview }) {
+function DocCard({ title, path, type = 'Document', userName, onPreview }) {
+  const { user } = useAuth()
+  const nameToUse = (userName || user?.name || '').trim() || 'User'
+  const displayName = getDocumentDisplayName(nameToUse, title)
   const fileUrl = resolveFileUrl(path)
   const cleanPath = (path ? path.split('?')[0].split('#')[0] : '').toLowerCase()
   const isImage = path && (
@@ -41,21 +44,10 @@ function DocCard({ title, path, type = 'Document', onPreview }) {
     path.startsWith('data:image')
   )
 
-  const fileName = (() => {
-    if (!path) return ''
-    try {
-      const clean = path.split('?')[0].split('#')[0]
-      const raw = clean.split('/').pop() || 'Document'
-      return decodeURIComponent(raw)
-    } catch {
-      return 'Document'
-    }
-  })()
-
   const handleOpen = (e) => {
     if (onPreview && path) {
       e.preventDefault()
-      onPreview({ title, path, type })
+      onPreview({ title, path, type, displayName, userName: nameToUse })
     }
   }
 
@@ -123,19 +115,18 @@ function DocCard({ title, path, type = 'Document', onPreview }) {
               <span
                 style={{
                   fontSize: 13,
-                  fontWeight: 600,
+                  fontWeight: 700,
                   color: 'var(--text)',
                   display: 'block',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.35,
                   maxWidth: '100%',
                 }}
-                title={fileName}
+                title={displayName}
               >
-                {fileName}
+                {displayName}
               </span>
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+              <span style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginTop: 3 }}>
                 {isImage ? 'Image Document' : 'Document'}
               </span>
             </div>
@@ -561,12 +552,12 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
 
       <h2>Uploaded Verification Documents</h2>
       <div className="field-grid">
-        <DocCard title="Profile Photo" path={user?.profile_photo} type="Image" onPreview={setPreviewDoc} />
-        <DocCard title="Govt ID / Aadhaar / PAN" path={user?.id_document} type="Document" onPreview={setPreviewDoc} />
-        <DocCard title="Digital Signature" path={user?.signature_document} type="Signature" onPreview={setPreviewDoc} />
-        <DocCard title="RC Book Document" path={user?.rc_document} type="Document" onPreview={setPreviewDoc} />
-        <DocCard title="Driving Licence Document" path={user?.licence_document} type="Document" onPreview={setPreviewDoc} />
-        <DocCard title="Insurance Document" path={user?.insurance_document} type="Document" onPreview={setPreviewDoc} />
+        <DocCard title="Profile Photo" path={user?.profile_photo} type="Image" userName={user?.name} onPreview={setPreviewDoc} />
+        <DocCard title="Govt ID / Aadhaar / PAN" path={user?.id_document} type="Document" userName={user?.name} onPreview={setPreviewDoc} />
+        <DocCard title="Digital Signature" path={user?.signature_document} type="Signature" userName={user?.name} onPreview={setPreviewDoc} />
+        <DocCard title="RC Book Document" path={user?.rc_document} type="Document" userName={user?.name} onPreview={setPreviewDoc} />
+        <DocCard title="Driving Licence Document" path={user?.licence_document} type="Document" userName={user?.name} onPreview={setPreviewDoc} />
+        <DocCard title="Insurance Document" path={user?.insurance_document} type="Document" userName={user?.name} onPreview={setPreviewDoc} />
       </div>
 
       <div style={{ marginTop: 12 }}>

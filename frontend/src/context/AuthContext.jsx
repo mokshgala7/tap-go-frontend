@@ -19,6 +19,44 @@ export function resolveFileUrl(filePath) {
   return `${API_BASE}/uploads/${clean}`
 }
 
+export function getDocumentDisplayLabel(typeOrTitle) {
+  if (!typeOrTitle) return 'Verification Document'
+  const normalized = String(typeOrTitle).toLowerCase().trim()
+
+  if (normalized.includes('profile') || normalized.includes('photo') || normalized === 'profile_photo') {
+    return 'Profile Photo'
+  }
+  if (
+    normalized.includes('id') ||
+    normalized.includes('aadhaar') ||
+    normalized.includes('pan') ||
+    normalized === 'id_document' ||
+    normalized === 'government_id' ||
+    normalized === 'govt id / aadhaar / pan'
+  ) {
+    return 'Government ID / Aadhaar / PAN'
+  }
+  if (normalized.includes('signature') || normalized === 'digital_signature' || normalized === 'signature_document') {
+    return 'Digital Signature'
+  }
+  if (normalized.includes('rc') || normalized === 'rc_document') {
+    return 'Vehicle RC Document'
+  }
+  if (normalized.includes('licence') || normalized.includes('license') || normalized === 'licence_document') {
+    return 'Driving Licence'
+  }
+  if (normalized.includes('insurance') || normalized === 'insurance_document') {
+    return 'Vehicle Insurance'
+  }
+  return typeOrTitle
+}
+
+export function getDocumentDisplayName(userName, typeOrTitle) {
+  const name = (userName || '').trim() || 'User'
+  const docLabel = getDocumentDisplayLabel(typeOrTitle)
+  return `${name} — ${docLabel}`
+}
+
 
 function normalizeUser(userData) {
   if (!userData) return null

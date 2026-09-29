@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { resolveFileUrl } from '../../context/AuthContext.jsx'
+import { resolveFileUrl, getDocumentDisplayName } from '../../context/AuthContext.jsx'
 
 export default function DocumentViewerModal({ doc, onClose }) {
   useEffect(() => {
@@ -32,6 +32,8 @@ export default function DocumentViewerModal({ doc, onClose }) {
       return 'document'
     }
   })()
+
+  const displayName = doc.displayName || getDocumentDisplayName(doc.userName, doc.title)
 
   return (
     <div
@@ -88,7 +90,7 @@ export default function DocumentViewerModal({ doc, onClose }) {
               </span>
             </div>
             <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--muted, #687782)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {fileName}
+              {displayName}
             </p>
           </div>
           <button
@@ -149,7 +151,7 @@ export default function DocumentViewerModal({ doc, onClose }) {
                 📄
               </div>
               <div>
-                <strong style={{ display: 'block', fontSize: 15, marginBottom: 4, wordBreak: 'break-word' }}>{fileName}</strong>
+                <strong style={{ display: 'block', fontSize: 15, marginBottom: 4, wordBreak: 'break-word' }}>{displayName}</strong>
                 <span style={{ fontSize: 12, color: 'var(--muted, #687782)' }}>PDF Document · Click below to view full document</span>
               </div>
               <a
@@ -181,7 +183,7 @@ export default function DocumentViewerModal({ doc, onClose }) {
                 📎
               </div>
               <div>
-                <strong style={{ display: 'block', fontSize: 15, marginBottom: 4, wordBreak: 'break-word' }}>{fileName}</strong>
+                <strong style={{ display: 'block', fontSize: 15, marginBottom: 4, wordBreak: 'break-word' }}>{displayName}</strong>
                 <span style={{ fontSize: 12, color: 'var(--muted, #687782)' }}>Verification Document</span>
               </div>
               <a
