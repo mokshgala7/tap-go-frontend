@@ -16,6 +16,15 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
     upiId: user?.bank_upi_id || '',
   })
 
+  React.useEffect(() => {
+    setForm({
+      accountHolder: user?.bank_account_holder || '',
+      accountNumber: user?.bank_account_number || '',
+      ifsc: user?.bank_ifsc || '',
+      upiId: user?.bank_upi_id || '',
+    })
+  }, [user?.bank_account_holder, user?.bank_account_number, user?.bank_ifsc, user?.bank_upi_id])
+
   const update = (key) => (e) => {
     setError('')
     setForm((current) => ({ ...current, [key]: e.target.value }))
@@ -95,23 +104,15 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
 
   const handleRequestAccess = async (e) => {
     e?.preventDefault()
-    if (!validate()) return
-
     setRequesting(true)
     setError('')
 
     try {
-      const res = await requestAdminAccess('bank', {
-        bank_account_holder: form.accountHolder.trim(),
-        bank_account_number: form.accountNumber.trim(),
-        bank_ifsc: form.ifsc.trim().toUpperCase(),
-        bank_upi_id: form.upiId.trim(),
-      })
+      const res = await requestAdminAccess('bank', { reason: 'User requested permission to edit bank details' })
       setRequesting(false)
 
       if (res.success) {
         await refreshProfile()
-        onClose()
         flash?.('Admin access requested for editing bank account.')
       } else {
         setError(res.message || 'Request failed.')
@@ -188,8 +189,10 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
         <div style={{ padding: '20px 22px 24px', maxHeight: '75vh', overflowY: 'auto' }}>
           <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--muted, #6b7280)', lineHeight: 1.5 }}>
             {isLocked
-              ? '🔒 Your bank details are permanently stored and locked. Submitting new details will send a request to administrators for review.'
-              : 'Details saved here will be stored permanently in the database. Note: Bank details are verified and locked after the initial save.'}
+              ? '🔒 Your bank details are permanently stored and locked. Request admin approval to unlock and edit your details.'
+              : user?.bank_request_status === 'approved'
+                ? '🔓 Admin approval granted! You can now edit your bank details below and save.'
+                : 'Details saved here will be stored permanently in the database. Note: Bank details are verified and locked after the initial save.'}
           </p>
 
           {error && (
@@ -216,6 +219,7 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
               <input
                 value={form.accountHolder}
                 onChange={update('accountHolder')}
+                disabled={isLocked}
                 placeholder="e.g. Full Name as in Bank Passbook"
                 autoComplete="off"
                 style={{
@@ -223,10 +227,11 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
                   padding: '10px 12px',
                   borderRadius: 10,
                   border: '1px solid var(--line, #d1d5db)',
-                  background: 'var(--bg, #f9fafb)',
+                  background: isLocked ? 'var(--card, #f3f4f6)' : 'var(--bg, #f9fafb)',
                   color: 'var(--text, #111827)',
                   fontSize: 14,
                   boxSizing: 'border-box',
+                  opacity: isLocked ? 0.75 : 1,
                 }}
               />
             </div>
@@ -238,6 +243,7 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
               <input
                 value={form.accountNumber}
                 onChange={update('accountNumber')}
+                disabled={isLocked}
                 placeholder="Bank Account Number (digits only)"
                 autoComplete="off"
                 inputMode="numeric"
@@ -246,10 +252,11 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
                   padding: '10px 12px',
                   borderRadius: 10,
                   border: '1px solid var(--line, #d1d5db)',
-                  background: 'var(--bg, #f9fafb)',
+                  background: isLocked ? 'var(--card, #f3f4f6)' : 'var(--bg, #f9fafb)',
                   color: 'var(--text, #111827)',
                   fontSize: 14,
                   boxSizing: 'border-box',
+                  opacity: isLocked ? 0.75 : 1,
                 }}
               />
             </div>
@@ -261,6 +268,7 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
               <input
                 value={form.ifsc}
                 onChange={update('ifsc')}
+                disabled={isLocked}
                 placeholder="e.g. SBIN0001234 or HDFC0001234"
                 autoComplete="off"
                 style={{
@@ -268,11 +276,12 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
                   padding: '10px 12px',
                   borderRadius: 10,
                   border: '1px solid var(--line, #d1d5db)',
-                  background: 'var(--bg, #f9fafb)',
+                  background: isLocked ? 'var(--card, #f3f4f6)' : 'var(--bg, #f9fafb)',
                   color: 'var(--text, #111827)',
                   fontSize: 14,
                   textTransform: 'uppercase',
                   boxSizing: 'border-box',
+                  opacity: isLocked ? 0.75 : 1,
                 }}
               />
             </div>
@@ -284,6 +293,7 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
               <input
                 value={form.upiId}
                 onChange={update('upiId')}
+                disabled={isLocked}
                 placeholder="e.g. username@okhdfcbank or name@upi"
                 autoComplete="off"
                 style={{
@@ -291,10 +301,11 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
                   padding: '10px 12px',
                   borderRadius: 10,
                   border: '1px solid var(--line, #d1d5db)',
-                  background: 'var(--bg, #f9fafb)',
+                  background: isLocked ? 'var(--card, #f3f4f6)' : 'var(--bg, #f9fafb)',
                   color: 'var(--text, #111827)',
                   fontSize: 14,
                   boxSizing: 'border-box',
+                  opacity: isLocked ? 0.75 : 1,
                 }}
               />
             </div>
@@ -322,7 +333,7 @@ export default function BankModal({ onClose, flash, title = 'Bank Account & Payo
                       opacity: requesting ? 0.7 : 1,
                     }}
                   >
-                    {requesting ? 'Submitting Request...' : 'Submit Changes for Admin Approval'}
+                    {requesting ? 'Submitting Request...' : 'Request Bank Details Change'}
                   </button>
                 )
               ) : (

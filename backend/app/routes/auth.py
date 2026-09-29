@@ -8,7 +8,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import EditRequest, User, EmailOTP, UserSession
+from app.models import EditRequest, User, EmailOTP, UserSession, UserDocument
 
 # Canonical reason constants
 REASON_CREATE_ACCOUNT = "create_account"
@@ -777,8 +777,18 @@ async def get_profile(user_id: int, current_user: User = Depends(get_current_use
     return {"success": True, "user": user_to_dict(user, include_docs=True)}
 
 
+VALID_DOC_TYPES = {
+    "profile_photo": ("profile", ALLOWED_IMAGE_EXTENSIONS),
+    "id_document": ("id_documents", ALLOWED_EXTENSIONS),
+    "signature_document": ("signatures", ALLOWED_IMAGE_EXTENSIONS),
+    "rc_document": ("rc", ALLOWED_EXTENSIONS),
+    "licence_document": ("licence", ALLOWED_EXTENSIONS),
+    "insurance_document": ("insurance", ALLOWED_EXTENSIONS),
+}
+
+
 class ProfileUpdateRequest(BaseModel):
-    user_id: int
+    user_id: Optional[int] = None
     name: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
@@ -795,76 +805,108 @@ class ProfileUpdateRequest(BaseModel):
 
 @router.put("/profile")
 async def update_profile(data: ProfileUpdateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if current_user.id != data.user_id:
+    if data.user_id is not None and current_user.id != data.user_id:
         raise HTTPException(status_code=403, detail="Not authorized to update this profile.")
 
-    user = db.query(User).filter(User.id == data.user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
+    user = current_user
 
+    # 1. Phone number modification check (Model 2: requires phone_request_status == 'approved')
     if data.phone is not None and data.phone.strip() != user.phone.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Registered phone number cannot be modified directly."
-        )
+        new_phone = data.phone.strip()
+        if user.phone_request_status != "approved":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Registered phone number cannot be modified without administrator approval."
+            )
+        if not PHONE_REGEX.match(new_phone):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Phone number must be exactly 10 digits."
+            )
+        existing_phone = db.query(User).filter(User.phone == new_phone, User.id != user.id).first()
+        if existing_phone:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This phone number is already registered by another account."
+            )
+        user.phone = new_phone
+        user.phone_request_status = "none"  # Permission consumed, locks again
 
+    # 2. Direct editable fields
     if data.name is not None:
-        user.name = data.name
+        user.name = data.name.strip()
     if data.email is not None:
-        user.email = data.email
+        user.email = data.email.strip()
     if data.address is not None:
-        user.address = data.address
+        user.address = data.address.strip()
     if data.city is not None:
-        user.city = data.city
+        user.city = data.city.strip()
     if data.state is not None:
-        user.state = data.state
+        user.state = data.state.strip()
     if data.emergency_contact_name is not None:
-        user.emergency_contact_name = data.emergency_contact_name
+        user.emergency_contact_name = data.emergency_contact_name.strip()
     if data.emergency_contact_phone is not None:
-        user.emergency_contact_phone = data.emergency_contact_phone
+        user.emergency_contact_phone = data.emergency_contact_phone.strip()
 
-    # Check bank details modification
-    bank_changed = any([
-        data.bank_account_holder is not None and data.bank_account_holder != user.bank_account_holder,
-        data.bank_account_number is not None and data.bank_account_number != user.bank_account_number,
-        data.bank_ifsc is not None and data.bank_ifsc != user.bank_ifsc,
-        data.bank_upi_id is not None and data.bank_upi_id != user.bank_upi_id,
+    # 3. Bank details modification check (Model 2: partial edit support & permission consumption)
+    bank_fields_provided = any([
+        data.bank_account_holder is not None,
+        data.bank_account_number is not None,
+        data.bank_ifsc is not None,
+        data.bank_upi_id is not None,
     ])
 
-    if bank_changed:
-        bank_values = (
-            data.bank_account_holder if data.bank_account_holder is not None else user.bank_account_holder,
-            data.bank_account_number if data.bank_account_number is not None else user.bank_account_number,
-            data.bank_ifsc if data.bank_ifsc is not None else user.bank_ifsc,
-            data.bank_upi_id if data.bank_upi_id is not None else user.bank_upi_id,
-        )
-        if not all(isinstance(value, str) and value.strip() and value.strip() not in ("—", "null", "undefined") for value in bank_values):
-            raise HTTPException(status_code=400, detail="All bank details (Account Holder, Account Number, IFSC, UPI ID) are required.")
+    if bank_fields_provided:
+        # Merge provided values with existing user values so partial edits work
+        holder = (data.bank_account_holder if data.bank_account_holder is not None else user.bank_account_holder) or ""
+        number = (data.bank_account_number if data.bank_account_number is not None else user.bank_account_number) or ""
+        ifsc = (data.bank_ifsc if data.bank_ifsc is not None else user.bank_ifsc) or ""
+        upi = (data.bank_upi_id if data.bank_upi_id is not None else user.bank_upi_id) or ""
 
-        has_existing_bank = bool(
-            user.bank_account_number and str(user.bank_account_number).strip() and str(user.bank_account_number).strip() not in ("—", "null", "undefined") and
-            user.bank_account_holder and str(user.bank_account_holder).strip() and str(user.bank_account_holder).strip() not in ("—", "null", "undefined") and
-            user.bank_ifsc and str(user.bank_ifsc).strip() and str(user.bank_ifsc).strip() not in ("—", "null", "undefined") and
-            user.bank_upi_id and str(user.bank_upi_id).strip() and str(user.bank_upi_id).strip() not in ("—", "null", "undefined")
-        )
-        if has_existing_bank and user.bank_locked:
-            raise HTTPException(
-                status_code=400,
-                detail="Bank details are locked. Submit a bank-details change request for administrator approval."
+        holder = holder.strip()
+        number = number.strip()
+        ifsc = ifsc.strip().upper()
+        upi = upi.strip()
+
+        bank_actually_changed = any([
+            holder != (user.bank_account_holder or "").strip(),
+            number != (user.bank_account_number or "").strip(),
+            ifsc != (user.bank_ifsc or "").strip().upper(),
+            upi != (user.bank_upi_id or "").strip(),
+        ])
+
+        if bank_actually_changed:
+            has_existing_bank = bool(
+                user.bank_account_number and str(user.bank_account_number).strip() and str(user.bank_account_number).strip() not in ("—", "null", "undefined") and
+                user.bank_account_holder and str(user.bank_account_holder).strip() and str(user.bank_account_holder).strip() not in ("—", "null", "undefined") and
+                user.bank_ifsc and str(user.bank_ifsc).strip() and str(user.bank_ifsc).strip() not in ("—", "null", "undefined") and
+                user.bank_upi_id and str(user.bank_upi_id).strip() and str(user.bank_upi_id).strip() not in ("—", "null", "undefined")
             )
+            # If bank was previously saved and locked, require admin permission
+            if has_existing_bank and user.bank_locked:
+                if user.bank_request_status != "approved":
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Bank details are locked. Request administrator approval to edit bank details."
+                    )
 
-        if data.bank_account_holder is not None:
-            user.bank_account_holder = data.bank_account_holder.strip()
-        if data.bank_account_number is not None:
-            user.bank_account_number = data.bank_account_number.strip()
-        if data.bank_ifsc is not None:
-            user.bank_ifsc = data.bank_ifsc.strip().upper()
-        if data.bank_upi_id is not None:
-            user.bank_upi_id = data.bank_upi_id.strip()
+            if not (holder and number and ifsc and upi and all(v not in ("—", "null", "undefined") for v in (holder, number, ifsc, upi))):
+                raise HTTPException(status_code=400, detail="All bank details (Account Holder, Account Number, IFSC, UPI ID) are required.")
 
-        # Lock after the initial database-backed bank-details save.
-        if user.bank_account_number and user.bank_account_holder and user.bank_ifsc and user.bank_upi_id:
+            user.bank_account_holder = holder
+            user.bank_account_number = number
+            user.bank_ifsc = ifsc
+            user.bank_upi_id = upi
             user.bank_locked = 1
+            user.bank_request_status = "none"  # Permission consumed, locks again
+        elif not user.bank_locked and holder and number and ifsc and upi and all(v not in ("—", "null", "undefined") for v in (holder, number, ifsc, upi)):
+            # Initial database save when bank details were complete and not locked yet
+            user.bank_account_holder = holder
+            user.bank_account_number = number
+            user.bank_ifsc = ifsc
+            user.bank_upi_id = upi
+            user.bank_locked = 1
+            user.bank_request_status = "none"
 
     db.commit()
     db.refresh(user)
@@ -876,56 +918,104 @@ async def update_profile(data: ProfileUpdateRequest, current_user: User = Depend
 
 
 class AdminAccessRequest(BaseModel):
-    user_id: int
-    request_type: str  # "bank" or "documents"
+    user_id: Optional[int] = None
+    request_type: str  # "bank", "documents", or "phone"
     bank_details: Optional[dict[str, str]] = None
+    reason: Optional[str] = None
 
 
 @router.post("/request-admin-access")
 async def request_admin_access(data: AdminAccessRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if current_user.id != data.user_id:
+    if data.user_id and current_user.id != data.user_id:
         raise HTTPException(status_code=403, detail="Not authorized to request changes for another user.")
 
     user = current_user
+    request_type = data.request_type.strip().lower()
 
-    if data.request_type == "bank":
-        if not (user.bank_account_number and str(user.bank_account_number).strip()):
-            raise HTTPException(status_code=400, detail="Save initial bank details before requesting a change.")
-        required_fields = {"bank_account_holder", "bank_account_number", "bank_ifsc", "bank_upi_id"}
-        if not data.bank_details or not required_fields.issubset(data.bank_details) or not all(data.bank_details[field].strip() for field in required_fields):
-            raise HTTPException(status_code=400, detail="Provide all proposed bank details for administrator review.")
-        pending_request = db.query(EditRequest).filter(
-            EditRequest.user_id == user.id,
-            EditRequest.field_name == "bank",
-            EditRequest.status == "pending",
-        ).first()
-        if pending_request:
-            raise HTTPException(status_code=400, detail="A bank-details change request is already pending review.")
+    if request_type not in ("bank", "documents", "phone"):
+        raise HTTPException(status_code=400, detail="Invalid request type. Must be 'bank', 'documents', or 'phone'.")
+
+    # Duplicate request prevention across both edit_requests table and user status flags
+    pending_request = db.query(EditRequest).filter(
+        EditRequest.user_id == user.id,
+        EditRequest.field_name == request_type,
+        EditRequest.status == "pending",
+    ).first()
+
+    if request_type == "bank":
+        if user.bank_request_status == "requested" or pending_request:
+            raise HTTPException(status_code=400, detail="Your bank change request is already pending review.")
         user.bank_request_status = "requested"
-    elif data.request_type == "documents":
+    elif request_type == "documents":
+        if user.doc_request_status == "requested" or pending_request:
+            raise HTTPException(status_code=400, detail="Your document change request is already pending review.")
         user.doc_request_status = "requested"
-    elif data.request_type == "phone":
+    elif request_type == "phone":
+        if user.phone_request_status == "requested" or pending_request:
+            raise HTTPException(status_code=400, detail="Your phone change request is already pending review.")
         user.phone_request_status = "requested"
-    else:
-        raise HTTPException(status_code=400, detail="Invalid request type.")
 
+    # In Model 2, request is strictly for permission to edit (no premature values)
     db.add(EditRequest(
         user_id=user.id,
-        field_name=data.request_type,
-        previous_value=json.dumps({
-            "bank_account_holder": user.bank_account_holder,
-            "bank_account_number": user.bank_account_number,
-            "bank_ifsc": user.bank_ifsc,
-            "bank_upi_id": user.bank_upi_id,
-        }) if data.request_type == "bank" else None,
-        new_value=json.dumps(data.bank_details) if data.request_type == "bank" else None,
-        reason=f"Requested administrator review to update {data.request_type} details.",
+        field_name=request_type,
+        previous_value=None,
+        new_value=json.dumps(data.bank_details) if data.bank_details else None,
+        reason=data.reason or f"Requested permission to update {request_type} details.",
+        status="pending",
     ))
 
     db.commit()
     db.refresh(user)
     return {
         "success": True,
-        "message": f"Admin access request submitted for {data.request_type}. Pending admin review.",
+        "message": f"Admin access request submitted for {request_type}. Pending admin review.",
         "user": user_to_dict(user)
+    }
+
+
+@router.post("/profile/document")
+async def replace_document(
+    document_type: str = Form(...),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.doc_request_status != "approved":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Document editing is not authorized. Request administrator approval first."
+        )
+
+    doc_key = document_type.strip().lower()
+    if doc_key not in VALID_DOC_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid document type '{document_type}'. Allowed: {', '.join(VALID_DOC_TYPES.keys())}."
+        )
+
+    folder, allowed_exts = VALID_DOC_TYPES[doc_key]
+    uploaded_path = upload_document(file, folder, list(allowed_exts))
+    if not uploaded_path:
+        raise HTTPException(status_code=400, detail="Document upload failed.")
+
+    # Update User document field
+    setattr(current_user, doc_key, uploaded_path)
+
+    # Record in user_documents table
+    db.add(UserDocument(
+        user_id=current_user.id,
+        document_type=doc_key,
+        file_path=uploaded_path,
+    ))
+
+    # Consume permission
+    current_user.doc_request_status = "none"
+    db.commit()
+    db.refresh(current_user)
+
+    return {
+        "success": True,
+        "message": f"{doc_key.replace('_', ' ').title()} updated successfully.",
+        "user": user_to_dict(current_user, include_docs=True)
     }

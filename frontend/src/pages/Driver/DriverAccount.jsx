@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth, resolveFileUrl, hasValidBankDetails } from '../../context/AuthContext.jsx'
 import { useDriverData } from '../../context/DriverContext.jsx'
 import DocumentViewerModal from '../../components/Common/DocumentViewerModal.jsx'
+import DocumentUploadModal from '../../components/Common/DocumentUploadModal.jsx'
 import { inr } from './format.js'
 
 const Icon = ({ children, className = '' }) => (
@@ -186,6 +187,7 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
   const [requestingDoc, setRequestingDoc] = useState(false)
   const [requestingPhone, setRequestingPhone] = useState(false)
   const [previewDoc, setPreviewDoc] = useState(null)
+  const [showDocUploadModal, setShowDocUploadModal] = useState(false)
 
   const [form, setForm] = useState({
     name: '',
@@ -230,61 +232,47 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
   const isBankLocked = hasValidBankDetails(user) && Boolean(user?.bank_locked)
 
   const save = async () => {
-    const bankDetails = {
-      bank_account_holder: form.bank_account_holder.trim(),
-      bank_account_number: form.bank_account_number.trim(),
-      bank_ifsc: form.bank_ifsc.trim().toUpperCase(),
-      bank_upi_id: form.bank_upi_id.trim(),
-    }
-    const hasBankProposal = Object.values(bankDetails).some(Boolean)
-    if (!isBankLocked && hasBankProposal && !Object.values(bankDetails).every(Boolean)) {
-      flash('Provide all bank details before saving.')
-      return
-    }
-    if (isBankLocked && hasBankProposal) {
-      if (!Object.values(bankDetails).every(Boolean)) {
-        flash('Provide all bank details for administrator review.')
-        return
-      }
-      const request = await requestAdminAccess('bank', bankDetails)
-      if (!request.success) {
-        flash(request.message || 'Failed to submit bank-details change request.')
-        return
-      }
+    const payload = {
+      name: form.name?.trim() ? form.name.trim() : user?.name,
+      email: form.email?.trim() ? form.email.trim() : user?.email,
+      address: form.address?.trim() ? form.address.trim() : user?.address,
+      city: form.city?.trim() ? form.city.trim() : user?.city,
+      emergency_contact_name: form.emergency_contact_name?.trim() ? form.emergency_contact_name.trim() : user?.emergency_contact_name,
+      emergency_contact_phone: form.emergency_contact_phone?.trim() ? form.emergency_contact_phone.trim() : user?.emergency_contact_phone,
     }
 
-    const res = await saveProfileToDb({
-      name: form.name.trim() ? form.name.trim() : user?.name,
-      email: form.email.trim() ? form.email.trim() : user?.email,
-      address: form.address.trim() ? form.address.trim() : user?.address,
-      city: form.city.trim() ? form.city.trim() : user?.city,
-      emergency_contact_name: form.emergency_contact_name.trim() ? form.emergency_contact_name.trim() : user?.emergency_contact_name,
-      emergency_contact_phone: form.emergency_contact_phone.trim() ? form.emergency_contact_phone.trim() : user?.emergency_contact_phone,
-      ...(!isBankLocked && {
-        bank_account_holder: bankDetails.bank_account_holder || user?.bank_account_holder,
-        bank_account_number: bankDetails.bank_account_number || user?.bank_account_number,
-        bank_ifsc: bankDetails.bank_ifsc || user?.bank_ifsc,
-        bank_upi_id: bankDetails.bank_upi_id || user?.bank_upi_id,
-      }),
-    })
+    // Include phone if approved and changed
+    if (user?.phone_request_status === 'approved' && form.phone && form.phone.trim() !== user?.phone) {
+      payload.phone = form.phone.trim()
+    }
 
+    // Include bank details if bank was never locked OR permission is approved
+    const canEditBank = !isBankLocked || user?.bank_request_status === 'approved'
+    if (canEditBank) {
+      if (form.bank_account_holder?.trim()) payload.bank_account_holder = form.bank_account_holder.trim()
+      if (form.bank_account_number?.trim()) payload.bank_account_number = form.bank_account_number.trim()
+      if (form.bank_ifsc?.trim()) payload.bank_ifsc = form.bank_ifsc.trim().toUpperCase()
+      if (form.bank_upi_id?.trim()) payload.bank_upi_id = form.bank_upi_id.trim()
+    }
+
+    const res = await saveProfileToDb(payload)
     if (res.success) {
       await refreshProfile()
       setEditing(false)
       setForm({
-        name: '',
-        email: '',
-        phone: '',
-        address: '',
-        city: '',
-        emergency_contact_name: '',
-        emergency_contact_phone: '',
-        bank_account_holder: '',
-        bank_account_number: '',
-        bank_ifsc: '',
-        bank_upi_id: '',
+        name: user?.name || '',
+        email: user?.email || '',
+        phone: user?.phone || '',
+        address: user?.address || '',
+        city: user?.city || '',
+        emergency_contact_name: user?.emergency_contact_name || '',
+        emergency_contact_phone: user?.emergency_contact_phone || '',
+        bank_account_holder: user?.bank_account_holder || '',
+        bank_account_number: user?.bank_account_number || '',
+        bank_ifsc: user?.bank_ifsc || '',
+        bank_upi_id: user?.bank_upi_id || '',
       })
-      flash(hasBankProposal && isBankLocked ? 'Bank-details change submitted for administrator approval.' : 'Account & profile details updated in database.')
+      flash('Account & profile details updated in database.')
     } else {
       flash(res.message || 'Failed to save profile.')
     }
@@ -295,17 +283,17 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
       save()
     } else {
       setForm({
-        name: '',
-        email: '',
-        phone: '',
-        address: '',
-        city: '',
-        emergency_contact_name: '',
-        emergency_contact_phone: '',
-        bank_account_holder: '',
-        bank_account_number: '',
-        bank_ifsc: '',
-        bank_upi_id: '',
+        name: user?.name || '',
+        email: user?.email || '',
+        phone: user?.phone || '',
+        address: user?.address || '',
+        city: user?.city || '',
+        emergency_contact_name: user?.emergency_contact_name || '',
+        emergency_contact_phone: user?.emergency_contact_phone || '',
+        bank_account_holder: user?.bank_account_holder || '',
+        bank_account_number: user?.bank_account_number || '',
+        bank_ifsc: user?.bank_ifsc || '',
+        bank_upi_id: user?.bank_upi_id || '',
       })
       setEditing(true)
     }
@@ -323,8 +311,14 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
   }
 
   const handleAdminBankRequest = async () => {
-    setForm((current) => ({ ...current, bank_account_holder: '', bank_account_number: '', bank_ifsc: '', bank_upi_id: '' }))
-    setEditing(true)
+    setRequestingBank(true)
+    const res = await requestAdminAccess('bank')
+    setRequestingBank(false)
+    if (res.success) {
+      flash('Admin access requested for bank details change.')
+    } else {
+      flash(res.message || 'Failed to send request.')
+    }
   }
 
   const handleAdminDocRequest = async () => {
@@ -400,7 +394,16 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
       </div>
       <div className="field-grid">
         <FieldCard label="Full Name" value={form.name} displayValue={user?.name} editable editing={editing} onChange={set('name')} />
-        <FieldCard label="Mobile Number" value={user?.phone} displayValue={user?.phone} editable={false} />
+        <FieldCard
+          label="Mobile Number"
+          value={form.phone}
+          displayValue={user?.phone}
+          editable={user?.phone_request_status === 'approved'}
+          editing={editing && user?.phone_request_status === 'approved'}
+          onChange={set('phone')}
+          lockedReason={user?.phone_request_status === 'approved' ? 'Editable (Approved)' : 'Read-only'}
+          placeholder="10-digit mobile number"
+        />
         <FieldCard label="Email" value={form.email} displayValue={user?.email} editable editing={editing} onChange={set('email')} />
         <FieldCard label="Address" value={form.address} displayValue={user?.address} editable editing={editing} onChange={set('address')} />
         <FieldCard label="City" value={form.city} displayValue={user?.city} editable editing={editing} onChange={set('city')} />
@@ -411,15 +414,26 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
           <p className="muted" style={{ fontWeight: 700, color: '#d97706', margin: '6px 0 0' }}>
             ⏳ Phone number change request submitted to Admin. Awaiting authorization.
           </p>
+        ) : user?.phone_request_status === 'approved' ? (
+          <p style={{ fontWeight: 700, color: '#1f9d55', margin: '6px 0 0' }}>
+            ✅ Admin approval granted! Click &quot;Edit details&quot; above to change your phone number.
+          </p>
         ) : (
-          <button
-            className="secondary-btn"
-            style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)' }}
-            disabled={requestingPhone}
-            onClick={handleAdminPhoneRequest}
-          >
-            {requestingPhone ? 'Sending Request...' : 'Request Admin Access to Change Phone Number'}
-          </button>
+          <div>
+            {user?.phone_request_status === 'rejected' && (
+              <p style={{ fontWeight: 700, color: '#9f1730', margin: '6px 0 6px' }}>
+                ❌ Your previous phone change request was rejected by Admin.
+              </p>
+            )}
+            <button
+              className="secondary-btn"
+              style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)' }}
+              disabled={requestingPhone}
+              onClick={handleAdminPhoneRequest}
+            >
+              {requestingPhone ? 'Sending Request...' : 'Request Admin Access to Change Phone Number'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -484,32 +498,32 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
           label="Account Holder"
           value={form.bank_account_holder}
           displayValue={user?.bank_account_holder}
-          editable
-          editing={editing}
+          editable={!isBankLocked || user?.bank_request_status === 'approved'}
+          editing={editing && (!isBankLocked || user?.bank_request_status === 'approved')}
           onChange={set('bank_account_holder')}
         />
         <FieldCard
           label="Account Number"
           value={form.bank_account_number}
           displayValue={user?.bank_account_number ? (user.bank_account_number.length > 4 ? `XXXX XXXX ${user.bank_account_number.slice(-4)}` : user.bank_account_number) : '—'}
-          editable
-          editing={editing}
+          editable={!isBankLocked || user?.bank_request_status === 'approved'}
+          editing={editing && (!isBankLocked || user?.bank_request_status === 'approved')}
           onChange={set('bank_account_number')}
         />
         <FieldCard
           label="IFSC Code"
           value={form.bank_ifsc}
           displayValue={user?.bank_ifsc}
-          editable
-          editing={editing}
+          editable={!isBankLocked || user?.bank_request_status === 'approved'}
+          editing={editing && (!isBankLocked || user?.bank_request_status === 'approved')}
           onChange={set('bank_ifsc')}
         />
         <FieldCard
           label="UPI ID"
           value={form.bank_upi_id}
           displayValue={user?.bank_upi_id}
-          editable
-          editing={editing}
+          editable={!isBankLocked || user?.bank_request_status === 'approved'}
+          editing={editing && (!isBankLocked || user?.bank_request_status === 'approved')}
           onChange={set('bank_upi_id')}
           placeholder="name@upi"
         />
@@ -558,17 +572,37 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
       <div style={{ marginTop: 12 }}>
         {user?.doc_request_status === 'requested' ? (
           <p className="muted" style={{ fontWeight: 700, color: '#d97706' }}>
-            ⏳ Document re-upload request submitted to Admin.
+            ⏳ Document re-upload request submitted to Admin. Awaiting authorization.
           </p>
+        ) : user?.doc_request_status === 'approved' ? (
+          <div>
+            <p style={{ fontWeight: 700, color: '#1f9d55', marginBottom: 8 }}>
+              ✅ Admin approval granted! You can now upload replacement documents.
+            </p>
+            <button
+              className="secondary-btn"
+              style={{ color: '#0f172a', background: 'linear-gradient(135deg, #FDD34D 0%, #F59E0B 100%)', border: 'none', fontWeight: 700, borderRadius: 8, padding: '8px 16px', cursor: 'pointer' }}
+              onClick={() => setShowDocUploadModal(true)}
+            >
+              Upload Replacement Document
+            </button>
+          </div>
         ) : (
-          <button
-            className="secondary-btn"
-            style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)', marginTop: 8 }}
-            disabled={requestingDoc}
-            onClick={handleAdminDocRequest}
-          >
-            {requestingDoc ? 'Sending Request...' : 'Request Admin Access to Edit Documents'}
-          </button>
+          <div>
+            {user?.doc_request_status === 'rejected' && (
+              <p style={{ fontWeight: 700, color: '#9f1730', marginBottom: 6 }}>
+                ❌ Your previous document edit request was rejected by Admin.
+              </p>
+            )}
+            <button
+              className="secondary-btn"
+              style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)', marginTop: 8 }}
+              disabled={requestingDoc}
+              onClick={handleAdminDocRequest}
+            >
+              {requestingDoc ? 'Sending Request...' : 'Request Admin Access to Edit Documents'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -619,6 +653,14 @@ function DriverAccount({ flash, dark, setDark, notifications, setNotifications, 
 
       {previewDoc && (
         <DocumentViewerModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
+      )}
+
+      {showDocUploadModal && (
+        <DocumentUploadModal
+          accountType="driver"
+          onClose={() => setShowDocUploadModal(false)}
+          flash={flash}
+        />
       )}
     </>
   )

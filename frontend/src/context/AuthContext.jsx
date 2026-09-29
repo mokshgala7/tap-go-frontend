@@ -233,6 +233,35 @@ export function AuthProvider({ children }) {
     return user
   }
 
+  const uploadReplacementDocument = async (documentType, file) => {
+    if (!user?.id) return { success: false, message: 'User not logged in' }
+    try {
+      const token = sessionStorage.getItem(TOKEN_KEY)
+      const headers = {}
+      if (token) headers['Authorization'] = `Bearer ${token}`
+
+      const formData = new FormData()
+      formData.append('document_type', documentType)
+      formData.append('file', file)
+
+      const res = await fetch(`${API_BASE}/api/auth/profile/document`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        const nextUser = normalizeUser(data.user)
+        setUser(nextUser)
+        return { success: true, message: data.message, user: nextUser }
+      } else {
+        return { success: false, message: data.detail || 'Document upload failed' }
+      }
+    } catch (err) {
+      return { success: false, message: 'Server error uploading document' }
+    }
+  }
+
   const logout = async () => {
     try {
       const token = sessionStorage.getItem(TOKEN_KEY)
@@ -259,7 +288,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, updateProfile, saveProfileToDb, requestAdminAccess, refreshProfile }}>
+    <AuthContext.Provider value={{ user, login, register, logout, updateProfile, saveProfileToDb, requestAdminAccess, uploadReplacementDocument, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

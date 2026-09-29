@@ -10,6 +10,7 @@ import WithdrawModal from '../../components/Payment/WithdrawModal.jsx'
 import NFCCardOrderModal from '../../components/NFC/NFCCardOrderModal.jsx'
 import NFCOrderHistoryModal from '../../components/NFC/NFCOrderHistoryModal.jsx'
 import DocumentViewerModal from '../../components/Common/DocumentViewerModal.jsx'
+import DocumentUploadModal from '../../components/Common/DocumentUploadModal.jsx'
 import BankModal from '../../components/Payment/BankModal.jsx'
 import './Passenger.css'
 
@@ -426,6 +427,7 @@ function Passenger() {
   const [showNFCSecurityModal, setShowNFCSecurityModal] = useState(false)
   const [previewDoc, setPreviewDoc] = useState(null)
   const [showBankModal, setShowBankModal] = useState(false)
+  const [showDocUploadModal, setShowDocUploadModal] = useState(false)
 
   const [form, setForm] = useState({
     name: '',
@@ -1106,60 +1108,47 @@ function Passenger() {
   const isBankLocked = hasValidBankDetails(user) && Boolean(user?.bank_locked)
 
   const saveProfile = async () => {
-    const bankDetails = {
-      bank_account_holder: form.bank_account_holder.trim(),
-      bank_account_number: form.bank_account_number.trim(),
-      bank_ifsc: form.bank_ifsc.trim(),
-      bank_upi_id: form.bank_upi_id.trim(),
-    }
-    const hasBankProposal = Object.values(bankDetails).some(Boolean)
-    if (!isBankLocked && hasBankProposal && !Object.values(bankDetails).every(Boolean)) {
-      flash('Provide all bank details before saving.')
-      return
-    }
-    if (isBankLocked && hasBankProposal) {
-      if (!Object.values(bankDetails).every(Boolean)) {
-        flash('Provide all bank details for administrator review.')
-        return
-      }
-      const request = await requestAdminAccess('bank', bankDetails)
-      if (!request.success) {
-        flash(request.message || 'Failed to submit bank-details change request.')
-        return
-      }
+    const payload = {
+      name: form.name?.trim() ? form.name.trim() : user?.name,
+      email: form.email?.trim() ? form.email.trim() : user?.email,
+      address: form.address?.trim() ? form.address.trim() : user?.address,
+      city: form.city?.trim() ? form.city.trim() : user?.city,
+      emergency_contact_name: form.emergency_contact_name?.trim() ? form.emergency_contact_name.trim() : user?.emergency_contact_name,
+      emergency_contact_phone: form.emergency_contact_phone?.trim() ? form.emergency_contact_phone.trim() : user?.emergency_contact_phone,
     }
 
-    const res = await saveProfileToDb({
-      name: form.name.trim() ? form.name.trim() : user?.name,
-      email: form.email.trim() ? form.email.trim() : user?.email,
-      address: form.address.trim() ? form.address.trim() : user?.address,
-      city: form.city.trim() ? form.city.trim() : user?.city,
-      emergency_contact_name: form.emergency_contact_name.trim() ? form.emergency_contact_name.trim() : user?.emergency_contact_name,
-      emergency_contact_phone: form.emergency_contact_phone.trim() ? form.emergency_contact_phone.trim() : user?.emergency_contact_phone,
-      ...(!isBankLocked && {
-        bank_account_holder: bankDetails.bank_account_holder || user?.bank_account_holder,
-        bank_account_number: bankDetails.bank_account_number || user?.bank_account_number,
-        bank_ifsc: bankDetails.bank_ifsc || user?.bank_ifsc,
-        bank_upi_id: bankDetails.bank_upi_id || user?.bank_upi_id,
-      }),
-    })
+    // Include phone if permission was approved and field was edited
+    if (user?.phone_request_status === 'approved' && form.phone && form.phone.trim() !== user?.phone) {
+      payload.phone = form.phone.trim()
+    }
+
+    // Include bank details if bank was never locked OR permission is approved
+    const canEditBank = !isBankLocked || user?.bank_request_status === 'approved'
+    if (canEditBank) {
+      if (form.bank_account_holder?.trim()) payload.bank_account_holder = form.bank_account_holder.trim()
+      if (form.bank_account_number?.trim()) payload.bank_account_number = form.bank_account_number.trim()
+      if (form.bank_ifsc?.trim()) payload.bank_ifsc = form.bank_ifsc.trim().toUpperCase()
+      if (form.bank_upi_id?.trim()) payload.bank_upi_id = form.bank_upi_id.trim()
+    }
+
+    const res = await saveProfileToDb(payload)
     if (res.success) {
       await refreshProfile()
       setEditing(false)
       setForm({
-        name: '',
-        email: '',
-        phone: '',
-        address: '',
-        city: '',
-        emergency_contact_name: '',
-        emergency_contact_phone: '',
-        bank_account_holder: '',
-        bank_account_number: '',
-        bank_ifsc: '',
-        bank_upi_id: '',
+        name: user?.name || '',
+        email: user?.email || '',
+        phone: user?.phone || '',
+        address: user?.address || '',
+        city: user?.city || '',
+        emergency_contact_name: user?.emergency_contact_name || '',
+        emergency_contact_phone: user?.emergency_contact_phone || '',
+        bank_account_holder: user?.bank_account_holder || '',
+        bank_account_number: user?.bank_account_number || '',
+        bank_ifsc: user?.bank_ifsc || '',
+        bank_upi_id: user?.bank_upi_id || '',
       })
-      flash(hasBankProposal && isBankLocked ? 'Bank-details change submitted for administrator approval.' : 'Profile updated in database.')
+      flash('Profile updated successfully.')
     } else {
       flash(res.message || 'Failed to save profile.')
     }
@@ -1169,18 +1158,19 @@ function Passenger() {
     if (editing) {
       saveProfile()
     } else {
+      // Pre-fill form with existing user data so partial edits work cleanly
       setForm({
-        name: '',
-        email: '',
-        phone: '',
-        address: '',
-        city: '',
-        emergency_contact_name: '',
-        emergency_contact_phone: '',
-        bank_account_holder: '',
-        bank_account_number: '',
-        bank_ifsc: '',
-        bank_upi_id: '',
+        name: user?.name || '',
+        email: user?.email || '',
+        phone: user?.phone || '',
+        address: user?.address || '',
+        city: user?.city || '',
+        emergency_contact_name: user?.emergency_contact_name || '',
+        emergency_contact_phone: user?.emergency_contact_phone || '',
+        bank_account_holder: user?.bank_account_holder || '',
+        bank_account_number: user?.bank_account_number || '',
+        bank_ifsc: user?.bank_ifsc || '',
+        bank_upi_id: user?.bank_upi_id || '',
       })
       setEditing(true)
     }
@@ -1195,7 +1185,11 @@ function Passenger() {
   }
 
   const handleAdminBankRequest = async () => {
-    setShowBankModal(true)
+    setRequestingBank(true)
+    const res = await requestAdminAccess('bank')
+    setRequestingBank(false)
+    if (res.success) flash('Admin access requested for bank details change.')
+    else flash(res.message || 'Request failed.')
   }
 
   const handleAdminDocRequest = async () => {
@@ -1265,9 +1259,20 @@ function Passenger() {
         <div className="field-card">
           <div className="field-top">
             <span className="field-label">Mobile Number</span>
-            <span className="field-tag readonly">Read-only (Taken from DB)</span>
+            <span className={`field-tag ${user?.phone_request_status === 'approved' ? 'editable' : 'readonly'}`}>
+              {user?.phone_request_status === 'approved' ? 'Editable (Approved)' : 'Read-only (Taken from DB)'}
+            </span>
           </div>
-          <span className="field-value">{user?.phone || '—'}</span>
+          {editing && user?.phone_request_status === 'approved' ? (
+            <input
+              value={form.phone}
+              onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))}
+              placeholder="10-digit mobile number"
+              autoComplete="off"
+            />
+          ) : (
+            <span className="field-value">{user?.phone || '—'}</span>
+          )}
         </div>
 
         <div className="field-card">
@@ -1300,15 +1305,26 @@ function Passenger() {
           <p className="muted" style={{ fontWeight: 700, color: '#d97706', margin: '6px 0 0' }}>
             ⏳ Phone number change request submitted to Admin. Awaiting authorization.
           </p>
+        ) : user?.phone_request_status === 'approved' ? (
+          <p style={{ fontWeight: 700, color: '#1f9d55', margin: '6px 0 0' }}>
+            ✅ Admin approval granted! Click &quot;Edit details&quot; above to change your phone number.
+          </p>
         ) : (
-          <button
-            className="secondary-btn"
-            style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)' }}
-            disabled={requestingPhone}
-            onClick={handleAdminPhoneRequest}
-          >
-            {requestingPhone ? 'Sending Request...' : 'Request Admin Access to Change Phone Number'}
-          </button>
+          <div>
+            {user?.phone_request_status === 'rejected' && (
+              <p style={{ fontWeight: 700, color: '#9f1730', margin: '6px 0 6px' }}>
+                ❌ Your previous phone change request was rejected by Admin.
+              </p>
+            )}
+            <button
+              className="secondary-btn"
+              style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)' }}
+              disabled={requestingPhone}
+              onClick={handleAdminPhoneRequest}
+            >
+              {requestingPhone ? 'Sending Request...' : 'Request Admin Access to Change Phone Number'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -1373,7 +1389,7 @@ function Passenger() {
               {!isBankLocked || user?.bank_request_status === 'approved' ? 'Editable' : 'Locked'}
             </span>
           </div>
-          {editing ? (
+          {editing && (!isBankLocked || user?.bank_request_status === 'approved') ? (
             <input value={form.bank_account_holder} onChange={(e) => setForm(f => ({ ...f, bank_account_holder: e.target.value }))} placeholder="Account Holder Name" autoComplete="off" />
           ) : (
             <span className="field-value">{user?.bank_account_holder || '—'}</span>
@@ -1387,7 +1403,7 @@ function Passenger() {
               {!isBankLocked || user?.bank_request_status === 'approved' ? 'Editable' : 'Locked'}
             </span>
           </div>
-          {editing ? (
+          {editing && (!isBankLocked || user?.bank_request_status === 'approved') ? (
             <input value={form.bank_account_number} onChange={(e) => setForm(f => ({ ...f, bank_account_number: e.target.value }))} placeholder="Bank Account Number" autoComplete="off" />
           ) : (
             <span className="field-value">
@@ -1407,7 +1423,7 @@ function Passenger() {
               {!isBankLocked || user?.bank_request_status === 'approved' ? 'Editable' : 'Locked'}
             </span>
           </div>
-          {editing ? (
+          {editing && (!isBankLocked || user?.bank_request_status === 'approved') ? (
             <input value={form.bank_ifsc} onChange={(e) => setForm(f => ({ ...f, bank_ifsc: e.target.value }))} placeholder="IFSC Code (e.g. SBIN0001234)" autoComplete="off" />
           ) : (
             <span className="field-value">{user?.bank_ifsc || '—'}</span>
@@ -1421,7 +1437,7 @@ function Passenger() {
               {!isBankLocked || user?.bank_request_status === 'approved' ? 'Editable' : 'Locked'}
             </span>
           </div>
-          {editing ? (
+          {editing && (!isBankLocked || user?.bank_request_status === 'approved') ? (
             <input value={form.bank_upi_id} onChange={(e) => setForm(f => ({ ...f, bank_upi_id: e.target.value }))} placeholder="name@upi" autoComplete="off" />
           ) : (
             <span className="field-value">{user?.bank_upi_id || '—'}</span>
@@ -1469,22 +1485,40 @@ function Passenger() {
         {user?.insurance_document && <PassengerDocCard title="Insurance Document" path={user?.insurance_document} type="Document" onPreview={setPreviewDoc} />}
       </div>
 
-
-
       <div style={{ marginTop: 12 }}>
         {user?.doc_request_status === 'requested' ? (
           <p className="muted" style={{ fontWeight: 700, color: '#d97706' }}>
-            ⏳ Document edit request submitted to Admin.
+            ⏳ Document edit request submitted to Admin. Awaiting authorization.
           </p>
+        ) : user?.doc_request_status === 'approved' ? (
+          <div>
+            <p style={{ fontWeight: 700, color: '#1f9d55', marginBottom: 8 }}>
+              ✅ Admin approval granted! You can now upload replacement documents.
+            </p>
+            <button
+              className="secondary-btn"
+              style={{ color: '#0f172a', background: 'linear-gradient(135deg, #FDD34D 0%, #F59E0B 100%)', border: 'none', fontWeight: 700, borderRadius: 8, padding: '8px 16px', cursor: 'pointer' }}
+              onClick={() => setShowDocUploadModal(true)}
+            >
+              Upload Replacement Document
+            </button>
+          </div>
         ) : (
-          <button
-            className="secondary-btn"
-            style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)', marginTop: 8 }}
-            disabled={requestingDoc}
-            onClick={handleAdminDocRequest}
-          >
-            {requestingDoc ? 'Sending Request...' : 'Request Admin Access to Edit Documents'}
-          </button>
+          <div>
+            {user?.doc_request_status === 'rejected' && (
+              <p style={{ fontWeight: 700, color: '#9f1730', marginBottom: 6 }}>
+                ❌ Your previous document edit request was rejected by Admin.
+              </p>
+            )}
+            <button
+              className="secondary-btn"
+              style={{ color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--line)', marginTop: 8 }}
+              disabled={requestingDoc}
+              onClick={handleAdminDocRequest}
+            >
+              {requestingDoc ? 'Sending Request...' : 'Request Admin Access to Edit Documents'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -1670,6 +1704,14 @@ function Passenger() {
           onClose={() => setShowBankModal(false)}
           flash={flash}
           title="Bank & Refund Details"
+        />
+      )}
+
+      {showDocUploadModal && (
+        <DocumentUploadModal
+          accountType="passenger"
+          onClose={() => setShowDocUploadModal(false)}
+          flash={flash}
         />
       )}
 

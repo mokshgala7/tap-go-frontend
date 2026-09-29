@@ -372,7 +372,33 @@ def edit_requests(status: Optional[str] = None, page: int = 1, page_size: int = 
         query = query.filter(EditRequest.status == status)
     total = query.count()
     rows = query.order_by(EditRequest.created_at.desc()).offset((max(page, 1) - 1) * min(page_size, 100)).limit(min(page_size, 100)).all()
-    return {"items": [{"id": request.id, "user_id": user.id, "user_name": user.name, "field_name": request.field_name, "previous_value": request.previous_value, "new_value": request.new_value, "proof_path": request.proof_path, "reason": request.reason, "status": request.status, "created_at": request.created_at.isoformat() if request.created_at else None, "reviewed_at": request.reviewed_at.isoformat() if request.reviewed_at else None} for request, user in rows], "total": total, "page": page, "page_size": min(page_size, 100)}
+
+    type_titles = {
+        "phone": "Phone Number Change",
+        "bank": "Bank Details Change",
+        "documents": "Document Edit",
+    }
+
+    return {
+        "items": [
+            {
+                "id": request.id,
+                "user_id": user.id,
+                "user_name": user.name,
+                "account_type": user.account_type,
+                "request_type": type_titles.get(request.field_name, request.field_name.replace("_", " ").title()),
+                "field_name": request.field_name,
+                "reason": request.reason or f"Request for {request.field_name} modification permission",
+                "status": request.status,
+                "created_at": request.created_at.isoformat() if request.created_at else None,
+                "reviewed_at": request.reviewed_at.isoformat() if request.reviewed_at else None
+            }
+            for request, user in rows
+        ],
+        "total": total,
+        "page": page,
+        "page_size": min(page_size, 100)
+    }
 
 
 @router.post("/edit-requests/{request_id}/review")
@@ -389,27 +415,22 @@ def review_edit_request(request_id: int, payload: EditReview, admin: Admin = Dep
     request.reviewed_at = datetime.utcnow()
 
     if user:
-        request_state = "approved" if payload.action == "approve" else "rejected"
-        if request.field_name == "bank":
-            user.bank_request_status = request_state
-            if payload.action == "approve":
-                try:
-                    bank_details = json.loads(request.new_value or "{}")
-                    required_fields = ("bank_account_holder", "bank_account_number", "bank_ifsc", "bank_upi_id")
-                    if not all(isinstance(bank_details.get(field), str) and bank_details[field].strip() for field in required_fields):
-                        raise ValueError("missing bank details")
-                except (json.JSONDecodeError, ValueError):
-                    raise HTTPException(status_code=400, detail="Bank change request has invalid details.")
-                for field in required_fields:
-                    setattr(user, field, bank_details[field].strip())
+        if payload.action == "approve":
+            if request.field_name == "bank":
+                user.bank_request_status = "approved"
+                user.bank_locked = 0  # UNLOCKED for user to edit!
+            elif request.field_name == "phone":
+                user.phone_request_status = "approved"  # UNLOCKED for user to edit!
+            elif request.field_name == "documents":
+                user.doc_request_status = "approved"  # UNLOCKED for document upload!
+        else:  # reject
+            if request.field_name == "bank":
+                user.bank_request_status = "rejected"
                 user.bank_locked = 1
-                user.bank_request_status = "none"
-        elif request.field_name == "documents":
-            user.doc_request_status = request_state
-        elif request.field_name == "phone":
-            user.phone_request_status = request_state
-        elif payload.action == "approve" and request.field_name in User.__table__.columns and request.new_value is not None:
-            setattr(user, request.field_name, request.new_value)
+            elif request.field_name == "phone":
+                user.phone_request_status = "rejected"
+            elif request.field_name == "documents":
+                user.doc_request_status = "rejected"
 
     log(db, admin, payload.action, "edit_request", request.id, f"Reviewed edit request #{request.id} for user #{request.user_id} ({request.field_name}): {payload.action}")
     db.commit()
