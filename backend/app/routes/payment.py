@@ -358,6 +358,11 @@ def verify_razorpay_payment(data: VerifyPaymentRequest, db: Session = Depends(ge
                 reference=ref_code,
                 status="Successful",
                 provider="Razorpay",
+                razorpay_payment_id=data.razorpay_payment_id,
+                razorpay_order_id=data.razorpay_order_id,
+                balance_after=float(wallet.balance),
+                created_at=txn.created_at,
+                account_type=user.account_type,
             )
         except Exception as e:
             logger.warning(f"[PaymentEmail] Topup email delivery failed: {e}")
@@ -442,6 +447,11 @@ async def razorpay_webhook(
                                     reference=txn.reference,
                                     status="Successful",
                                     provider="Razorpay",
+                                    razorpay_payment_id=payment_id,
+                                    razorpay_order_id=order_id,
+                                    balance_after=float(wallet.balance),
+                                    created_at=txn.created_at,
+                                    account_type=user.account_type,
                                 )
                             except Exception as e:
                                 logger.warning(f"[PaymentEmail] Webhook topup email delivery failed: {e}")

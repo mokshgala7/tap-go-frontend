@@ -609,6 +609,11 @@ def pay_fare(data: PayRequest, db: Session = Depends(get_db)):
                 driver_name=driver_name,
                 reference=ref_code,
                 status="Successful",
+                vehicle_type=driver_user.vehicle_type if driver_user else (data.vehicle_type or None),
+                vehicle_registration=driver_user.vehicle_registration if driver_user else (data.vehicle_number or None),
+                payment_method=f"Tap & Go Wallet ({data.payment_method or 'QR'})",
+                balance_after=float(p_wallet.balance),
+                created_at=txn.created_at,
             )
     except Exception as e:
         logger.warning(f"[RideEmail] Passenger receipt failed: {e}")

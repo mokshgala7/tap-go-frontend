@@ -7,6 +7,7 @@ from typing import Optional
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 
 import boto3
 from botocore.exceptions import ClientError, BotoCoreError
@@ -90,10 +91,13 @@ def _send_ses_email(
     subject: str,
     html_content: str,
     text_content: Optional[str] = None,
+    attachments: Optional[list[dict]] = None,
 ) -> tuple[bool, Optional[str]]:
     """
     Sends an HTML email with clean plain-text alternative using Amazon SES via HTTPS (boto3).
     Sole production email-sending mechanism for Tap & Go.
+    - If attachments are supplied, constructs a raw MIME multipart message and uses client.send_raw_email.
+    - If no attachments are present, uses client.send_email for lightweight dispatch.
     Configures From, Reply-To, and plain-text body for high deliverability.
     Never raises uncaught exceptions.
     Returns (success: bool, error_message: Optional[str]).
@@ -108,6 +112,42 @@ def _send_ses_email(
 
     try:
         client = _get_ses_client()
+
+        # Branch 1: If attachments are present, use SES SendRawEmail with full MIME construction
+        if attachments:
+            msg = MIMEMultipart("mixed")
+            msg["Subject"] = subject
+            msg["From"] = sender
+            msg["To"] = to_email
+            if getattr(settings, "SES_REPLY_TO_EMAIL", None):
+                msg["Reply-To"] = settings.SES_REPLY_TO_EMAIL
+
+            # Inner alternative container for text and HTML parts
+            alt_part = MIMEMultipart("alternative")
+            alt_part.attach(MIMEText(plain_text, "plain", "utf-8"))
+            alt_part.attach(MIMEText(html_content, "html", "utf-8"))
+            msg.attach(alt_part)
+
+            # Attach binary application parts (e.g. PDF receipt)
+            for att in attachments:
+                filename = att.get("filename", "attachment.pdf")
+                content = att.get("content", b"")
+                subtype = att.get("mime_type", "application/pdf").split("/")[-1]
+                part = MIMEApplication(content, _subtype=subtype)
+                part.add_header("Content-Disposition", "attachment", filename=filename)
+                msg.attach(part)
+
+            raw_send_params = {
+                "Source": sender,
+                "Destinations": [to_email],
+                "RawMessage": {"Data": msg.as_bytes()},
+            }
+            response = client.send_raw_email(**raw_send_params)
+            message_id = response.get("MessageId", "unknown")
+            logger.info(f"[Email] Successfully delivered raw MIME email with {len(attachments)} attachment(s) to {to_email} via Amazon SES (MessageId: {message_id})")
+            return True, None
+
+        # Branch 2: Standard email dispatch without attachments (preserves existing SendEmail behavior)
         send_params = {
             "Source": sender,
             "Destination": {
@@ -159,25 +199,49 @@ def _send_smtp_email(
     subject: str,
     html_content: str,
     text_content: Optional[str] = None,
+    attachments: Optional[list[dict]] = None,
 ) -> tuple[bool, Optional[str]]:
     """
     Local development fallback SMTP dispatcher.
     Only invoked if AWS SES credentials are not present in the local environment.
+    Supports MIME attachments when supplied.
     """
     if not settings.SMTP_HOST or not settings.SMTP_USER or not settings.SMTP_PASSWORD:
         return False, "Local development SMTP settings incomplete"
 
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = settings.SMTP_FROM_EMAIL
-        msg["To"] = to_email
-        if getattr(settings, "SES_REPLY_TO_EMAIL", None):
-            msg["Reply-To"] = settings.SES_REPLY_TO_EMAIL
-
         plain_text = text_content.strip() if text_content else _strip_html(html_content)
-        msg.attach(MIMEText(plain_text, "plain", "utf-8"))
-        msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+        if attachments:
+            msg = MIMEMultipart("mixed")
+            msg["Subject"] = subject
+            msg["From"] = settings.SMTP_FROM_EMAIL
+            msg["To"] = to_email
+            if getattr(settings, "SES_REPLY_TO_EMAIL", None):
+                msg["Reply-To"] = settings.SES_REPLY_TO_EMAIL
+
+            alt_part = MIMEMultipart("alternative")
+            alt_part.attach(MIMEText(plain_text, "plain", "utf-8"))
+            alt_part.attach(MIMEText(html_content, "html", "utf-8"))
+            msg.attach(alt_part)
+
+            for att in attachments:
+                filename = att.get("filename", "attachment.pdf")
+                content = att.get("content", b"")
+                subtype = att.get("mime_type", "application/pdf").split("/")[-1]
+                part = MIMEApplication(content, _subtype=subtype)
+                part.add_header("Content-Disposition", "attachment", filename=filename)
+                msg.attach(part)
+        else:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = settings.SMTP_FROM_EMAIL
+            msg["To"] = to_email
+            if getattr(settings, "SES_REPLY_TO_EMAIL", None):
+                msg["Reply-To"] = settings.SES_REPLY_TO_EMAIL
+
+            msg.attach(MIMEText(plain_text, "plain", "utf-8"))
+            msg.attach(MIMEText(html_content, "html", "utf-8"))
 
         clean_pw = settings.SMTP_PASSWORD.strip()
         ports_to_try = [(settings.SMTP_PORT, settings.SMTP_PORT == 465)]
@@ -217,6 +281,7 @@ def send_email(
     email_type: str = "general",
     reference: Optional[str] = None,
     text_content: Optional[str] = None,
+    attachments: Optional[list[dict]] = None,
 ) -> bool:
     """
     Central email delivery dispatcher.
@@ -237,7 +302,7 @@ def send_email(
             success = False
         else:
             try:
-                success, err_msg = _send_ses_email(to_email, subject, html_content, text_content=text_content)
+                success, err_msg = _send_ses_email(to_email, subject, html_content, text_content=text_content, attachments=attachments)
             except Exception as e:
                 logger.error(f"[Email] Exception during production Amazon SES delivery to {to_email}: {e}")
                 err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
@@ -246,7 +311,7 @@ def send_email(
         # Local development path:
         if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
             try:
-                success, err_msg = _send_ses_email(to_email, subject, html_content, text_content=text_content)
+                success, err_msg = _send_ses_email(to_email, subject, html_content, text_content=text_content, attachments=attachments)
             except Exception as e:
                 logger.error(f"[Email] Exception during Amazon SES delivery to {to_email}: {e}")
                 err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
@@ -255,7 +320,7 @@ def send_email(
             # Local development fallback only
             logger.info(f"[Email] [Local Dev] AWS credentials not detected. Falling back to local dev SMTP for {to_email}")
             try:
-                success, err_msg = _send_smtp_email(to_email, subject, html_content, text_content=text_content)
+                success, err_msg = _send_smtp_email(to_email, subject, html_content, text_content=text_content, attachments=attachments)
             except Exception as e:
                 logger.error(f"[Email] Exception during local development SMTP delivery to {to_email}: {e}")
                 err_msg = _sanitize_error_message(f"{type(e).__name__}: {str(e)}")
@@ -616,6 +681,11 @@ def send_wallet_topup_email(
     reference: str,
     status: str = "Successful",
     provider: str = "Razorpay",
+    razorpay_payment_id: Optional[str] = None,
+    razorpay_order_id: Optional[str] = None,
+    balance_after: Optional[float] = None,
+    created_at: Optional[Any] = None,
+    account_type: Optional[str] = None,
 ) -> bool:
     first_name = user_name.split()[0] if user_name else "User"
     is_success = status.lower() in ("successful", "completed", "success")
@@ -629,6 +699,34 @@ def send_wallet_topup_email(
 
     formatted_amount = f"₹{amount:.2f}"
     now_str = datetime.utcnow().strftime("%d %B %Y, %I:%M %p UTC")
+
+    # Generate PDF receipt only for successful top-ups (wrapped safely so errors never break the email)
+    attachments = None
+    if is_success:
+        try:
+            from app.services.receipt_service import generate_wallet_topup_receipt
+            pdf_bytes = generate_wallet_topup_receipt({
+                "reference": reference,
+                "amount": amount,
+                "user_name": user_name,
+                "user_email": to_email,
+                "status": "Successful",
+                "provider": provider,
+                "razorpay_payment_id": razorpay_payment_id,
+                "razorpay_order_id": razorpay_order_id,
+                "balance_after": balance_after,
+                "created_at": created_at or datetime.utcnow(),
+                "account_type": account_type or "Passenger",
+            })
+            if pdf_bytes:
+                attachments = [{
+                    "filename": f"Receipt-{reference}.pdf",
+                    "content": pdf_bytes,
+                    "mime_type": "application/pdf",
+                }]
+        except Exception as e:
+            logger.warning(f"[ReceiptPDF] Failed to generate topup receipt PDF for {reference}: {e}")
+            attachments = None
 
     body = f"""
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;">
@@ -661,6 +759,11 @@ def send_wallet_topup_email(
             <td align="right" style="padding:14px 18px;color:{badge_color};font-size:13px;font-weight:800;text-transform:uppercase;">{status}</td>
         </tr>
     </table>
+    {f'''
+    <div style="margin:0 0 20px;padding:12px 16px;background-color:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;font-size:12px;color:#166534;line-height:1.5;">
+        <strong>Receipt Attached:</strong> Your official top-up acknowledgement PDF (<code>Receipt-{reference}.pdf</code>) is attached to this email for your records.
+    </div>
+    ''' if attachments else ''}
     """
 
     html = _render_email_shell(
@@ -677,6 +780,7 @@ def send_wallet_topup_email(
         html_content=html,
         email_type="wallet_topup",
         reference=reference,
+        attachments=attachments,
     )
 
 
@@ -764,11 +868,44 @@ def send_ride_passenger_email(
     driver_name: str,
     reference: str,
     status: str = "Successful",
+    vehicle_type: Optional[str] = None,
+    vehicle_registration: Optional[str] = None,
+    payment_method: Optional[str] = None,
+    balance_after: Optional[float] = None,
+    created_at: Optional[Any] = None,
 ) -> bool:
     first_name = passenger_name.split()[0] if passenger_name else "Passenger"
     is_success = status.lower() in ("successful", "completed", "success")
     formatted_fare = f"₹{fare:.2f}"
     now_str = datetime.utcnow().strftime("%d %B %Y, %I:%M %p UTC")
+
+    # Generate PDF receipt only for successful payments (wrapped safely so errors never break the email)
+    attachments = None
+    if is_success:
+        try:
+            from app.services.receipt_service import generate_transaction_receipt
+            pdf_bytes = generate_transaction_receipt({
+                "reference": reference,
+                "fare": fare,
+                "passenger_name": passenger_name,
+                "passenger_email": to_email,
+                "driver_name": driver_name,
+                "vehicle_type": vehicle_type,
+                "vehicle_registration": vehicle_registration,
+                "payment_method": payment_method or "Tap & Go Wallet",
+                "balance_after": balance_after,
+                "status": "Successful",
+                "created_at": created_at or datetime.utcnow(),
+            })
+            if pdf_bytes:
+                attachments = [{
+                    "filename": f"Receipt-{reference}.pdf",
+                    "content": pdf_bytes,
+                    "mime_type": "application/pdf",
+                }]
+        except Exception as e:
+            logger.warning(f"[ReceiptPDF] Failed to generate ride receipt PDF for {reference}: {e}")
+            attachments = None
 
     body = f"""
     <h2 style="margin:0 0 8px;font-size:22px;font-weight:900;color:#1C1C1E;letter-spacing:-0.3px;">
@@ -789,7 +926,7 @@ def send_ride_passenger_email(
         </tr>
         <tr>
             <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Payment Method</td>
-            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:13px;font-weight:600;">Tap &amp; Go Wallet (Internal)</td>
+            <td align="right" style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#1C1C1E;font-size:13px;font-weight:600;">{payment_method or "Tap & Go Wallet (Internal)"}</td>
         </tr>
         <tr>
             <td style="padding:14px 18px;border-bottom:1px solid #E5E7EB;color:#6B7280;font-size:13px;font-weight:600;">Transaction ID</td>
@@ -800,6 +937,11 @@ def send_ride_passenger_email(
             <td align="right" style="padding:14px 18px;color:#1C1C1E;font-size:12px;font-weight:600;">{now_str}</td>
         </tr>
     </table>
+    {f'''
+    <div style="margin:0 0 20px;padding:12px 16px;background-color:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;font-size:12px;color:#166534;line-height:1.5;">
+        <strong>Receipt Attached:</strong> Your official ride payment receipt PDF (<code>Receipt-{reference}.pdf</code>) is attached to this email for your records.
+    </div>
+    ''' if attachments else ''}
     """
 
     html = _render_email_shell(
@@ -816,6 +958,7 @@ def send_ride_passenger_email(
         html_content=html,
         email_type="ride_passenger_payment",
         reference=reference,
+        attachments=attachments,
     )
 
 
