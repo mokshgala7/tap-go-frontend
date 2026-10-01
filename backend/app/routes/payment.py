@@ -13,7 +13,7 @@ from sqlalchemy import func, or_
 from app.database import get_db
 from app.models import Transaction, User, Wallet, EmailOTP
 from app.services.payment.razorpay_service import razorpay_service
-from app.utils.email_service import send_wallet_topup_email, send_topup_otp
+from app.utils.email_service import send_wallet_topup_email, send_topup_otp, _normalize_razorpay_method
 from app.utils.security import get_elapsed_seconds, is_otp_expired
 from app.routes.auth import get_current_user
 from app.config import settings
@@ -39,6 +39,7 @@ class VerifyPaymentRequest(BaseModel):
     razorpay_payment_id: str
     razorpay_signature: str
     amount: float  # Amount in INR Rupees
+    payment_method: Optional[str] = None
 
 
 def get_or_create_wallet(user_id: int, db: Session, for_update: bool = False) -> Wallet:
@@ -320,7 +321,19 @@ def verify_razorpay_payment(data: VerifyPaymentRequest, db: Session = Depends(ge
     credit_amount = Decimal(str(round(data.amount, 2)))
     wallet.balance += credit_amount
 
-    # 4. Record transaction in database ledger
+    # 4. Determine verified payment instrument from Razorpay
+    raw_payment_method = getattr(data, "payment_method", None)
+    if not raw_payment_method and data.razorpay_payment_id:
+        try:
+            payment_info = razorpay_service.get_payment_details(data.razorpay_payment_id)
+            if payment_info and isinstance(payment_info, dict):
+                raw_payment_method = payment_info.get("method")
+        except Exception as e:
+            logger.warning(f"[Payment] Failed to fetch payment details from Razorpay: {e}")
+
+    normalized_method = _normalize_razorpay_method(raw_payment_method)
+
+    # 5. Record transaction in database ledger
     ref_code = f"RZP{uuid.uuid4().hex[:10].upper()}"
     desc = f"₹{data.amount:.2f} added to wallet via Razorpay"
 
@@ -330,7 +343,7 @@ def verify_razorpay_payment(data: VerifyPaymentRequest, db: Session = Depends(ge
         driver_id=user.id if user.account_type == "driver" else None,
         wallet_id=wallet.id,
         amount=credit_amount,
-        payment_method="razorpay",
+        payment_method=normalized_method or "Razorpay",
         status="completed",
         otp_verified=True,
         fraud_status="clear",
@@ -346,7 +359,7 @@ def verify_razorpay_payment(data: VerifyPaymentRequest, db: Session = Depends(ge
     db.commit()
     db.refresh(wallet)
 
-    logger.info(f"[Payment] Successfully credited ₹{data.amount} to user {user.id} (Wallet {wallet.id}) via Razorpay.")
+    logger.info(f"[Payment] Successfully credited ₹{data.amount} to user {user.id} (Wallet {wallet.id}) via Razorpay ({normalized_method or 'Unknown'}).")
 
     # Safely dispatch topup confirmation email (financial transaction is already committed)
     if user and user.email:
@@ -358,6 +371,7 @@ def verify_razorpay_payment(data: VerifyPaymentRequest, db: Session = Depends(ge
                 reference=ref_code,
                 status="Successful",
                 provider="Razorpay",
+                payment_method=normalized_method,
                 razorpay_payment_id=data.razorpay_payment_id,
                 razorpay_order_id=data.razorpay_order_id,
                 balance_after=float(wallet.balance),
@@ -413,6 +427,18 @@ async def razorpay_webhook(
                 if not existing:
                     user = db.get(User, user_id)
                     if user:
+                        # Extract and normalize payment instrument from webhook payload or API
+                        raw_payment_method = payment_entity.get("method")
+                        if not raw_payment_method and payment_id:
+                            try:
+                                payment_info = razorpay_service.get_payment_details(payment_id)
+                                if payment_info and isinstance(payment_info, dict):
+                                    raw_payment_method = payment_info.get("method")
+                            except Exception as e:
+                                logger.warning(f"[Razorpay Webhook] Failed to fetch payment details: {e}")
+
+                        normalized_method = _normalize_razorpay_method(raw_payment_method)
+
                         # Lock wallet row exclusively for asynchronous webhook credit
                         wallet = get_or_create_wallet(user.id, db, for_update=True)
                         credit_amt = Decimal(str(round(amount_rupees, 2)))
@@ -424,7 +450,7 @@ async def razorpay_webhook(
                             driver_id=user.id if user.account_type == "driver" else None,
                             wallet_id=wallet.id,
                             amount=credit_amt,
-                            payment_method="razorpay",
+                            payment_method=normalized_method or "Razorpay",
                             status="completed",
                             otp_verified=True,
                             fraud_status="clear",
@@ -447,6 +473,7 @@ async def razorpay_webhook(
                                     reference=txn.reference,
                                     status="Successful",
                                     provider="Razorpay",
+                                    payment_method=normalized_method,
                                     razorpay_payment_id=payment_id,
                                     razorpay_order_id=order_id,
                                     balance_after=float(wallet.balance),

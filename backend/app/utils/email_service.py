@@ -629,21 +629,27 @@ def _render_payment_theme(
 def _normalize_razorpay_method(raw_method: Optional[str]) -> str:
     """
     Converts a raw Razorpay payment method string into a human-readable label.
-    E.g. 'upi' -> 'UPI', 'card' -> 'Card', 'netbanking' -> 'Net Banking'.
+    E.g. 'upi' -> 'UPI', 'card' -> 'Card', 'netbanking' -> 'Net Banking', 'wallet' -> 'Wallet'.
     Returns empty string if method is unknown/absent (caller decides fallback).
     """
     if not raw_method:
         return ""
+    m = raw_method.lower().strip()
     mapping = {
-        "upi":        "UPI",
-        "card":       "Card",
-        "netbanking": "Net Banking",
-        "wallet":     "Wallet",
-        "emi":        "EMI",
-        "paylater":   "Pay Later",
+        "upi":           "UPI",
+        "card":          "Card",
+        "cards":         "Card",
+        "credit_card":   "Card",
+        "debit_card":    "Card",
+        "netbanking":    "Net Banking",
+        "net_banking":   "Net Banking",
+        "net banking":   "Net Banking",
+        "wallet":        "Wallet",
+        "emi":           "EMI",
+        "paylater":      "Pay Later",
         "bank_transfer": "Bank Transfer",
     }
-    return mapping.get(raw_method.lower().strip(), raw_method.title())
+    return mapping.get(m, raw_method.title() if len(raw_method) > 3 else raw_method.upper())
 
 
 def _normalize_ride_payment_mode(raw_method: Optional[str]) -> str:
@@ -921,6 +927,7 @@ def send_wallet_topup_email(
 
     # Normalize payment method label
     friendly_method = _normalize_razorpay_method(payment_method) if payment_method else ""
+    method_display = friendly_method or ("Online" if is_success else "")
 
     # Generate PDF receipt only for successful top-ups (wrapped safely so errors never break the email)
     attachments = None
@@ -934,7 +941,7 @@ def send_wallet_topup_email(
                 "user_email": to_email,
                 "status": "Successful",
                 "provider": provider,
-                "payment_method": friendly_method or None,
+                "payment_method": method_display or None,
                 "razorpay_payment_id": razorpay_payment_id,
                 "razorpay_order_id": razorpay_order_id,
                 "balance_after": balance_after,
@@ -957,13 +964,15 @@ def send_wallet_topup_email(
         f"Hi {first_name}, {'your Tap &amp; Go wallet has been credited successfully.' if is_success else ('your wallet top-up request has been initiated.' if is_pending else 'your top-up attempt could not be completed.')}"
     )
 
-    rows = [("Transaction Ref", f'<span style="font-family:monospace;">{reference}</span>'),
-            ("Date &amp; Time", now_str),
-            ("Status", status.upper()),
-            ("Payment Gateway", provider)]
+    rows = [
+        ("Transaction Ref", f'<span style="font-family:monospace;">{reference}</span>'),
+        ("Date &amp; Time", now_str),
+        ("Status", status.upper()),
+        ("Payment Gateway", provider),
+    ]
 
-    if friendly_method:
-        rows.insert(3, ("Payment Method", friendly_method))
+    if method_display:
+        rows.append(("Payment Method", method_display))
 
     if balance_after is not None:
         rows.append(("New Wallet Balance", f"\u20b9{balance_after:.2f}"))
@@ -997,8 +1006,8 @@ def send_wallet_topup_email(
         f"Amount: {formatted_amount}\n"
         f"Reference: {reference}\n"
         f"Status: {status}\n"
-        f"Gateway: {provider}\n"
-        + (f"Payment Method: {friendly_method}\n" if friendly_method else "")
+        f"Payment Gateway: {provider}\n"
+        + (f"Payment Method: {method_display}\n" if method_display else "")
         + (f"New Balance: \u20b9{balance_after:.2f}\n" if balance_after is not None else "")
         + f"\n"
         + (f"PDF receipt attached: Receipt-{reference}.pdf\n\n" if attachments else "\n")

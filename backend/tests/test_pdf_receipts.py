@@ -28,8 +28,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
+from app.database import engine, Base, SessionLocal
 from app.models import User, Wallet, Transaction, EmailOTP
+import app.models  # Ensure all models are registered with Base.metadata
+
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception:
+    pass
+
 from app.utils.security import hash_password
 from app.routes.wallet import pay_fare, PayRequest, get_or_create_wallet
 from app.routes.payment import (
@@ -46,6 +53,7 @@ from app.utils.email_service import (
     send_registration_otp,
     send_password_reset_otp,
     send_withdrawal_otp,
+    _normalize_razorpay_method,
 )
 from app.services.receipt_service import (
     generate_transaction_receipt,
@@ -467,3 +475,125 @@ def test_unrelated_emails_do_not_receive_attachments():
         assert len(captured_attachments) == 3
         for email_type, atts in captured_attachments:
             assert atts is None, f"Email type {email_type} must NOT have attachments!"
+
+
+# ============================================================================
+# 6. WALLET TOP-UP PAYMENT METHOD NORMALIZATION & DISPLAY TESTS
+# ============================================================================
+
+def test_normalize_razorpay_method_instruments():
+    """Verify that _normalize_razorpay_method normalizes card, upi, netbanking, wallet correctly."""
+    assert _normalize_razorpay_method("card") == "Card"
+    assert _normalize_razorpay_method("CARD") == "Card"
+    assert _normalize_razorpay_method("credit_card") == "Card"
+    assert _normalize_razorpay_method("debit_card") == "Card"
+
+    assert _normalize_razorpay_method("upi") == "UPI"
+    assert _normalize_razorpay_method("UPI") == "UPI"
+
+    assert _normalize_razorpay_method("netbanking") == "Net Banking"
+    assert _normalize_razorpay_method("NETBANKING") == "Net Banking"
+    assert _normalize_razorpay_method("net_banking") == "Net Banking"
+    assert _normalize_razorpay_method("net banking") == "Net Banking"
+
+    assert _normalize_razorpay_method("wallet") == "Wallet"
+    assert _normalize_razorpay_method("WALLET") == "Wallet"
+
+
+def test_wallet_topup_email_and_pdf_display_both_gateway_and_method():
+    """Verify that send_wallet_topup_email and PDF display BOTH Payment Gateway: Razorpay and Payment Method: Card."""
+    captured = {}
+
+    def mock_send_email(**kwargs):
+        captured["html"] = kwargs.get("html_content")
+        captured["text"] = kwargs.get("text_content")
+        captured["attachments"] = kwargs.get("attachments")
+        return True
+
+    with patch("app.utils.email_service.send_email", side_effect=mock_send_email):
+        success = send_wallet_topup_email(
+            to_email="passenger@thetapandgo.in",
+            user_name="Moksh Gala",
+            amount=1.00,
+            reference="RZP1A2B3C4D",
+            status="Successful",
+            provider="Razorpay",
+            payment_method="card",
+            razorpay_payment_id="pay_card_123",
+            razorpay_order_id="order_123",
+            balance_after=1578.00,
+        )
+        assert success is True
+        html = captured["html"]
+        assert "Payment Gateway" in html
+        assert "Razorpay" in html
+        assert "Payment Method" in html
+        assert "Card" in html
+
+        # Verify PDF attachment generated and contains valid binary
+        atts = captured["attachments"]
+        assert atts is not None and len(atts) == 1
+        assert atts[0]["filename"] == "Receipt-RZP1A2B3C4D.pdf"
+        assert atts[0]["content"].startswith(b"%PDF-")
+
+
+@pytest.mark.parametrize("method_raw,expected_norm", [
+    ("card", "Card"),
+    ("upi", "UPI"),
+    ("netbanking", "Net Banking"),
+    ("wallet", "Wallet"),
+])
+def test_verify_payment_fetches_instrument_from_razorpay(method_raw, expected_norm):
+    """
+    Verify that when /verify-payment is called without payment_method,
+    it queries razorpay_service.get_payment_details() to retrieve the verified method,
+    stores the normalized method in Transaction, and passes it to email & PDF.
+    """
+    with SessionLocal() as db:
+        uid = uuid.uuid4().hex[:8]
+        u = User(
+            name=f"Topup Test {expected_norm}",
+            email=f"topup_{method_raw}_{uid}@thetapandgo.in",
+            phone=f"9{int(uid, 16) % 1000000000:09d}",
+            account_type="passenger",
+            status="active",
+            password_hash=hash_password("Pass1234!"),
+        )
+        db.add(u)
+        db.commit()
+        db.refresh(u)
+
+        captured_email = {}
+
+        def mock_send_email(**kwargs):
+            captured_email["html"] = kwargs.get("html_content")
+            captured_email["attachments"] = kwargs.get("attachments")
+            return True
+
+        req = VerifyPaymentRequest(
+            user_id=u.id,
+            razorpay_order_id=f"order_{uid}",
+            razorpay_payment_id=f"pay_{method_raw}_{uid}",
+            razorpay_signature="mock_sig",
+            amount=100.0,
+            # payment_method is NOT provided in request, simulating standard Razorpay Checkout modal
+        )
+
+        with patch("app.services.payment.razorpay_service.razorpay_service.verify_payment_signature", return_value=True), \
+             patch("app.services.payment.razorpay_service.razorpay_service.get_payment_details", return_value={"id": req.razorpay_payment_id, "method": method_raw}), \
+             patch("app.utils.email_service.send_email", side_effect=mock_send_email):
+
+            res = verify_razorpay_payment(data=req, db=db)
+            assert res.get("success") is True
+
+            # Verify transaction in database has normalized method
+            txn = db.query(Transaction).filter(Transaction.provider_transaction_id == req.razorpay_payment_id).first()
+            assert txn is not None
+            assert txn.payment_method == expected_norm
+
+            # Verify email received normalized method and both gateway and method are present
+            html = captured_email.get("html", "")
+            assert "Payment Gateway" in html
+            assert "Razorpay" in html
+            assert "Payment Method" in html
+            assert expected_norm in html

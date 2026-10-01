@@ -119,5 +119,20 @@ class RazorpayService:
         expected_sig = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected_sig, signature)
 
+    def get_payment_details(self, payment_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetches verified payment details from Razorpay API for a given payment ID.
+        Returns the payment entity dict (containing 'method', 'status', etc.) or None.
+        Safely catches exceptions so callers are never interrupted.
+        """
+        if not payment_id or payment_id.startswith("pay_mock_") or payment_id.startswith("mock_"):
+            return None
+        try:
+            client = self.get_client()
+            return client.payment.fetch(payment_id)
+        except Exception as e:
+            logger.warning(f"[Razorpay] Could not fetch payment details for {payment_id}: {e}")
+            return None
+
 
 razorpay_service = RazorpayService()

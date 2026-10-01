@@ -642,11 +642,12 @@ def generate_wallet_topup_receipt(topup_data: Dict[str, Any]) -> Optional[bytes]
             detail_rows.append(("Registered Email", user_email))
 
         detail_rows.append(("Account Type", account_type))
+        detail_rows.append(("Payment Gateway", provider))
 
         if payment_method:
             detail_rows.append(("Payment Method", payment_method))
-
-        detail_rows.append(("Payment Gateway", provider))
+        else:
+            detail_rows.append(("Payment Method", "Online"))
 
         if rzp_payment_id:
             detail_rows.append(("Gateway Payment ID", str(rzp_payment_id)))

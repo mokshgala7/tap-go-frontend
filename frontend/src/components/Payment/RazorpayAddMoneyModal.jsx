@@ -127,6 +127,7 @@ export function RazorpayAddMoneyModal({ user, onClose, onSuccess, onFailure }) {
                 razorpay_payment_id: response.razorpay_payment_id || `pay_mock_${Date.now()}`,
                 razorpay_signature: response.razorpay_signature || `sig_mock_${Date.now()}`,
                 amount: numAmount,
+                payment_method: response.method || response.payment_method || undefined,
               }),
             })
             const verifyData = await verifyRes.json()
