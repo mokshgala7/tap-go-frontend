@@ -1,11 +1,16 @@
 """
 Receipt PDF generation service for Tap&Go.
 
-Generates professional, branded single-page PDF receipts and acknowledgements
-entirely in memory using ReportLab.
-- Zero persistent disk I/O (uses io.BytesIO).
-- Uses the official Tap&Go homepage logo.
-- Gracefully falls back to text branding if the logo cannot be loaded.
+Generates professional, branded single-page PDF receipts entirely in memory
+using ReportLab Platypus.
+
+Key design decisions:
+- NotoSans-Regular/Bold TTF fonts bundled in backend/app/assets/fonts/ to correctly
+  render the Indian Rupee symbol (₹ / U+20B9), which renders as a black box with
+  Helvetica. Noto Sans is a SIL OFL licensed open font.
+- Falls back gracefully to Helvetica if fonts cannot be loaded (e.g. stripped builds).
+- Zero persistent disk I/O — uses io.BytesIO throughout.
+- Uses the official Tap&Go homepage logo (cached and resized).
 - Never raises exceptions to the caller; returns None on any failure so that
   financial transactions and emails are never interrupted.
 """
@@ -31,10 +36,51 @@ from reportlab.platypus import (
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 logger = logging.getLogger(__name__)
 
-# Cache for resolved logo path and optimized bytes
+# ─── Font Registration ────────────────────────────────────────────────────────
+# NotoSans contains the Indian Rupee glyph (₹ / U+20B9).
+# Bundled at backend/app/assets/fonts/ for production deployments.
+_FONTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../assets/fonts"))
+_FONT_REGULAR_PATH = os.path.join(_FONTS_DIR, "NotoSans-Regular.ttf")
+_FONT_BOLD_PATH    = os.path.join(_FONTS_DIR, "NotoSans-Bold.ttf")
+
+_noto_registered: bool = False
+
+def _ensure_fonts() -> tuple[str, str]:
+    """
+    Registers NotoSans-Regular and NotoSans-Bold with ReportLab if the bundled
+    font files are present.  Returns (normal_face, bold_face) — either
+    ('NotoSans', 'NotoSans-Bold') on success, or ('Helvetica', 'Helvetica-Bold')
+    as a safe fallback so the PDF still builds.
+    """
+    global _noto_registered
+    if _noto_registered:
+        return ("NotoSans", "NotoSans-Bold")
+
+    try:
+        if os.path.isfile(_FONT_REGULAR_PATH) and os.path.getsize(_FONT_REGULAR_PATH) > 50_000:
+            pdfmetrics.registerFont(TTFont("NotoSans", _FONT_REGULAR_PATH))
+        else:
+            raise FileNotFoundError(_FONT_REGULAR_PATH)
+
+        if os.path.isfile(_FONT_BOLD_PATH) and os.path.getsize(_FONT_BOLD_PATH) > 50_000:
+            pdfmetrics.registerFont(TTFont("NotoSans-Bold", _FONT_BOLD_PATH))
+        else:
+            raise FileNotFoundError(_FONT_BOLD_PATH)
+
+        _noto_registered = True
+        logger.info("[ReceiptService] NotoSans fonts registered successfully (₹ glyph supported).")
+        return ("NotoSans", "NotoSans-Bold")
+    except Exception as e:
+        logger.warning(f"[ReceiptService] NotoSans font registration failed — falling back to Helvetica: {e}")
+        return ("Helvetica", "Helvetica-Bold")
+
+
+# ─── Logo Cache ───────────────────────────────────────────────────────────────
 _cached_logo_path: Optional[str] = None
 _cached_logo_bytes: Optional[bytes] = None
 _logo_checked: bool = False
@@ -105,6 +151,8 @@ def get_optimized_logo_bytes() -> Optional[bytes]:
             return None
 
 
+# ─── Utilities ────────────────────────────────────────────────────────────────
+
 def format_datetime(dt_val: Any) -> str:
     """
     Formats a transaction timestamp into a clean, human-readable string.
@@ -114,11 +162,9 @@ def format_datetime(dt_val: Any) -> str:
         dt = datetime.utcnow()
     elif isinstance(dt_val, str):
         try:
-            # Handle ISO format strings
             clean_str = dt_val.replace("Z", "+00:00")
             dt = datetime.fromisoformat(clean_str)
             if dt.tzinfo is not None:
-                # If timezone-aware, convert to UTC naive for offset math
                 dt = dt.astimezone().replace(tzinfo=None)
         except Exception:
             return str(dt_val)
@@ -136,37 +182,41 @@ def format_inr(amount: Any) -> str:
     """Formats numeric amounts to Indian Rupees string e.g. ₹120.00"""
     try:
         val = float(amount)
-        return f"₹{val:,.2f}"
+        return f"\u20b9{val:,.2f}"
     except (ValueError, TypeError):
-        return f"₹{amount}"
+        return f"\u20b9{amount}"
 
+
+# ─── Style Builder ────────────────────────────────────────────────────────────
 
 def _build_styles() -> Dict[str, ParagraphStyle]:
     """Builds a consistent typography and styling palette for Tap&Go receipts."""
     base = getSampleStyleSheet()
+    normal_face, bold_face = _ensure_fonts()
 
     return {
         "BrandTitle": ParagraphStyle(
             "BrandTitle",
             parent=base["Normal"],
-            fontName="Helvetica-Bold",
-            fontSize=20,
-            leading=24,
+            fontName=bold_face,
+            fontSize=19,
+            leading=23,
             textColor=colors.HexColor("#1C1C1E"),
         ),
         "BrandTagline": ParagraphStyle(
             "BrandTagline",
             parent=base["Normal"],
-            fontName="Helvetica",
+            fontName=normal_face,
             fontSize=8,
             leading=11,
             textColor=colors.HexColor("#6B7280"),
+            spaceAfter=0,
         ),
         "ReceiptType": ParagraphStyle(
             "ReceiptType",
             parent=base["Normal"],
-            fontName="Helvetica-Bold",
-            fontSize=13,
+            fontName=bold_face,
+            fontSize=12,
             leading=16,
             alignment=TA_RIGHT,
             textColor=colors.HexColor("#1C1C1E"),
@@ -175,7 +225,7 @@ def _build_styles() -> Dict[str, ParagraphStyle]:
             "ReceiptRef",
             parent=base["Normal"],
             fontName="Courier-Bold",
-            fontSize=9,
+            fontSize=8.5,
             leading=12,
             alignment=TA_RIGHT,
             textColor=colors.HexColor("#4B5563"),
@@ -183,8 +233,8 @@ def _build_styles() -> Dict[str, ParagraphStyle]:
         "StatusBadge": ParagraphStyle(
             "StatusBadge",
             parent=base["Normal"],
-            fontName="Helvetica-Bold",
-            fontSize=8.5,
+            fontName=bold_face,
+            fontSize=8,
             leading=11,
             alignment=TA_RIGHT,
             textColor=colors.HexColor("#059669"),
@@ -192,7 +242,7 @@ def _build_styles() -> Dict[str, ParagraphStyle]:
         "SectionHeading": ParagraphStyle(
             "SectionHeading",
             parent=base["Normal"],
-            fontName="Helvetica-Bold",
+            fontName=bold_face,
             fontSize=10,
             leading=14,
             textColor=colors.HexColor("#1C1C1E"),
@@ -200,15 +250,15 @@ def _build_styles() -> Dict[str, ParagraphStyle]:
         "CellLabel": ParagraphStyle(
             "CellLabel",
             parent=base["Normal"],
-            fontName="Helvetica",
+            fontName=normal_face,
             fontSize=8.5,
-            leading=12,
+            leading=13,
             textColor=colors.HexColor("#6B7280"),
         ),
         "CellValue": ParagraphStyle(
             "CellValue",
             parent=base["Normal"],
-            fontName="Helvetica-Bold",
+            fontName=bold_face,
             fontSize=9,
             leading=13,
             textColor=colors.HexColor("#111827"),
@@ -216,7 +266,7 @@ def _build_styles() -> Dict[str, ParagraphStyle]:
         "CellValueRight": ParagraphStyle(
             "CellValueRight",
             parent=base["Normal"],
-            fontName="Helvetica-Bold",
+            fontName=bold_face,
             fontSize=9,
             leading=13,
             alignment=TA_RIGHT,
@@ -225,7 +275,7 @@ def _build_styles() -> Dict[str, ParagraphStyle]:
         "TotalLabel": ParagraphStyle(
             "TotalLabel",
             parent=base["Normal"],
-            fontName="Helvetica-Bold",
+            fontName=bold_face,
             fontSize=11,
             leading=15,
             textColor=colors.HexColor("#1C1C1E"),
@@ -233,16 +283,16 @@ def _build_styles() -> Dict[str, ParagraphStyle]:
         "TotalAmount": ParagraphStyle(
             "TotalAmount",
             parent=base["Normal"],
-            fontName="Helvetica-Bold",
-            fontSize=14,
-            leading=18,
+            fontName=bold_face,
+            fontSize=16,
+            leading=20,
             alignment=TA_RIGHT,
             textColor=colors.HexColor("#059669"),
         ),
         "ThankYouText": ParagraphStyle(
             "ThankYouText",
             parent=base["Normal"],
-            fontName="Helvetica-Bold",
+            fontName=bold_face,
             fontSize=10,
             leading=14,
             alignment=TA_CENTER,
@@ -251,17 +301,17 @@ def _build_styles() -> Dict[str, ParagraphStyle]:
         "SubFooter": ParagraphStyle(
             "SubFooter",
             parent=base["Normal"],
-            fontName="Helvetica",
+            fontName=normal_face,
             fontSize=8,
-            leading=11,
+            leading=12,
             alignment=TA_CENTER,
             textColor=colors.HexColor("#6B7280"),
         ),
         "AcademicNotice": ParagraphStyle(
             "AcademicNotice",
             parent=base["Normal"],
-            fontName="Helvetica-Oblique",
-            fontSize=7,
+            fontName=normal_face,
+            fontSize=6.5,
             leading=10,
             alignment=TA_CENTER,
             textColor=colors.HexColor("#9CA3AF"),
@@ -269,23 +319,28 @@ def _build_styles() -> Dict[str, ParagraphStyle]:
     }
 
 
+# ─── Shared Header ────────────────────────────────────────────────────────────
+
 def _create_header_table(
     styles: Dict[str, ParagraphStyle],
     receipt_title: str,
     reference: str,
     status: str = "Successful",
-) -> Table:
-    """Creates the receipt header with official Tap&Go logo and receipt metadata."""
+    accent_color: str = "#F59E0B",
+) -> list:
+    """
+    Creates the receipt header section: logo + brand left, receipt type + ref right.
+    Returns a list of flowables (not a single table) so spacing is easier to manage.
+    """
     logo_bytes = get_optimized_logo_bytes()
     logo_element = None
 
     if logo_bytes:
         try:
-            # The homepage logo is 1:1 square. Display as 48x48 pt.
-            logo_element = Image(io.BytesIO(logo_bytes), width=48, height=48)
+            # Display logo at 52x52 pt — retina quality from 192×192 thumbnail
+            logo_element = Image(io.BytesIO(logo_bytes), width=52, height=52)
         except Exception as e:
             logger.warning(f"[ReceiptService] Could not embed logo image: {e}")
-            logo_element = None
 
     brand_html = 'Tap<font color="#F59E0B"><b>&amp;</b></font>Go'
     if logo_element:
@@ -296,7 +351,7 @@ def _create_header_table(
                     Spacer(1, 2),
                     Paragraph("Smart Cashless Transit Payments", styles["BrandTagline"]),
                 ]]],
-                colWidths=[54, 200],
+                colWidths=[60, 200],
                 style=[
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                     ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -315,10 +370,10 @@ def _create_header_table(
 
     right_flowables = [
         Paragraph(receipt_title.upper(), styles["ReceiptType"]),
-        Spacer(1, 3),
+        Spacer(1, 4),
         Paragraph(f"Ref: {reference}", styles["ReceiptRef"]),
-        Spacer(1, 3),
-        Paragraph(f"STATUS: {status.upper()}", styles["StatusBadge"]),
+        Spacer(1, 5),
+        Paragraph(f"\u2714 {status.upper()}", styles["StatusBadge"]),
     ]
 
     header_table = Table(
@@ -332,25 +387,100 @@ def _create_header_table(
             ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
         ],
     )
-    return header_table
+    return [
+        header_table,
+        Spacer(1, 10),
+        HRFlowable(width="100%", thickness=3, color=colors.HexColor(accent_color), spaceBefore=0, spaceAfter=0),
+    ]
 
+
+# ─── Shared Details Table ─────────────────────────────────────────────────────
+
+def _create_details_table(
+    styles: Dict[str, ParagraphStyle],
+    rows: list,
+) -> Table:
+    """
+    Creates a clean two-column key-value details table.
+    rows: list of (label_str, value_str) tuples.
+    """
+    table_data = [
+        [Paragraph(label, styles["CellLabel"]), Paragraph(value, styles["CellValue"])]
+        for label, value in rows
+    ]
+
+    return Table(
+        table_data,
+        colWidths=[165, 367],
+        style=[
+            ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+            ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F9FAFB")),
+            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("LEFTPADDING", (0, 0), (-1, -1), 12),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+            ("LINEBELOW", (0, 0), (-1, -2), 0.5, colors.HexColor("#E5E7EB")),
+            ("BOX", (0, 0), (-1, -1), 0.75, colors.HexColor("#E5E7EB")),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, colors.HexColor("#FAFAFA")]),
+        ],
+    )
+
+
+# ─── Amount Highlight Box ─────────────────────────────────────────────────────
+
+def _create_amount_box(
+    styles: Dict[str, ParagraphStyle],
+    label: str,
+    amount_str: str,
+    bg_color: str = "#F0FDF4",
+    border_color: str = "#10B981",
+) -> Table:
+    """Creates a prominent highlighted box for the main transaction amount."""
+    data = [[
+        Paragraph(label, styles["TotalLabel"]),
+        Paragraph(amount_str, styles["TotalAmount"]),
+    ]]
+    return Table(
+        data,
+        colWidths=[266, 266],
+        style=[
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(bg_color)),
+            ("BOX", (0, 0), (-1, -1), 1.5, colors.HexColor(border_color)),
+            ("TOPPADDING", (0, 0), (-1, -1), 12),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+            ("LEFTPADDING", (0, 0), (-1, -1), 16),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 16),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ],
+    )
+
+
+# ─── Footer ───────────────────────────────────────────────────────────────────
 
 def _create_footer_flowables(styles: Dict[str, ParagraphStyle]) -> list:
     """Creates standard receipt footer with thank you message and academic disclosure."""
     return [
-        Spacer(1, 14),
-        HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#E5E7EB"), spaceBefore=0, spaceAfter=10),
+        Spacer(1, 16),
+        HRFlowable(width="100%", thickness=0.75, color=colors.HexColor("#E5E7EB"), spaceBefore=0, spaceAfter=0),
+        Spacer(1, 10),
         Paragraph("Thank you for using Tap&Go.", styles["ThankYouText"]),
-        Spacer(1, 3),
-        Paragraph("Fast • Secure • Cashless Transit &bull; Support: tapandgosupport@gmail.com", styles["SubFooter"]),
+        Spacer(1, 4),
+        Paragraph(
+            "Fast \u2022 Secure \u2022 Cashless Transit \u2022 Support: tapandgosupport@gmail.com",
+            styles["SubFooter"],
+        ),
+        Spacer(1, 10),
+        HRFlowable(width="100%", thickness=0.25, color=colors.HexColor("#F3F4F6"), spaceBefore=0, spaceAfter=0),
         Spacer(1, 6),
         Paragraph(
-            "Academic Demonstration Platform: Tap&Go is a student academic project developed by "
-            "Moksh Gala, Arham Fofriya, and Vansh Gala at SVKM’s Shri Bhagubai Mafatlal Polytechnic.",
+            "Tap&Go is a student academic project developed by Moksh Gala, Arham Fofriya, and Vansh Gala "
+            "at SVKM\u2019s Shri Bhagubhai Mafatlal Polytechnic.",
             styles["AcademicNotice"],
         ),
     ]
 
+
+# ─── Ride Payment Receipt ─────────────────────────────────────────────────────
 
 def generate_transaction_receipt(txn_data: Dict[str, Any]) -> Optional[bytes]:
     """
@@ -377,136 +507,77 @@ def generate_transaction_receipt(txn_data: Dict[str, Any]) -> Optional[bytes]:
         doc = SimpleDocTemplate(
             buffer,
             pagesize=letter,
-            leftMargin=40,
-            rightMargin=40,
-            topMargin=36,
-            bottomMargin=36,
+            leftMargin=44,
+            rightMargin=44,
+            topMargin=40,
+            bottomMargin=40,
         )
 
         styles = _build_styles()
         story = []
 
-        ref = txn_data.get("reference", "TXN-UNKNOWN")
-        status = txn_data.get("status", "Successful")
-        fare = txn_data.get("fare", 0.0)
-        passenger_name = txn_data.get("passenger_name") or "Passenger"
-        driver_name = txn_data.get("driver_name") or "Driver"
-        vehicle_type = txn_data.get("vehicle_type") or "Auto / Taxi"
-        vehicle_reg = txn_data.get("vehicle_registration") or "Registered Vehicle"
-        payment_method = txn_data.get("payment_method") or "Tap & Go Wallet"
-        passenger_email = txn_data.get("passenger_email") or ""
-        created_at_str = format_datetime(txn_data.get("created_at"))
-        balance_after = txn_data.get("balance_after")
+        ref              = txn_data.get("reference", "TXN-UNKNOWN")
+        status           = txn_data.get("status", "Successful")
+        fare             = txn_data.get("fare", 0.0)
+        passenger_name   = txn_data.get("passenger_name") or "Passenger"
+        driver_name      = txn_data.get("driver_name") or "Driver"
+        vehicle_type     = txn_data.get("vehicle_type") or "Auto / Taxi"
+        vehicle_reg      = txn_data.get("vehicle_registration") or "Registered Vehicle"
+        payment_method   = txn_data.get("payment_method") or "Tap & Go Wallet"
+        passenger_email  = txn_data.get("passenger_email") or ""
+        created_at_str   = format_datetime(txn_data.get("created_at"))
+        balance_after    = txn_data.get("balance_after")
 
-        # 1. Header with Logo & Brand
-        header = _create_header_table(styles, "Ride Payment Receipt", ref, status)
-        story.append(header)
-        story.append(Spacer(1, 10))
+        # 1. Header (logo + brand + reference + status)
+        story.extend(_create_header_table(styles, "Ride Payment Receipt", ref, status, accent_color="#F59E0B"))
+        story.append(Spacer(1, 16))
 
-        # 2. Accent colored dividing bar
-        story.append(HRFlowable(width="100%", thickness=3, color=colors.HexColor("#F59E0B"), spaceBefore=0, spaceAfter=14))
-
-        # 3. Transaction Summary Table
-        table_rows = [
-            [
-                Paragraph("Transaction Reference", styles["CellLabel"]),
-                Paragraph(ref, styles["CellValue"]),
-            ],
-            [
-                Paragraph("Date & Time", styles["CellLabel"]),
-                Paragraph(created_at_str, styles["CellValue"]),
-            ],
-            [
-                Paragraph("Payment Status", styles["CellLabel"]),
-                Paragraph("COMPLETED", styles["CellValue"]),
-            ],
-            [
-                Paragraph("Passenger Name", styles["CellLabel"]),
-                Paragraph(passenger_name, styles["CellValue"]),
-            ],
+        # 2. Transaction Details Table
+        detail_rows = [
+            ("Transaction Reference", ref),
+            ("Date & Time (IST)",      created_at_str),
+            ("Payment Status",         "COMPLETED"),
+            ("Passenger",              passenger_name),
         ]
-
         if passenger_email:
-            table_rows.append([
-                Paragraph("Passenger Email", styles["CellLabel"]),
-                Paragraph(passenger_email, styles["CellValue"]),
-            ])
+            detail_rows.append(("Passenger Email", passenger_email))
 
-        table_rows.extend([
-            [
-                Paragraph("Driver Name", styles["CellLabel"]),
-                Paragraph(driver_name, styles["CellValue"]),
-            ],
-            [
-                Paragraph("Vehicle Type", styles["CellLabel"]),
-                Paragraph(vehicle_type, styles["CellValue"]),
-            ],
-            [
-                Paragraph("Vehicle Number", styles["CellLabel"]),
-                Paragraph(vehicle_reg, styles["CellValue"]),
-            ],
-            [
-                Paragraph("Payment Method", styles["CellLabel"]),
-                Paragraph(payment_method, styles["CellValue"]),
-            ],
+        detail_rows.extend([
+            ("Driver",          driver_name),
+            ("Vehicle Type",    vehicle_type),
+            ("Vehicle Number",  vehicle_reg),
+            ("Payment Mode",    payment_method),
         ])
-
         if balance_after is not None:
-            table_rows.append([
-                Paragraph("Wallet Balance After Ride", styles["CellLabel"]),
-                Paragraph(format_inr(balance_after), styles["CellValue"]),
-            ])
+            detail_rows.append(("Wallet Balance After", format_inr(balance_after)))
 
-        main_table = Table(
-            table_rows,
-            colWidths=[180, 352],
-            style=[
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFFFFF")),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("LEFTPADDING", (0, 0), (-1, -1), 10),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-                ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.HexColor("#F3F4F6")),
-            ],
-        )
-        story.append(main_table)
-        story.append(Spacer(1, 14))
+        story.append(_create_details_table(styles, detail_rows))
+        story.append(Spacer(1, 18))
 
-        # 4. Total Amount Paid Highlight Box
-        total_data = [
-            [
-                Paragraph("Total Ride Fare Paid", styles["TotalLabel"]),
-                Paragraph(format_inr(fare), styles["TotalAmount"]),
-            ]
-        ]
-        total_table = Table(
-            total_data,
-            colWidths=[266, 266],
-            style=[
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F9FAFB")),
-                ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#E5E7EB")),
-                ("TOPPADDING", (0, 0), (-1, -1), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-                ("LEFTPADDING", (0, 0), (-1, -1), 14),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 14),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ],
-        )
-        story.append(total_table)
+        # 3. Total Fare Highlight
+        story.append(_create_amount_box(
+            styles,
+            label="Total Ride Fare Paid",
+            amount_str=format_inr(fare),
+            bg_color="#F0FDF4",
+            border_color="#10B981",
+        ))
 
-        # 5. Footer & Academic Disclosure
+        # 4. Footer & Academic Disclosure
         story.extend(_create_footer_flowables(styles))
 
         doc.build(story)
         pdf_bytes = buffer.getvalue()
         buffer.close()
 
-        logger.info(f"[ReceiptService] Successfully generated transaction receipt PDF ({len(pdf_bytes)} bytes) for {ref}")
+        logger.info(f"[ReceiptService] Ride payment receipt PDF ({len(pdf_bytes)} bytes) generated for {ref}")
         return pdf_bytes
     except Exception as e:
         logger.error(f"[ReceiptService] Exception generating transaction receipt: {e}", exc_info=True)
         return None
 
+
+# ─── Wallet Top-Up Receipt ────────────────────────────────────────────────────
 
 def generate_wallet_topup_receipt(topup_data: Dict[str, Any]) -> Optional[bytes]:
     """
@@ -519,6 +590,7 @@ def generate_wallet_topup_receipt(topup_data: Dict[str, Any]) -> Optional[bytes]
         user_email: Optional[str]
         account_type: Optional[str] ('passenger' / 'driver')
         provider: Optional[str] ('Razorpay')
+        payment_method: Optional[str] ('UPI', 'Card', 'Net Banking', 'Wallet')
         razorpay_payment_id: Optional[str] ('pay_...')
         razorpay_order_id: Optional[str] ('order_...')
         balance_after: Optional[float]
@@ -533,135 +605,76 @@ def generate_wallet_topup_receipt(topup_data: Dict[str, Any]) -> Optional[bytes]
         doc = SimpleDocTemplate(
             buffer,
             pagesize=letter,
-            leftMargin=40,
-            rightMargin=40,
-            topMargin=36,
-            bottomMargin=36,
+            leftMargin=44,
+            rightMargin=44,
+            topMargin=40,
+            bottomMargin=40,
         )
 
         styles = _build_styles()
         story = []
 
-        ref = topup_data.get("reference", "RZP-UNKNOWN")
-        status = topup_data.get("status", "Successful")
-        amount = topup_data.get("amount", 0.0)
-        user_name = topup_data.get("user_name") or "User"
-        user_email = topup_data.get("user_email") or ""
-        account_type = (topup_data.get("account_type") or "Passenger").title()
-        provider = topup_data.get("provider") or "Razorpay"
+        ref            = topup_data.get("reference", "RZP-UNKNOWN")
+        status         = topup_data.get("status", "Successful")
+        amount         = topup_data.get("amount", 0.0)
+        user_name      = topup_data.get("user_name") or "User"
+        user_email     = topup_data.get("user_email") or ""
+        account_type   = (topup_data.get("account_type") or "Passenger").title()
+        provider       = topup_data.get("provider") or "Razorpay"
+        payment_method = topup_data.get("payment_method") or ""
         rzp_payment_id = topup_data.get("razorpay_payment_id")
-        rzp_order_id = topup_data.get("razorpay_order_id")
-        balance_after = topup_data.get("balance_after")
+        rzp_order_id   = topup_data.get("razorpay_order_id")
+        balance_after  = topup_data.get("balance_after")
         created_at_str = format_datetime(topup_data.get("created_at"))
 
-        # 1. Header with Logo & Brand
-        header = _create_header_table(styles, "Wallet Top-Up Receipt", ref, status)
-        story.append(header)
-        story.append(Spacer(1, 10))
+        # 1. Header (logo + brand + reference + status)
+        story.extend(_create_header_table(styles, "Wallet Top-Up Receipt", ref, status, accent_color="#10B981"))
+        story.append(Spacer(1, 16))
 
-        # 2. Accent colored dividing bar (emerald for top-up credits)
-        story.append(HRFlowable(width="100%", thickness=3, color=colors.HexColor("#10B981"), spaceBefore=0, spaceAfter=14))
-
-        # 3. Top-Up Details Table
-        table_rows = [
-            [
-                Paragraph("Transaction Reference", styles["CellLabel"]),
-                Paragraph(ref, styles["CellValue"]),
-            ],
-            [
-                Paragraph("Date & Time", styles["CellLabel"]),
-                Paragraph(created_at_str, styles["CellValue"]),
-            ],
-            [
-                Paragraph("Top-Up Status", styles["CellLabel"]),
-                Paragraph("COMPLETED", styles["CellValue"]),
-            ],
-            [
-                Paragraph("Account Holder", styles["CellLabel"]),
-                Paragraph(user_name, styles["CellValue"]),
-            ],
+        # 2. Top-Up Details Table
+        detail_rows = [
+            ("Transaction Reference", ref),
+            ("Date & Time (IST)",     created_at_str),
+            ("Top-Up Status",         "COMPLETED"),
+            ("Account Holder",        user_name),
         ]
-
         if user_email:
-            table_rows.append([
-                Paragraph("Registered Email", styles["CellLabel"]),
-                Paragraph(user_email, styles["CellValue"]),
-            ])
+            detail_rows.append(("Registered Email", user_email))
 
-        table_rows.extend([
-            [
-                Paragraph("Account Type", styles["CellLabel"]),
-                Paragraph(account_type, styles["CellValue"]),
-            ],
-            [
-                Paragraph("Payment Gateway", styles["CellLabel"]),
-                Paragraph(provider, styles["CellValue"]),
-            ],
-        ])
+        detail_rows.append(("Account Type", account_type))
+
+        if payment_method:
+            detail_rows.append(("Payment Method", payment_method))
+
+        detail_rows.append(("Payment Gateway", provider))
 
         if rzp_payment_id:
-            table_rows.append([
-                Paragraph("Gateway Payment ID", styles["CellLabel"]),
-                Paragraph(str(rzp_payment_id), styles["CellValue"]),
-            ])
-
+            detail_rows.append(("Gateway Payment ID", str(rzp_payment_id)))
         if rzp_order_id:
-            table_rows.append([
-                Paragraph("Gateway Order ID", styles["CellLabel"]),
-                Paragraph(str(rzp_order_id), styles["CellValue"]),
-            ])
-
+            detail_rows.append(("Gateway Order ID",   str(rzp_order_id)))
         if balance_after is not None:
-            table_rows.append([
-                Paragraph("New Wallet Balance", styles["CellLabel"]),
-                Paragraph(format_inr(balance_after), styles["CellValue"]),
-            ])
+            detail_rows.append(("New Wallet Balance", format_inr(balance_after)))
 
-        main_table = Table(
-            table_rows,
-            colWidths=[180, 352],
-            style=[
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFFFFF")),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("LEFTPADDING", (0, 0), (-1, -1), 10),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-                ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.HexColor("#F3F4F6")),
-            ],
-        )
-        story.append(main_table)
-        story.append(Spacer(1, 14))
+        story.append(_create_details_table(styles, detail_rows))
+        story.append(Spacer(1, 18))
 
-        # 4. Total Amount Credited Highlight Box
-        total_data = [
-            [
-                Paragraph("Total Amount Credited to Wallet", styles["TotalLabel"]),
-                Paragraph(format_inr(amount), styles["TotalAmount"]),
-            ]
-        ]
-        total_table = Table(
-            total_data,
-            colWidths=[266, 266],
-            style=[
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F9FAFB")),
-                ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#E5E7EB")),
-                ("TOPPADDING", (0, 0), (-1, -1), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-                ("LEFTPADDING", (0, 0), (-1, -1), 14),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 14),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ],
-        )
-        story.append(total_table)
+        # 3. Amount Credited Highlight
+        story.append(_create_amount_box(
+            styles,
+            label="Total Amount Credited to Wallet",
+            amount_str=format_inr(amount),
+            bg_color="#F0FDF4",
+            border_color="#10B981",
+        ))
 
-        # 5. Footer & Academic Disclosure
+        # 4. Footer & Academic Disclosure
         story.extend(_create_footer_flowables(styles))
 
         doc.build(story)
         pdf_bytes = buffer.getvalue()
         buffer.close()
 
-        logger.info(f"[ReceiptService] Successfully generated wallet topup receipt PDF ({len(pdf_bytes)} bytes) for {ref}")
+        logger.info(f"[ReceiptService] Wallet top-up receipt PDF ({len(pdf_bytes)} bytes) generated for {ref}")
         return pdf_bytes
     except Exception as e:
         logger.error(f"[ReceiptService] Exception generating wallet topup receipt: {e}", exc_info=True)
