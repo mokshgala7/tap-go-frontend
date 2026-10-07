@@ -217,6 +217,12 @@ function Register() {
   const [isDrawing, setIsDrawing] = useState(false)
   const [loading, setLoading] = useState(false)
   const [otpVerified, setOtpVerified] = useState(() => Boolean(reviewBackup?.otpVerified))
+
+  // Strong password suggestion state
+  const [suggestedPassword, setSuggestedPassword] = useState(null)
+  const [pwSuggestLoading, setPwSuggestLoading] = useState(false)
+  const [pwSuggestError, setPwSuggestError] = useState(false)
+  const pwSuggestFetchingRef = useRef(false)
   const [otpSending, setOtpSending] = useState(false)
   const [otpMessage, setOtpMessage] = useState(() => (reviewBackup?.otpVerified ? '✓ Email verified!' : ''))
   const [otpVerifying, setOtpVerifying] = useState(false)
@@ -858,6 +864,67 @@ function Register() {
                     </div>
                   </div>
                   <FloatingInput name="confirmPassword" type="password" value={form.confirmPassword} onChange={updateForm} touched={touched.confirmPassword} valid={valid.confirmPassword} className="tracking-widest font-mono text-lg" />
+                </div>
+
+                {/* Strong Password Suggestion */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-1">
+                  <button
+                    type="button"
+                    aria-label="Use a strong auto-generated password for both password fields"
+                    disabled={pwSuggestLoading}
+                    onClick={async () => {
+                      if (pwSuggestFetchingRef.current) return
+                      pwSuggestFetchingRef.current = true
+                      setPwSuggestLoading(true)
+                      setPwSuggestError(false)
+                      setSuggestedPassword(null)
+                      try {
+                        const res = await fetch(
+                          'https://o9zqw0vfmd.execute-api.ap-south-1.amazonaws.com/prod/generate-password',
+                          { method: 'GET' }
+                        )
+                        if (!res.ok) throw new Error('api_error')
+                        const outer = await res.json()
+                        const inner = typeof outer.body === 'string' ? JSON.parse(outer.body) : outer.body
+                        const pw = inner?.password
+                        if (!pw || typeof pw !== 'string') throw new Error('parse_error')
+                        setSuggestedPassword(pw)
+                        // Fill both password fields with the same value
+                        setForm((prev) => ({ ...prev, password: pw, confirmPassword: pw }))
+                        setTouched((prev) => ({ ...prev, password: true, confirmPassword: true }))
+                      } catch {
+                        setPwSuggestError(true)
+                      } finally {
+                        setPwSuggestLoading(false)
+                        pwSuggestFetchingRef.current = false
+                      }
+                    }}
+                    className={`inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl font-black text-xs tracking-widest uppercase transition-all duration-300 border-2 select-none ${
+                      pwSuggestLoading
+                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-wait'
+                        : 'bg-white text-darker border-brand hover:bg-brand hover:text-darker shadow-sm active:scale-95'
+                    }`}
+                  >
+                    {/* Lock icon */}
+                    {pwSuggestLoading ? (
+                      <div className="spinner border-[3px] w-4 h-4" aria-hidden="true" />
+                    ) : (
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    )}
+                    <span>{pwSuggestLoading ? 'Generating…' : 'Use Strong Password'}</span>
+                  </button>
+                  {suggestedPassword && !pwSuggestLoading && (
+                    <span className="text-[0.7rem] font-semibold text-[#00c853] tracking-wide animate-slide-up">
+                      ✓ Both fields filled with a strong password
+                    </span>
+                  )}
+                  {pwSuggestError && !pwSuggestLoading && (
+                    <span className="text-[0.7rem] font-semibold text-[#FF3B30] tracking-wide">
+                      Could not generate a suggestion — enter manually
+                    </span>
+                  )}
                 </div>
                 <label className="flex items-start gap-4 cursor-pointer group pt-4">
                   <div className="relative mt-1">
