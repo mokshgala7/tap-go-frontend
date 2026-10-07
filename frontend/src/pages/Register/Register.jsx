@@ -223,6 +223,8 @@ function Register() {
   const [pwSuggestLoading, setPwSuggestLoading] = useState(false)
   const [pwSuggestError, setPwSuggestError] = useState(false)
   const pwSuggestFetchingRef = useRef(false)
+  // Flag: true after the user has applied the suggestion once (next click = fresh fetch)
+  const pwSuggestUsedRef = useRef(false)
   const [otpSending, setOtpSending] = useState(false)
   const [otpMessage, setOtpMessage] = useState(() => (reviewBackup?.otpVerified ? '✓ Email verified!' : ''))
   const [otpVerifying, setOtpVerifying] = useState(false)
@@ -253,6 +255,31 @@ function Register() {
       } catch {}
     }
   }, [isEditMode])
+
+  // Pre-fetch one strong password suggestion silently on mount.
+  // Does NOT fill any field — just stores the suggestion for instant use when the button is clicked.
+  useEffect(() => {
+    let cancelled = false
+    const prefetch = async () => {
+      try {
+        const res = await fetch(
+          'https://o9zqw0vfmd.execute-api.ap-south-1.amazonaws.com/prod/generate-password',
+          { method: 'GET' }
+        )
+        if (!res.ok || cancelled) return
+        const outer = await res.json()
+        const inner = typeof outer.body === 'string' ? JSON.parse(outer.body) : outer.body
+        const pw = inner?.password
+        if (pw && typeof pw === 'string' && !cancelled) {
+          setSuggestedPassword(pw)
+        }
+      } catch {
+        // Silently ignore pre-fetch failures — user can still click the button
+      }
+    }
+    prefetch()
+    return () => { cancelled = true }
+  }, [])
 
   const passwordStrength = useMemo(() => {
     let strength = 0
@@ -874,7 +901,21 @@ function Register() {
                     disabled={pwSuggestLoading}
                     onClick={async () => {
                       if (pwSuggestFetchingRef.current) return
+
+                      // If a pre-fetched suggestion is available AND the user has not
+                      // yet used/re-requested it, apply it immediately without another fetch.
+                      if (suggestedPassword && !pwSuggestUsedRef.current) {
+                        pwSuggestUsedRef.current = true
+                        setPwSuggestError(false)
+                        setForm((prev) => ({ ...prev, password: suggestedPassword, confirmPassword: suggestedPassword }))
+                        setTouched((prev) => ({ ...prev, password: true, confirmPassword: true }))
+                        return
+                      }
+
+                      // On every subsequent click (or if no cached suggestion exists),
+                      // fetch a fresh password from the API.
                       pwSuggestFetchingRef.current = true
+                      pwSuggestUsedRef.current = false
                       setPwSuggestLoading(true)
                       setPwSuggestError(false)
                       setSuggestedPassword(null)
@@ -889,6 +930,7 @@ function Register() {
                         const pw = inner?.password
                         if (!pw || typeof pw !== 'string') throw new Error('parse_error')
                         setSuggestedPassword(pw)
+                        pwSuggestUsedRef.current = true
                         // Fill both password fields with the same value
                         setForm((prev) => ({ ...prev, password: pw, confirmPassword: pw }))
                         setTouched((prev) => ({ ...prev, password: true, confirmPassword: true }))
