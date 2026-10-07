@@ -105,12 +105,16 @@ function FloatingInput({
   const Component = as
   const [visible, setVisible] = useState(false)
   const inputType = (showToggle && type === 'password') ? (visible ? 'text' : 'password') : type
+  // When toggle is shown: always reserve space on the right for both the eye + (optionally) check
+  const paddingRight = showToggle && type === 'password'
+    ? (valid ? 'pr-[5.5rem]' : 'pr-11')
+    : ''
 
   return (
     <div className="relative group">
       <div className="relative">
         <Component
-          className={`peer input-premium ${as === 'textarea' ? 'input-premium-textarea' : ''} ${valid ? 'input-valid' : ''} ${touched && !valid ? 'input-invalid' : ''} ${showToggle ? 'pr-20' : ''} ${className}`}
+          className={`peer input-premium ${as === 'textarea' ? 'input-premium-textarea' : ''} ${valid ? 'input-valid' : ''} ${touched && !valid ? 'input-invalid' : ''} ${paddingRight} ${className}`}
           id={name}
           name={name}
           type={inputType}
@@ -129,31 +133,32 @@ function FloatingInput({
         >
           {fieldLabels[name]}
         </label>
-        {/* Eye toggle for password fields */}
+        {/* Check-mark — shifts left when eye toggle is present */}
+        {valid && (
+          <div className={`validation-icon absolute ${showToggle && type === 'password' ? 'right-[3.25rem]' : 'right-4'} ${as === 'textarea' ? 'top-8' : 'top-1/2 -translate-y-1/2'} transform text-success animate-scale-in`}>
+            <CheckIcon />
+          </div>
+        )}
+        {/* Eye toggle — always pinned to right-2 inside the input */}
         {showToggle && type === 'password' && (
           <button
             type="button"
             aria-label={visible ? 'Hide password' : 'Show password'}
             tabIndex={0}
             onClick={() => setVisible((v) => !v)}
-            className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${valid ? 'right-10' : 'right-3'}`}
+            className="absolute top-1/2 right-2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
             {visible ? (
-              <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+              <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
               </svg>
             ) : (
-              <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
               </svg>
             )}
           </button>
-        )}
-        {valid && (
-          <div className={`validation-icon absolute ${showToggle && type === 'password' ? 'right-[4.5rem]' : 'right-5'} ${as === 'textarea' ? 'top-8' : 'top-1/2 -translate-y-1/2'} transform text-success animate-scale-in`}>
-            <CheckIcon />
-          </div>
         )}
       </div>
       {touched && !valid && <p className="error-msg">{errorText[name]}</p>}
@@ -213,31 +218,38 @@ function ProgressCheck({ active, hidden, label }) {
 function SuggestedPasswordPill({ password }) {
   const [revealed, setRevealed] = useState(false)
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 w-fit max-w-full animate-slide-up">
-      <svg className="w-3.5 h-3.5 text-brand flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-      </svg>
-      <span className="text-[0.65rem] font-black uppercase tracking-widest text-gray-400 flex-shrink-0">Suggestion</span>
-      <span
-        className="font-mono text-sm font-bold text-gray-800 tracking-widest select-all"
-        aria-label={revealed ? `Suggested password: ${password}` : 'Suggested password hidden'}
-      >
-        {revealed ? password : '•'.repeat(password.length)}
-      </span>
+    <div className="w-full rounded-2xl border border-[#FDD34D]/40 bg-gradient-to-r from-[#FFFCF0] to-[#FFFDF5] p-4 flex items-center gap-3 animate-slide-up shadow-sm">
+      {/* Icon */}
+      <div className="w-9 h-9 rounded-xl bg-brand/15 flex items-center justify-center flex-shrink-0">
+        <svg className="w-4 h-4 text-[#D97706]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+      </div>
+      {/* Label + password */}
+      <div className="flex-1 min-w-0">
+        <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-[#D97706] mb-0.5">Suggested password</p>
+        <p
+          className="font-mono text-[0.95rem] font-bold text-gray-800 tracking-widest truncate select-all"
+          aria-label={revealed ? `Suggested password: ${password}` : 'Suggested password — click eye to reveal'}
+        >
+          {revealed ? password : '•'.repeat(password.length)}
+        </p>
+      </div>
+      {/* Eye toggle */}
       <button
         type="button"
         aria-label={revealed ? 'Hide suggested password' : 'Show suggested password'}
         onClick={() => setRevealed((v) => !v)}
-        className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-[#D97706] hover:bg-brand/20 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
       >
         {revealed ? (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+          <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
           </svg>
         ) : (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
           </svg>
         )}
       </button>
@@ -957,12 +969,12 @@ function Register() {
                 {/* Strong Password Suggestion */}
                 <div className="flex flex-col gap-3 pt-1">
 
-                  {/* Suggested password preview — shown before the user clicks the button */}
+                  {/* Suggested password preview — shown before the user applies it */}
                   {suggestedPassword && !pwSuggestUsedRef.current && !pwSuggestLoading && (
                     <SuggestedPasswordPill password={suggestedPassword} />
                   )}
 
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  {/* Use Strong Password button — full-width, secondary brand style */}
                   <button
                     type="button"
                     aria-label="Use a strong auto-generated password for both password fields"
@@ -970,8 +982,6 @@ function Register() {
                     onClick={async () => {
                       if (pwSuggestFetchingRef.current) return
 
-                      // If a pre-fetched suggestion is available AND the user has not
-                      // yet used/re-requested it, apply it immediately without another fetch.
                       if (suggestedPassword && !pwSuggestUsedRef.current) {
                         pwSuggestUsedRef.current = true
                         setPwSuggestError(false)
@@ -980,8 +990,6 @@ function Register() {
                         return
                       }
 
-                      // On every subsequent click (or if no cached suggestion exists),
-                      // fetch a fresh password from the API.
                       pwSuggestFetchingRef.current = true
                       pwSuggestUsedRef.current = false
                       setPwSuggestLoading(true)
@@ -999,7 +1007,6 @@ function Register() {
                         if (!pw || typeof pw !== 'string') throw new Error('parse_error')
                         setSuggestedPassword(pw)
                         pwSuggestUsedRef.current = true
-                        // Fill both password fields with the same value
                         setForm((prev) => ({ ...prev, password: pw, confirmPassword: pw }))
                         setTouched((prev) => ({ ...prev, password: true, confirmPassword: true }))
                       } catch {
@@ -1009,13 +1016,12 @@ function Register() {
                         pwSuggestFetchingRef.current = false
                       }
                     }}
-                    className={`inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl font-black text-xs tracking-widest uppercase transition-all duration-300 border-2 select-none ${
+                    className={`w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl font-black text-xs tracking-widest uppercase transition-all duration-300 border-2 select-none ${
                       pwSuggestLoading
-                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-wait'
-                        : 'bg-white text-darker border-brand hover:bg-brand hover:text-darker shadow-sm active:scale-95'
+                        ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-wait'
+                        : 'bg-white text-darker border-brand hover:bg-brand hover:text-darker shadow-sm active:scale-[0.98]'
                     }`}
                   >
-                    {/* Lock icon */}
                     {pwSuggestLoading ? (
                       <div className="spinner border-[3px] w-4 h-4" aria-hidden="true" />
                     ) : (
@@ -1023,20 +1029,21 @@ function Register() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                       </svg>
                     )}
-                    <span>{pwSuggestLoading ? 'Generating…' : 'Use Strong Password'}</span>
+                    <span>{pwSuggestLoading ? 'Generating…' : pwSuggestUsedRef.current ? '🔄 Generate New Password' : '🔐 Use Strong Password'}</span>
                   </button>
-                  {suggestedPassword && !pwSuggestLoading && (
-                    <span className="text-[0.7rem] font-semibold text-[#00c853] tracking-wide animate-slide-up">
-                      ✓ Both fields filled with a strong password
-                    </span>
+
+                  {/* Status messages */}
+                  {suggestedPassword && pwSuggestUsedRef.current && !pwSuggestLoading && (
+                    <p className="text-[0.72rem] font-semibold text-[#00c853] tracking-wide text-center animate-slide-up">
+                      ✓ Both fields filled — you can still type your own password
+                    </p>
                   )}
                   {pwSuggestError && !pwSuggestLoading && (
-                    <span className="text-[0.7rem] font-semibold text-[#FF3B30] tracking-wide">
-                      Could not generate a suggestion — enter manually
-                    </span>
+                    <p className="text-[0.72rem] font-semibold text-[#FF3B30] tracking-wide text-center">
+                      Could not generate a suggestion — please enter a password manually
+                    </p>
                   )}
-                  </div>{/* end inner flex-row */}
-                </div>{/* end suggestion wrapper */}
+                </div>
                 <label className="flex items-start gap-4 cursor-pointer group pt-4">
                   <div className="relative mt-1">
                     <input className="peer sr-only" type="checkbox" name="terms" checked={form.terms} onChange={updateForm} />
