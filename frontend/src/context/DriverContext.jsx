@@ -2,6 +2,13 @@ import { createContext, useContext, useEffect, useMemo, useState, useCallback } 
 import { useAuth } from './AuthContext.jsx'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
+
+// Session token for authenticated API calls (stored by AuthContext at login).
+const authHeaders = (extra = {}) => {
+  let token = ''
+  try { token = sessionStorage.getItem('tapgo_token') || '' } catch { /* storage unavailable */ }
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra
+}
 const DAY = 1000 * 60 * 60 * 24
 
 const DriverContext = createContext(null)
@@ -28,8 +35,8 @@ export function DriverProvider({ children }) {
     setLoading(true)
     try {
       const [wRes, tRes] = await Promise.all([
-        fetch(`${API_BASE}/api/wallet/${user.id}`),
-        fetch(`${API_BASE}/api/wallet/${user.id}/transactions`),
+        fetch(`${API_BASE}/api/wallet/${user.id}`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/api/wallet/${user.id}/transactions`, { headers: authHeaders() }),
       ])
       const wData = await wRes.json()
       const tData = await tRes.json()
@@ -110,7 +117,7 @@ export function DriverProvider({ children }) {
     try {
       const res = await fetch(`${API_BASE}/api/wallet/withdraw`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ user_id: user.id, amount }),
       })
       const data = await res.json()

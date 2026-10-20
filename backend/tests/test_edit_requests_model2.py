@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.models import Base, User, EditRequest, UserDocument, Admin
 from app.utils.security import hash_password
+from helpers import admin_headers
 from sqlalchemy.pool import StaticPool
 
 engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
@@ -125,7 +126,7 @@ def test_phone_permission_lifecycle(setup_model2_db):
     # 4. Admin sees the request in edit-requests list
     admin_res = client.get(
         "/api/admin/edit-requests",
-        headers={"X-Admin-Id": str(admin_id)}
+        headers=admin_headers(TestingSessionLocal, admin_id)
     )
     assert admin_res.status_code == 200
     items = admin_res.json()["items"]
@@ -137,7 +138,7 @@ def test_phone_permission_lifecycle(setup_model2_db):
     approve_res = client.post(
         f"/api/admin/edit-requests/{phone_req['id']}/review",
         json={"action": "approve"},
-        headers={"X-Admin-Id": str(admin_id)}
+        headers=admin_headers(TestingSessionLocal, admin_id)
     )
     assert approve_res.status_code == 200
 
@@ -180,7 +181,7 @@ def test_phone_rejection_lifecycle(setup_model2_db):
     assert req_res.status_code == 200
 
     # 2. Admin rejects request
-    admin_res = client.get("/api/admin/edit-requests", headers={"X-Admin-Id": str(admin_id)})
+    admin_res = client.get("/api/admin/edit-requests", headers=admin_headers(TestingSessionLocal, admin_id))
     items = admin_res.json()["items"]
     phone_req = next((it for it in items if it["field_name"] == "phone" and it["status"] == "pending"), None)
     assert phone_req is not None
@@ -188,7 +189,7 @@ def test_phone_rejection_lifecycle(setup_model2_db):
     reject_res = client.post(
         f"/api/admin/edit-requests/{phone_req['id']}/review",
         json={"action": "reject", "rejection_reason": "Invalid justification"},
-        headers={"X-Admin-Id": str(admin_id)}
+        headers=admin_headers(TestingSessionLocal, admin_id)
     )
     assert reject_res.status_code == 200
 
@@ -236,14 +237,14 @@ def test_bank_details_permission_and_partial_edit(setup_model2_db):
     assert dup_res.status_code == 400
 
     # 2. Admin approves
-    admin_res = client.get("/api/admin/edit-requests", headers={"X-Admin-Id": str(admin_id)})
+    admin_res = client.get("/api/admin/edit-requests", headers=admin_headers(TestingSessionLocal, admin_id))
     bank_req = next((it for it in admin_res.json()["items"] if it["field_name"] == "bank" and it["status"] == "pending"), None)
     assert bank_req is not None
 
     approve_res = client.post(
         f"/api/admin/edit-requests/{bank_req['id']}/review",
         json={"action": "approve"},
-        headers={"X-Admin-Id": str(admin_id)}
+        headers=admin_headers(TestingSessionLocal, admin_id)
     )
     assert approve_res.status_code == 200
 
@@ -294,14 +295,14 @@ def test_driver_bank_request_and_approval(setup_model2_db):
     assert req_res.json()["user"]["bank_request_status"] == "requested"
 
     # 2. Admin receives and approves
-    admin_res = client.get("/api/admin/edit-requests", headers={"X-Admin-Id": str(admin_id)})
+    admin_res = client.get("/api/admin/edit-requests", headers=admin_headers(TestingSessionLocal, admin_id))
     bank_req = next((it for it in admin_res.json()["items"] if it["user_name"] == "Driver Bob" and it["status"] == "pending"), None)
     assert bank_req is not None
 
     approve_res = client.post(
         f"/api/admin/edit-requests/{bank_req['id']}/review",
         json={"action": "approve"},
-        headers={"X-Admin-Id": str(admin_id)}
+        headers=admin_headers(TestingSessionLocal, admin_id)
     )
     assert approve_res.status_code == 200
 
@@ -358,14 +359,14 @@ def test_documents_permission_and_replacement_lifecycle(setup_model2_db):
     assert dup_res.status_code == 400
 
     # 3. Admin approves
-    admin_res = client.get("/api/admin/edit-requests", headers={"X-Admin-Id": str(admin_id)})
+    admin_res = client.get("/api/admin/edit-requests", headers=admin_headers(TestingSessionLocal, admin_id))
     doc_req = next((it for it in admin_res.json()["items"] if it["field_name"] == "documents" and it["status"] == "pending"), None)
     assert doc_req is not None
 
     approve_res = client.post(
         f"/api/admin/edit-requests/{doc_req['id']}/review",
         json={"action": "approve"},
-        headers={"X-Admin-Id": str(admin_id)}
+        headers=admin_headers(TestingSessionLocal, admin_id)
     )
     assert approve_res.status_code == 200
 

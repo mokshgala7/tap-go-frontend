@@ -118,15 +118,18 @@ export function RazorpayAddMoneyModal({ user, onClose, onSuccess, onFailure }) {
           isProcessingPaymentRef.current = true
           setStatusMessage('Verifying payment signature with server...')
           try {
+            // Only a real checkout result can be verified; nothing is invented here.
+            if (!response.razorpay_payment_id || !response.razorpay_signature) {
+              throw new Error('Payment could not be confirmed. If money was debited, it will be reconciled automatically.')
+            }
+            // The server credits the amount of the order it created; it ignores any amount sent here.
             const verifyRes = await fetch(`${API_BASE}/api/payment/verify-payment`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
               body: JSON.stringify({
-                user_id: user.id,
                 razorpay_order_id: response.razorpay_order_id || order_id,
-                razorpay_payment_id: response.razorpay_payment_id || `pay_mock_${Date.now()}`,
-                razorpay_signature: response.razorpay_signature || `sig_mock_${Date.now()}`,
-                amount: numAmount,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
                 payment_method: response.method || response.payment_method || undefined,
               }),
             })

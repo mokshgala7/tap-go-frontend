@@ -2,6 +2,13 @@ import React, { useState } from 'react'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
 
+// Session token for authenticated API calls (stored by AuthContext at login).
+const authHeaders = (extra = {}) => {
+  let token = ''
+  try { token = sessionStorage.getItem('tapgo_token') || '' } catch { /* storage unavailable */ }
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra
+}
+
 export function WithdrawModal({ user, balance, onClose, onSuccess }) {
   const [step, setStep] = useState(1) // 1: Enter amount & request OTP, 2: Enter OTP & confirm
   const [amount, setAmount] = useState(100)
@@ -36,7 +43,7 @@ export function WithdrawModal({ user, balance, onClose, onSuccess }) {
     try {
       const res = await fetch(`${API_BASE}/api/wallet/withdraw/request-otp`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           user_id: user.id,
           amount: numAmount,
@@ -76,11 +83,12 @@ export function WithdrawModal({ user, balance, onClose, onSuccess }) {
     try {
       const res = await fetch(`${API_BASE}/api/wallet/withdraw`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           user_id: user.id,
           amount: Number(amount),
           otp: otp.trim(),
+          idempotency_key: (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`),
         }),
       })
 

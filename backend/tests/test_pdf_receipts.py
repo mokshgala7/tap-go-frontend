@@ -17,6 +17,8 @@ Tests:
 """
 
 import email
+import json
+import os
 from email import policy
 import io
 import uuid
@@ -29,7 +31,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.database import engine, Base, SessionLocal
-from app.models import User, Wallet, Transaction, EmailOTP
+from app.models import User, Wallet, Transaction, EmailOTP, PaymentOrder
 import app.models  # Ensure all models are registered with Base.metadata
 
 try:
@@ -67,6 +69,19 @@ from app.config import settings
 # ============================================================================
 # 1. PDF RECEIPT GENERATION TESTS
 # ============================================================================
+
+def _order_for(db, user, order_id, amount_rupees):
+    """Server-side order the (authenticated) top-up must refer to."""
+    db.add(PaymentOrder(order_id=order_id, user_id=user.id, amount_paise=int(round(amount_rupees * 100)),
+                        currency="INR", status="created"))
+    db.commit()
+
+
+def _provider(order_id, payment_id, amount_rupees, method="upi"):
+    """What Razorpay reports for a captured payment."""
+    return {"id": payment_id, "order_id": order_id, "amount": int(round(amount_rupees * 100)),
+            "currency": "INR", "status": "captured", "method": method}
+
 
 def test_transaction_receipt_generates_valid_pdf():
     """Verify that generate_transaction_receipt produces a valid, non-empty PDF binary."""
@@ -280,7 +295,8 @@ def test_ride_payment_financial_resiliency_when_pdf_fails():
                 fare=250.00,
                 driver_name=d.name,
                 payment_method="QR",
-            ), db=db)
+                idempotency_key=f"resil-{uid}-0001",
+            ), current_user=p, db=db)
 
             assert res.get("success") is True
             db.refresh(p_wallet)
@@ -315,17 +331,18 @@ def test_topup_payment_financial_resiliency_when_pdf_fails():
         payment_id = f"pay_resil_{uid}"
         order_id = f"order_resil_{uid}"
 
-        # Mock razorpay HMAC signature verification to succeed
+        _order_for(db, u, order_id, 300.00)
+
+        # Mock razorpay HMAC signature verification and the provider lookup to succeed
         with patch("app.services.payment.razorpay_service.razorpay_service.verify_payment_signature", return_value=True), \
+             patch("app.services.payment.razorpay_service.razorpay_service.get_payment_details", return_value=_provider(order_id, payment_id, 300.00)), \
              patch("app.services.receipt_service.generate_wallet_topup_receipt", side_effect=Exception("PDF Crash")):
 
             res = verify_razorpay_payment(VerifyPaymentRequest(
-                user_id=u.id,
                 razorpay_order_id=order_id,
                 razorpay_payment_id=payment_id,
                 razorpay_signature="mock_sig",
-                amount=300.00,
-            ), db=db)
+            ), current_user=u, db=db)
 
             assert res.get("success") is True
             db.refresh(wallet)
@@ -361,16 +378,17 @@ def test_verify_payment_attaches_pdf_receipt():
             captured_attachments.append(kwargs.get("attachments"))
             return True
 
+        _order_for(db, u, f"order_{uid}", 200.00)
+
         with patch("app.services.payment.razorpay_service.razorpay_service.verify_payment_signature", return_value=True), \
+             patch("app.services.payment.razorpay_service.razorpay_service.get_payment_details", return_value=_provider(f"order_{uid}", f"pay_{uid}", 200.00)), \
              patch("app.utils.email_service.send_email", side_effect=mock_send_email):
 
             res = verify_razorpay_payment(VerifyPaymentRequest(
-                user_id=u.id,
                 razorpay_order_id=f"order_{uid}",
                 razorpay_payment_id=f"pay_{uid}",
                 razorpay_signature="valid_sig",
-                amount=200.00,
-            ), db=db)
+            ), current_user=u, db=db)
 
             assert res.get("success") is True
             assert len(captured_attachments) == 1
@@ -407,6 +425,8 @@ def test_webhook_payment_attaches_pdf_receipt():
             captured_attachments.append(kwargs.get("attachments"))
             return True
 
+        _order_for(db, u, f"order_wh_{uid}", 350.00)
+
         mock_request = MagicMock()
         mock_payload = {
             "event": "payment.captured",
@@ -416,6 +436,8 @@ def test_webhook_payment_attaches_pdf_receipt():
                         "id": f"pay_wh_{uid}",
                         "order_id": f"order_wh_{uid}",
                         "amount": 35000,  # 350 INR
+                        "currency": "INR",
+                        "status": "captured",
                         "notes": {"user_id": str(u.id)},
                     }
                 }
@@ -423,7 +445,7 @@ def test_webhook_payment_attaches_pdf_receipt():
         }
 
         async def mock_body():
-            return b"{}"
+            return json.dumps(mock_payload).encode()
 
         async def mock_json():
             return mock_payload
@@ -431,7 +453,8 @@ def test_webhook_payment_attaches_pdf_receipt():
         mock_request.body = mock_body
         mock_request.json = mock_json
 
-        with patch("app.services.payment.razorpay_service.razorpay_service.verify_webhook_signature", return_value=True), \
+        with patch.dict(os.environ, {"RAZORPAY_WEBHOOK_SECRET": "test_only_webhook_secret"}), \
+             patch("app.services.payment.razorpay_service.razorpay_service.verify_webhook_signature", return_value=True), \
              patch("app.utils.email_service.send_email", side_effect=mock_send_email):
 
             res = asyncio.run(razorpay_webhook(
@@ -571,19 +594,18 @@ def test_verify_payment_fetches_instrument_from_razorpay(method_raw, expected_no
             return True
 
         req = VerifyPaymentRequest(
-            user_id=u.id,
             razorpay_order_id=f"order_{uid}",
             razorpay_payment_id=f"pay_{method_raw}_{uid}",
             razorpay_signature="mock_sig",
-            amount=100.0,
             # payment_method is NOT provided in request, simulating standard Razorpay Checkout modal
         )
+        _order_for(db, u, req.razorpay_order_id, 100.0)
 
         with patch("app.services.payment.razorpay_service.razorpay_service.verify_payment_signature", return_value=True), \
-             patch("app.services.payment.razorpay_service.razorpay_service.get_payment_details", return_value={"id": req.razorpay_payment_id, "method": method_raw}), \
+             patch("app.services.payment.razorpay_service.razorpay_service.get_payment_details", return_value=_provider(req.razorpay_order_id, req.razorpay_payment_id, 100.0, method_raw)), \
              patch("app.utils.email_service.send_email", side_effect=mock_send_email):
 
-            res = verify_razorpay_payment(data=req, db=db)
+            res = verify_razorpay_payment(data=req, current_user=u, db=db)
             assert res.get("success") is True
 
             # Verify transaction in database has normalized method

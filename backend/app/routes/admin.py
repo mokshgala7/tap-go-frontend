@@ -4,14 +4,19 @@ The routes deliberately sit beside the existing authentication API so the
 Passenger and Driver flows remain unchanged.  All list endpoints use MySQL
 records; no seed or client-side demo data is returned.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from io import StringIO
 import csv
+import hashlib
 import json
+import os
+import secrets
+import threading
+import time
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -19,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import (
-    ActivityLog, Admin, EditRequest, FraudAlert, ProjectSetting, SupportTicket,
+    ActivityLog, Admin, AdminSession, EditRequest, FraudAlert, ProjectSetting, SupportTicket,
     Transaction, User, UserDocument, Wallet, WithdrawalRequest,
 )
 from app.utils.security import hash_password, verify_password
@@ -63,29 +68,87 @@ class SettingUpdate(BaseModel):
     value: Optional[str] = None
 
 
-def ensure_default_admin(db: Session) -> Admin:
-    """Provision the documented temporary account once, as a database record."""
-    admin = db.query(Admin).filter(func.lower(Admin.email) == settings.ADMIN_EMAIL.strip().lower()).first()
-    if not admin:
-        admin = Admin(
-            email=settings.ADMIN_EMAIL,
-            password_hash=hash_password(settings.ADMIN_PASSWORD),
-            name="Tap&Go Administrator",
+ADMIN_SESSION_HOURS = 12
+_WEAK_ADMIN_PASSWORDS = {"admin@123", "admin123", "admin", "password", "changeme"}
+
+# Process-local throttle for administrator password guessing.
+_LOGIN_FAILURES: dict = {}
+_LOGIN_LOCK = threading.Lock()
+LOGIN_MAX_FAILURES = 5
+LOGIN_WINDOW_SECONDS = 15 * 60
+
+
+def _throttle_key(request: Optional[Request], email: str) -> str:
+    host = request.client.host if request is not None and request.client else "?"
+    return f"{email}|{host}"
+
+
+def _throttled(key: str) -> bool:
+    now = time.time()
+    with _LOGIN_LOCK:
+        recent = [t for t in _LOGIN_FAILURES.get(key, []) if now - t < LOGIN_WINDOW_SECONDS]
+        _LOGIN_FAILURES[key] = recent
+        return len(recent) >= LOGIN_MAX_FAILURES
+
+
+def _record_failure(key: str) -> None:
+    with _LOGIN_LOCK:
+        _LOGIN_FAILURES.setdefault(key, []).append(time.time())
+
+
+def _clear_failures(key: str) -> None:
+    with _LOGIN_LOCK:
+        _LOGIN_FAILURES.pop(key, None)
+
+
+def ensure_default_admin(db: Session) -> Optional[Admin]:
+    """Provision the first administrator ONLY from explicit environment values.
+
+    No default account or password is ever created: ADMIN_EMAIL and
+    ADMIN_PASSWORD must both be set in the environment, and the password must
+    not be a well-known one. Existing administrators are never modified.
+    """
+    email = (os.getenv("ADMIN_EMAIL") or "").strip().lower()
+    password = os.getenv("ADMIN_PASSWORD") or ""
+    if not email or not password:
+        return None
+    if password.lower() in _WEAK_ADMIN_PASSWORDS or len(password) < 10:
+        import logging
+        logging.getLogger(__name__).warning(
+            "ADMIN_PASSWORD is weak or too short; default administrator not provisioned."
         )
+        return None
+    admin = db.query(Admin).filter(func.lower(Admin.email) == email).first()
+    if not admin:
+        admin = Admin(email=email, password_hash=hash_password(password), name="Tap&Go Administrator")
         db.add(admin)
         db.commit()
         db.refresh(admin)
     return admin
 
 
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 def current_admin(
-    x_admin_id: Optional[int] = Header(default=None), db: Session = Depends(get_db)
+    authorization: Optional[str] = Header(default=None), db: Session = Depends(get_db)
 ) -> Admin:
-    if not x_admin_id:
+    """Authenticate an administrator from a server-issued bearer session token.
+
+    A client-supplied identifier (e.g. X-Admin-Id) is never trusted.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Administrator login is required.")
-    admin = db.query(Admin).filter(Admin.id == x_admin_id, Admin.is_active.is_(True)).first()
+    token = authorization[len("Bearer "):].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Administrator login is required.")
+    session = db.query(AdminSession).filter(AdminSession.token_hash == _hash_token(token)).first()
+    if not session or session.revoked_at is not None or session.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=401, detail="Administrator session is invalid or expired.")
+    admin = db.query(Admin).filter(Admin.id == session.admin_id, Admin.is_active.is_(True)).first()
     if not admin:
-        raise HTTPException(status_code=401, detail="Administrator session is invalid.")
+        raise HTTPException(status_code=401, detail="Administrator session is invalid or expired.")
     return admin
 
 
@@ -149,47 +212,73 @@ def log(db: Session, admin: Admin, action: str, entity_type: str, entity_id: Opt
 
 
 @router.post("/login")
-def login(payload: AdminLogin, db: Session = Depends(get_db)):
-    ensure_default_admin(db)
+def login(payload: AdminLogin, request: Request, db: Session = Depends(get_db)):
     input_email = payload.email.strip().lower()
     input_password = payload.password
+    key = _throttle_key(request, input_email)
+    if _throttled(key):
+        raise HTTPException(status_code=429, detail="Too many failed attempts. Try again later.")
+
     admin = db.query(Admin).filter(func.lower(Admin.email) == input_email).first()
-    
+
     valid = False
-    if admin and admin.is_active:
-        if verify_password(input_password, admin.password_hash):
-            valid = True
-        elif input_password in (settings.ADMIN_PASSWORD, "admin@123", "admin123"):
-            admin.password_hash = hash_password(input_password)
-            db.commit()
-            valid = True
+    if admin and admin.is_active and verify_password(input_password, admin.password_hash):
+        valid = True
 
     if not valid:
-        # Also check User table in case admin was created in User table
+        # An administrator account that lives in the users table is mirrored into
+        # the admins table, but ONLY after its own password has been verified.
         user_admin = db.query(User).filter(
             (func.lower(User.email) == input_email) | (User.phone == input_email),
             User.account_type == "admin"
         ).first()
-        if user_admin:
-            if verify_password(input_password, user_admin.password_hash) or input_password in (settings.ADMIN_PASSWORD, "admin@123", "admin123"):
-                if not admin:
-                    admin = Admin(
-                        email=user_admin.email,
-                        password_hash=hash_password(input_password),
-                        name=user_admin.name or "Tap&Go Administrator"
-                    )
-                    db.add(admin)
-                else:
-                    admin.password_hash = hash_password(input_password)
+        if user_admin and verify_password(input_password, user_admin.password_hash):
+            if not admin:
+                admin = Admin(
+                    email=user_admin.email,
+                    password_hash=user_admin.password_hash,
+                    name=user_admin.name or "Tap&Go Administrator"
+                )
+                db.add(admin)
                 db.commit()
+                db.refresh(admin)
+            if admin.is_active:
                 valid = True
 
     if not valid or not admin:
+        _record_failure(key)
         raise HTTPException(status_code=401, detail="Invalid administrator credentials.")
 
+    _clear_failures(key)
+    raw_token = secrets.token_urlsafe(32)
+    db.add(AdminSession(
+        admin_id=admin.id,
+        token_hash=_hash_token(raw_token),
+        expires_at=datetime.utcnow() + timedelta(hours=ADMIN_SESSION_HOURS),
+    ))
     log(db, admin, "login", "admin", admin.id, "Administrator signed in")
     db.commit()
-    return {"success": True, "admin": {"id": admin.id, "name": admin.name, "email": admin.email}}
+    # `token` is also inside `admin` so the existing website code, which stores
+    # `result.admin`, keeps the token without further changes.
+    return {
+        "success": True,
+        "token": raw_token,
+        "admin": {"id": admin.id, "name": admin.name, "email": admin.email, "token": raw_token},
+    }
+
+
+@router.post("/logout")
+def logout(
+    authorization: Optional[str] = Header(default=None),
+    admin: Admin = Depends(current_admin),
+    db: Session = Depends(get_db),
+):
+    token = (authorization or "")[len("Bearer "):].strip()
+    session = db.query(AdminSession).filter(AdminSession.token_hash == _hash_token(token)).first()
+    if session:
+        session.revoked_at = datetime.utcnow()
+        db.commit()
+    return {"success": True}
 
 
 @router.get("/dashboard")
@@ -409,10 +498,20 @@ def review_edit_request(request_id: int, payload: EditReview, admin: Admin = Dep
     if request.status != "pending":
         raise HTTPException(status_code=400, detail="This request has already been reviewed.")
     user = db.get(User, request.user_id)
-    new_status = payload.action + "d"  # "approved" or "rejected"
-    request.status = new_status
-    request.reviewed_by = admin.id
-    request.reviewed_at = datetime.utcnow()
+    # Explicit map: "reject" + "d" used to be stored as the invalid status "rejectd",
+    # which the admin "rejected" filter could never match.
+    new_status = {"approve": "approved", "reject": "rejected"}[payload.action]
+    # Claim the review atomically so two administrators cannot both decide it.
+    claimed = db.query(EditRequest).filter(
+        EditRequest.id == request_id, EditRequest.status == "pending"
+    ).update(
+        {"status": new_status, "reviewed_by": admin.id, "reviewed_at": datetime.utcnow()},
+        synchronize_session=False,
+    )
+    if claimed != 1:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="This request has already been reviewed.")
+    db.refresh(request)
 
     if user:
         if payload.action == "approve":
@@ -434,6 +533,19 @@ def review_edit_request(request_id: int, payload: EditReview, admin: Admin = Dep
 
     log(db, admin, payload.action, "edit_request", request.id, f"Reviewed edit request #{request.id} for user #{request.user_id} ({request.field_name}): {payload.action}")
     db.commit()
+
+    # Tell the user the outcome (a delivery failure never undoes the decision).
+    if user and user.email:
+        try:
+            from app.utils.email_service import send_edit_request_decision_email
+            send_edit_request_decision_email(
+                to_email=user.email,
+                user_name=user.name,
+                request_type=request.field_name,
+                approved=(payload.action == "approve"),
+            )
+        except Exception:
+            pass
     return {"success": True, "status": request.status}
 
 
@@ -543,6 +655,19 @@ def list_withdrawal_requests(
     }
 
 
+def _claim_transition(db: Session, request_id: int, from_status: str, to_status: str, admin: Admin, **extra) -> bool:
+    """Atomically move a withdrawal request between states.
+
+    A conditional UPDATE (WHERE status = from_status) decides the single winner
+    of concurrent approve/reject/pay calls, on any database, without relying on
+    row locks. Returns True only for the caller that performed the transition.
+    """
+    values = {"status": to_status, "admin_id": admin.id, **extra}
+    return db.query(WithdrawalRequest).filter(
+        WithdrawalRequest.id == request_id, WithdrawalRequest.status == from_status
+    ).update(values, synchronize_session=False) == 1
+
+
 @router.patch("/withdrawal-requests/{request_id}/approve")
 def approve_withdrawal(
     request_id: int,
@@ -550,25 +675,22 @@ def approve_withdrawal(
     db: Session = Depends(get_db),
 ):
     """
-    Approve a pending withdrawal request.
-    Balance is already reserved (deducted); approval moves status to approved.
-    Idempotent: if already approved/paid, returns current state.
+    Approve a pending withdrawal request. Balance is already reserved.
+    Idempotent: if the request is no longer pending, its current state is returned.
     """
     wr = db.get(WithdrawalRequest, request_id)
     if not wr:
         raise HTTPException(status_code=404, detail="Withdrawal request not found.")
-    if wr.status != "pending":
+
+    if not _claim_transition(db, request_id, "pending", "approved", admin, reviewed_at=datetime.utcnow()):
+        db.rollback()
+        db.refresh(wr)
         return {"success": True, "message": f"Request is already in status '{wr.status}'.", "withdrawal_request": wr_to_dict(wr)}
 
-    wr.status = "approved"
-    wr.admin_id = admin.id
-    wr.reviewed_at = datetime.utcnow()
-
-    # Update hold transaction status to approved
     if wr.hold_transaction_id:
-        hold_txn = db.get(Transaction, wr.hold_transaction_id)
-        if hold_txn:
-            hold_txn.status = "approved"
+        db.query(Transaction).filter(Transaction.id == wr.hold_transaction_id).update(
+            {"status": "approved"}, synchronize_session=False
+        )
 
     log(db, admin, "approve", "withdrawal_request", wr.id, f"Approved withdrawal #{wr.reference} for user {wr.user_id}")
     db.commit()
@@ -596,27 +718,25 @@ def mark_withdrawal_paid(
     db: Session = Depends(get_db),
 ):
     """
-    Mark an approved withdrawal as paid out.
-    Status must be 'approved'. Idempotent: if already paid, returns current state.
-    No balance change — balance was reserved at submission, no double-deduction.
+    Mark an approved withdrawal as paid out (approved -> paid only).
+    No balance change - the balance was reserved at submission.
+    Idempotent: if already paid, returns the current state.
     """
     wr = db.get(WithdrawalRequest, request_id)
     if not wr:
         raise HTTPException(status_code=404, detail="Withdrawal request not found.")
-    if wr.status == "paid":
-        return {"success": True, "message": "Request is already marked as paid.", "withdrawal_request": wr_to_dict(wr)}
-    if wr.status != "approved":
+
+    if not _claim_transition(db, request_id, "approved", "paid", admin, paid_at=datetime.utcnow()):
+        db.rollback()
+        db.refresh(wr)
+        if wr.status == "paid":
+            return {"success": True, "message": "Request is already marked as paid.", "withdrawal_request": wr_to_dict(wr)}
         raise HTTPException(status_code=400, detail=f"Cannot mark as paid from status '{wr.status}'. Must be 'approved' first.")
 
-    wr.status = "paid"
-    wr.paid_at = datetime.utcnow()
-
-    # Mark hold transaction as completed
     if wr.hold_transaction_id:
-        hold_txn = db.get(Transaction, wr.hold_transaction_id)
-        if hold_txn:
-            hold_txn.status = "completed"
-            hold_txn.transaction_type = "withdrawal"
+        db.query(Transaction).filter(Transaction.id == wr.hold_transaction_id).update(
+            {"status": "completed", "transaction_type": "withdrawal"}, synchronize_session=False
+        )
 
     log(db, admin, "pay", "withdrawal_request", wr.id, f"Marked withdrawal #{wr.reference} as paid for user {wr.user_id}")
     db.commit()
@@ -645,41 +765,46 @@ def reject_withdrawal(
     db: Session = Depends(get_db),
 ):
     """
-    Reject a pending withdrawal request.
-    Atomically reverses the reserved balance back to the user's wallet.
-    Idempotent: if already rejected, returns current state.
-    Uses with_for_update() for concurrency safety.
-    Creates a withdrawal_reversal transaction for audit trail.
+    Reject a pending withdrawal request and return the reserved balance.
+    Only 'pending' requests can be rejected. The status change, the refund and
+    the audit transaction commit together (or not at all); the conditional
+    status update guarantees at most one refund even under concurrent calls.
     """
     wr = db.get(WithdrawalRequest, request_id)
     if not wr:
         raise HTTPException(status_code=404, detail="Withdrawal request not found.")
-    if wr.status == "rejected":
-        return {"success": True, "message": "Request is already rejected.", "withdrawal_request": wr_to_dict(wr)}
-    if wr.status != "pending":
+
+    note = payload.admin_note.strip() if payload.admin_note else None
+    if not _claim_transition(
+        db, request_id, "pending", "rejected", admin, admin_note=note, reviewed_at=datetime.utcnow()
+    ):
+        db.rollback()
+        db.refresh(wr)
+        if wr.status == "rejected":
+            return {"success": True, "message": "Request is already rejected.", "withdrawal_request": wr_to_dict(wr)}
         raise HTTPException(status_code=400, detail=f"Cannot reject from status '{wr.status}'. Only 'pending' requests can be rejected.")
 
-    # Atomically reverse the reserved balance (with row-level lock)
-    wallet = db.query(Wallet).filter(
-        Wallet.id == wr.wallet_id
-    ).with_for_update().first()
+    wallet = db.query(Wallet).filter(Wallet.id == wr.wallet_id).first()
     if not wallet:
+        db.rollback()
         raise HTTPException(status_code=500, detail="Wallet not found for this withdrawal request.")
 
     reversal_amount = wr.amount
-    wallet.balance += reversal_amount
+    # Atomic increment; works even if the wallet has since been frozen (it is the user's own money).
+    db.query(Wallet).filter(Wallet.id == wallet.id).update(
+        {Wallet.balance: Wallet.balance + reversal_amount}, synchronize_session=False
+    )
+    db.flush()
+    db.refresh(wallet)
 
-    # Update hold transaction to cancelled
     if wr.hold_transaction_id:
-        hold_txn = db.get(Transaction, wr.hold_transaction_id)
-        if hold_txn:
-            hold_txn.status = "cancelled"
+        db.query(Transaction).filter(Transaction.id == wr.hold_transaction_id).update(
+            {"status": "cancelled"}, synchronize_session=False
+        )
 
-    # Create reversal transaction for audit trail
-    reversal_ref = f"REV-{wr.reference}"
     user = db.get(User, wr.user_id)
-    reversal_txn = Transaction(
-        reference=reversal_ref,
+    db.add(Transaction(
+        reference=f"REV-{wr.reference}",
         passenger_id=wr.user_id if user and user.account_type == "passenger" else None,
         driver_id=wr.user_id if user and user.account_type == "driver" else None,
         wallet_id=wallet.id,
@@ -691,13 +816,7 @@ def reject_withdrawal(
         transaction_type="withdrawal_reversal",
         description=f"Reversal of rejected withdrawal {wr.reference}",
         balance_after=wallet.balance,
-    )
-    db.add(reversal_txn)
-
-    wr.status = "rejected"
-    wr.admin_id = admin.id
-    wr.admin_note = payload.admin_note.strip() if payload.admin_note else None
-    wr.reviewed_at = datetime.utcnow()
+    ))
 
     log(db, admin, "reject", "withdrawal_request", wr.id,
         f"Rejected withdrawal #{wr.reference} for user {wr.user_id}. Balance restored.")

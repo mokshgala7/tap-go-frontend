@@ -4,7 +4,7 @@ Support ticket routes for Tap&Go.
 User endpoints: JWT-authenticated (get_current_user). User identity derived from token,
 never from request body/path.
 
-Admin endpoints: current_admin dependency (X-Admin-Id header).
+Admin endpoints: current_admin dependency (server-issued admin bearer session).
 """
 from datetime import datetime
 from typing import Optional

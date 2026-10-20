@@ -13,6 +13,10 @@ except ImportError:
     razorpay = None
 
 
+class PaymentsNotConfigured(RuntimeError):
+    """Raised when Razorpay credentials are missing (or live mode is not enabled)."""
+
+
 class RazorpayService:
     def __init__(self):
         self._client = None
@@ -45,8 +49,13 @@ class RazorpayService:
         key_secret = settings.RAZORPAY_KEY_SECRET
 
         if not key_id or not key_secret:
-            # Fallback for development testing when keys are not set yet
-            logger.warning("[Razorpay] Credentials not set in environment. Returning fallback structure for testing.")
+            # Fail closed. A fake order is only possible when a developer has
+            # explicitly set ALLOW_MOCK_PAYMENTS=true outside production.
+            if not settings.ALLOW_MOCK_PAYMENTS:
+                raise PaymentsNotConfigured(
+                    "Online payments are not available right now. Please try again later."
+                )
+            logger.warning("[Razorpay] Mock order created (ALLOW_MOCK_PAYMENTS, development only).")
             order_id = f"order_demo_{uuid.uuid4().hex[:14]}"
             return {
                 "id": order_id,
@@ -57,6 +66,11 @@ class RazorpayService:
                 "key_id": key_id or "rzp_test_placeholder",
                 "is_mock": True,
             }
+
+        if key_id.startswith("rzp_live_") and not settings.RAZORPAY_LIVE_ENABLED:
+            raise PaymentsNotConfigured(
+                "Live payments are disabled. Use Razorpay test-mode keys."
+            )
 
         client = self.get_client()
         order_data = {
@@ -85,9 +99,10 @@ class RazorpayService:
         """
         key_secret = settings.RAZORPAY_KEY_SECRET
         if not key_secret:
-            # If no secret is configured yet, check if payment is a test mock
-            if razorpay_order_id.startswith("order_demo_"):
-                logger.warning("[Razorpay] Verifying mock order signature in development mode.")
+            # Mock signatures are accepted only for mock orders and only when
+            # mock payments are explicitly enabled (development, never production).
+            if settings.ALLOW_MOCK_PAYMENTS and razorpay_order_id.startswith("order_demo_"):
+                logger.warning("[Razorpay] Verifying mock order signature (development only).")
                 return True
             return False
 
@@ -114,7 +129,7 @@ class RazorpayService:
     def verify_webhook_signature(self, body: bytes, signature: str) -> bool:
         """Verifies Razorpay Webhook Signature using RAZORPAY_WEBHOOK_SECRET or RAZORPAY_KEY_SECRET."""
         secret = settings.RAZORPAY_WEBHOOK_SECRET or settings.RAZORPAY_KEY_SECRET
-        if not secret:
+        if not secret or not signature:
             return False
         expected_sig = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected_sig, signature)

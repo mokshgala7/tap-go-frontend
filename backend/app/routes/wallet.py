@@ -1,11 +1,14 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+import json
+import math
+import os
 import uuid
-import random
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -19,7 +22,7 @@ from app.utils.email_service import (
     send_withdrawal_paid_email,
     send_withdrawal_rejected_email,
 )
-from app.utils.security import get_elapsed_seconds, is_otp_expired
+from app.utils.security import get_elapsed_seconds, is_otp_expired, generate_otp
 from app.routes.auth import get_current_user
 from sqlalchemy import func
 import logging
@@ -37,26 +40,55 @@ class TopupRequest(BaseModel):
 
 
 class WithdrawOTPRequest(BaseModel):
-    user_id: int
+    # `user_id` is accepted only for older clients. The acting user is always
+    # the authenticated session; a different id is rejected.
+    user_id: Optional[int] = None
     amount: float
 
 
 class WithdrawRequest(BaseModel):
-    user_id: int
+    user_id: Optional[int] = None
     amount: float
     otp: Optional[str] = None
     idempotency_key: Optional[str] = None
 
 
 class PayRequest(BaseModel):
-    passenger_id: int
-    driver_id: Optional[int] = None
+    # `passenger_id` is accepted only for older clients; it must equal the
+    # authenticated user. `driver_id` and `idempotency_key` are mandatory.
+    passenger_id: Optional[int] = None
+    driver_id: int
     fare: float
     vehicle_type: Optional[str] = None
     vehicle_number: Optional[str] = None
     driver_name: Optional[str] = None
     payment_method: Optional[str] = "QR"
-    idempotency_key: Optional[str] = None
+    idempotency_key: str
+
+
+MAX_PAYMENT_AMOUNT = Decimal(os.getenv("MAX_PAYMENT_AMOUNT", "50000"))
+
+
+def to_money(value: float) -> Decimal:
+    """Validate a client-supplied rupee amount and return it as a 2-dp Decimal."""
+    if not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise HTTPException(status_code=400, detail="Amount is not valid.")
+    try:
+        dec = Decimal(str(value)).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError):
+        raise HTTPException(status_code=400, detail="Amount is not valid.")
+    if dec <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be at least ₹0.01.")
+    if Decimal(str(value)) != dec:
+        raise HTTPException(status_code=400, detail="Amount can have at most two decimal places.")
+    return dec
+
+
+def own_user_id(claimed: Optional[int], current_user: User) -> int:
+    """The acting user always comes from the session; a conflicting id is refused."""
+    if claimed is not None and claimed != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to act for another user.")
+    return current_user.id
 
 
 def wallet_to_dict(wallet: Wallet):
@@ -85,7 +117,9 @@ def get_or_create_wallet(user_id: int, db: Session, for_update: bool = False) ->
 
 
 @router.get("/{user_id}")
-def get_user_wallet(user_id: int, db: Session = Depends(get_db)):
+def get_user_wallet(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to view this wallet.")
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
@@ -94,7 +128,9 @@ def get_user_wallet(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{user_id}/transactions")
-def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
+def get_user_transactions(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to view these transactions.")
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
@@ -129,7 +165,19 @@ def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
         is_credit = False
         change = amount_dec
 
-        if t.passenger_id == user_id:
+        if t.transaction_type == "withdrawal_reversal":
+            # Refund of a rejected withdrawal: money returned to the wallet.
+            is_credit = True
+            change = abs(amount_dec)
+            type_label = "Withdrawal Reversal"
+            description = t.description or f"₹{float(change):.2f} returned to wallet"
+        elif t.transaction_type == "deposit" and t.passenger_id != user_id:
+            # A driver's own deposit is filed under the driver id; it is not a ride payment.
+            is_credit = True
+            change = abs(amount_dec)
+            type_label = "Add Money (Razorpay)" if t.payment_method == "razorpay" or t.provider == "RAZORPAY" else "Deposit"
+            description = t.description or f"₹{float(change):.2f} credited to wallet"
+        elif t.passenger_id == user_id:
             if t.payment_method in ("razorpay", "topup", "payment_gateway", "deposit", "upi") or t.transaction_type == "deposit" or t.amount < 0:
                 is_credit = True
                 change = abs(amount_dec)
@@ -188,6 +236,7 @@ def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
             "driver_id": t.driver_id,
             "driver": user_map.get(t.driver_id, "Driver"),
             "passenger": user_map.get(t.passenger_id, "Passenger"),
+            "transaction_type": t.transaction_type,
         })
 
     formatted_txns.reverse()
@@ -198,24 +247,44 @@ def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
     }
 
 
+
+
+def _lock_order(*user_ids):
+    """Stable order for touching two wallets, so opposing payments cannot deadlock."""
+    return sorted(set(user_ids))
+
+
+def _debit(db: Session, user_id: int, amount: Decimal) -> bool:
+    """Atomic conditional debit: succeeds only if the wallet is not frozen and has funds."""
+    return db.query(Wallet).filter(
+        Wallet.user_id == user_id, Wallet.is_frozen.is_(False), Wallet.balance >= amount
+    ).update({Wallet.balance: Wallet.balance - amount}, synchronize_session=False) == 1
+
+
+def _credit(db: Session, user_id: int, amount: Decimal, allow_frozen: bool = False) -> bool:
+    q = db.query(Wallet).filter(Wallet.user_id == user_id)
+    if not allow_frozen:
+        q = q.filter(Wallet.is_frozen.is_(False))
+    return q.update({Wallet.balance: Wallet.balance + amount}, synchronize_session=False) == 1
+
+
+# ───────────────────────────── withdrawals ──────────────────────────────────
+
 @router.post("/withdraw/request-otp")
-def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_db)):
+def request_withdrawal_otp(
+    data: WithdrawOTPRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
-    Generates and emails a single-use OTP for withdrawal confirmation via Amazon SES.
-    - 5-minute expiration
-    - 60-second cooldown
-    - Canonical reason 'withdraw_balance', synchronized purpose 'withdraw_balance'
-    - Prior unconsumed OTPs invalidated with used=True
-    - OTP record remains persisted even if SES delivery fails
-    - Never physically deleted
+    Generates and emails a single-use withdrawal OTP to the authenticated
+    user's own address. The OTP is bound to the user and to the exact amount.
+    - 5-minute expiration, 60-second cooldown (HTTP 429), prior OTPs invalidated.
     """
-    if data.amount <= 0:
-        raise HTTPException(status_code=400, detail="Withdrawal amount must be greater than zero.")
+    own_user_id(data.user_id, current_user)
+    withdraw_dec = to_money(data.amount)
 
-    user = db.get(User, data.user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
-
+    user = current_user
     if not (user.bank_account_number and user.bank_account_number.strip()) and not (user.bank_upi_id and user.bank_upi_id.strip()):
         raise HTTPException(
             status_code=400,
@@ -226,7 +295,6 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
     if wallet.is_frozen:
         raise HTTPException(status_code=400, detail="Your wallet is frozen. Withdrawals are disabled.")
 
-    withdraw_dec = Decimal(str(round(data.amount, 2)))
     if wallet.balance < withdraw_dec:
         raise HTTPException(
             status_code=400,
@@ -235,7 +303,6 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
 
     clean_email = user.email.strip().lower()
 
-    # 60-second cooldown check
     existing_otp = db.query(EmailOTP).filter(
         func.lower(EmailOTP.email) == clean_email,
         or_(
@@ -253,7 +320,6 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
                 detail=f"Please wait {remaining_seconds} seconds before requesting another withdrawal OTP."
             )
 
-    # Invalidate previous unconsumed withdrawal OTPs for this email (used=True)
     db.query(EmailOTP).filter(
         func.lower(EmailOTP.email) == clean_email,
         or_(
@@ -263,11 +329,10 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
         EmailOTP.used == False,
     ).update({"used": True}, synchronize_session=False)
 
-    # Generate 6-digit OTP with 5-minute expiration
-    otp_code = f"{random.randint(100000, 999999)}"
+    otp_code = generate_otp()
     expires_at = datetime.utcnow() + timedelta(minutes=5)
 
-    new_otp = EmailOTP(
+    db.add(EmailOTP(
         email=user.email,
         otp=otp_code,
         reason="withdraw_balance",
@@ -276,12 +341,11 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
         is_verified=False,
         used=False,
         expires_at=expires_at,
-    )
-    db.add(new_otp)
+        otp_metadata=json.dumps({"amount": str(withdraw_dec), "user_id": user.id}),
+    ))
     db.commit()
 
-    # Deliver via real Amazon SES
-    email_sent = send_withdrawal_otp(to_email=user.email, otp=otp_code, amount=data.amount)
+    email_sent = send_withdrawal_otp(to_email=user.email, otp=otp_code, amount=float(withdraw_dec))
 
     dest_str = f"Bank Account (ending in {user.bank_account_number.strip()[-4:]})" if user.bank_account_number else f"UPI ID ({user.bank_upi_id})"
 
@@ -293,47 +357,61 @@ def request_withdrawal_otp(data: WithdrawOTPRequest, db: Session = Depends(get_d
     }
 
 
+def _withdrawal_replay(db: Session, key: str, user: User, amount: Decimal):
+    existing = db.query(WithdrawalRequest).filter(
+        WithdrawalRequest.idempotency_key == key, WithdrawalRequest.user_id == user.id
+    ).first()
+    if not existing:
+        return None
+    if existing.amount != amount:
+        raise HTTPException(status_code=409, detail="This idempotency key was used for a different withdrawal.")
+    wallet = get_or_create_wallet(user.id, db)
+    return {
+        "success": True,
+        "message": "Withdrawal request already submitted. Awaiting admin review.",
+        "wallet": wallet_to_dict(wallet),
+        "request_id": existing.id,
+        "request_status": existing.status,
+        "reference": existing.reference,
+        "idempotent": True,
+    }
+
+
 @router.post("/withdraw")
-def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
+def withdraw_to_bank(
+    data: WithdrawRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
-    Submits a withdrawal request using server-side Email OTP verification.
-    Atomically reserves (deducts) the balance and creates a WithdrawalRequest
-    (status=pending). The balance stays deducted until admin approves/rejects.
-    Prevents concurrent double-spending via with_for_update() row locking.
-    Idempotency: duplicate idempotency_key returns the existing request.
-    Notification email sent post-commit; email failure never rolls back the transaction.
+    Submits a withdrawal request for the authenticated user.
+
+    Requires the emailed OTP, which must belong to this user and be bound to the
+    exact amount. The OTP is consumed, the balance reserved, and the request
+    created in ONE transaction. Replays with the same idempotency key (scoped to
+    the user) return the original request.
     """
+    own_user_id(data.user_id, current_user)
+    user = current_user
+    withdraw_dec = to_money(data.amount)
+
+    scoped_key = None
     if data.idempotency_key:
-        existing_wr = db.query(WithdrawalRequest).filter(
-            WithdrawalRequest.idempotency_key == data.idempotency_key
-        ).first()
-        if existing_wr:
-            wallet = get_or_create_wallet(data.user_id, db)
-            return {
-                "success": True,
-                "message": "Withdrawal request already submitted. Awaiting admin review.",
-                "wallet": wallet_to_dict(wallet),
-                "request_id": existing_wr.id,
-                "request_status": existing_wr.status,
-            }
-
-    if data.amount <= 0:
-        raise HTTPException(status_code=400, detail="Withdrawal amount must be greater than zero.")
-
-    user = db.get(User, data.user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
+        if len(data.idempotency_key) > 100:
+            raise HTTPException(status_code=400, detail="Idempotency key is too long.")
+        scoped_key = f"wd:{user.id}:{data.idempotency_key}"
+        replay = _withdrawal_replay(db, scoped_key, user, withdraw_dec)
+        if replay:
+            return replay
 
     has_bank = user.bank_account_number and user.bank_account_number.strip()
     has_upi = user.bank_upi_id and user.bank_upi_id.strip()
-
     if not has_bank and not has_upi:
         raise HTTPException(
             status_code=400,
             detail="No saved payout destination found. Please add bank or UPI details in your Profile first."
         )
 
-    # Validate OTP
     if not data.otp or not data.otp.strip():
         raise HTTPException(status_code=400, detail="Email OTP is required for withdrawal confirmation.")
 
@@ -370,32 +448,49 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
         remaining = max(0, 5 - db_otp.attempts)
         raise HTTPException(status_code=400, detail=f"Invalid OTP code. ({remaining} attempts remaining)")
 
-    # Single-use OTP: mark used=True (persisted, never deleted)
-    db_otp.is_verified = True
-    db_otp.used = True
+    # The OTP must have been issued to this user for exactly this amount.
+    try:
+        meta = json.loads(db_otp.otp_metadata) if db_otp.otp_metadata else None
+    except ValueError:
+        meta = None
+    if (
+        not isinstance(meta, dict)
+        or meta.get("user_id") != user.id
+        or Decimal(str(meta.get("amount", "-1"))) != withdraw_dec
+    ):
+        db_otp.attempts += 1
+        if db_otp.attempts >= 5:
+            db_otp.used = True
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail="This OTP was not issued for this withdrawal amount. Please request a new OTP.",
+        )
 
-
-    # ── Atomic Balance Reservation (with row-level lock) ──────────────────────
-    # Lock wallet row exclusively to prevent concurrent double-spending
-    wallet = get_or_create_wallet(data.user_id, db, for_update=True)
+    wallet = get_or_create_wallet(user.id, db)
     if wallet.is_frozen:
         raise HTTPException(status_code=400, detail="Your wallet is frozen. Withdrawals are disabled.")
 
-    withdraw_dec = Decimal(str(round(data.amount, 2)))
-    if wallet.balance < withdraw_dec:
+    # ── One transaction: consume the OTP, reserve the funds, record the request ──
+    consumed = db.query(EmailOTP).filter(
+        EmailOTP.id == db_otp.id, EmailOTP.used == False
+    ).update({"used": True, "is_verified": True}, synchronize_session=False)
+    if consumed != 1:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="This OTP has already been used. Please request a new OTP.")
+
+    if not _debit(db, user.id, withdraw_dec):
+        db.rollback()
         raise HTTPException(
             status_code=400,
-            detail=f"Insufficient wallet balance. Available balance is ₹{float(wallet.balance):.2f}."
+            detail="Insufficient wallet balance or wallet unavailable.",
         )
-
-    # Deduct balance atomically (reservation/hold)
-    wallet.balance -= withdraw_dec
+    db.refresh(wallet)
 
     dest_desc = f"Bank Account (XXXX XXXX {user.bank_account_number.strip()[-4:]})" if has_bank else f"UPI ID ({user.bank_upi_id})"
     ref_code = f"WD-{uuid.uuid4().hex[:10].upper()}"
-    desc = f"₹{data.amount:.2f} withdrawal hold — pending admin approval to {dest_desc}"
+    desc = f"₹{withdraw_dec:.2f} withdrawal hold — pending admin approval to {dest_desc}"
 
-    # Record withdrawal_hold transaction (status=pending, not completed)
     hold_txn = Transaction(
         reference=ref_code,
         passenger_id=user.id if user.account_type == "passenger" else None,
@@ -409,35 +504,40 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
         transaction_type="withdrawal_hold",
         description=desc,
         balance_after=wallet.balance,
-        idempotency_key=data.idempotency_key,
+        idempotency_key=scoped_key,
     )
     db.add(hold_txn)
-    db.flush()  # get hold_txn.id without committing
-
-    # Create WithdrawalRequest record
-    wr = WithdrawalRequest(
-        user_id=user.id,
-        wallet_id=wallet.id,
-        hold_transaction_id=hold_txn.id,
-        amount=withdraw_dec,
-        destination_desc=dest_desc,
-        reference=ref_code,
-        otp_verified=True,
-        status="pending",
-        idempotency_key=data.idempotency_key,
-    )
-    db.add(wr)
-    db.commit()
+    try:
+        db.flush()
+        wr = WithdrawalRequest(
+            user_id=user.id,
+            wallet_id=wallet.id,
+            hold_transaction_id=hold_txn.id,
+            amount=withdraw_dec,
+            destination_desc=dest_desc,
+            reference=ref_code,
+            otp_verified=True,
+            status="pending",
+            idempotency_key=scoped_key,
+        )
+        db.add(wr)
+        db.commit()
+    except IntegrityError:
+        # A concurrent request with the same idempotency key won the race.
+        db.rollback()
+        replay = _withdrawal_replay(db, scoped_key, user, withdraw_dec) if scoped_key else None
+        if replay:
+            return replay
+        raise HTTPException(status_code=409, detail="Could not record the withdrawal. Please try again.")
     db.refresh(wallet)
     db.refresh(hold_txn)
     db.refresh(wr)
 
-    # Post-commit notification (never rolls back the transaction)
     try:
         send_withdrawal_email(
             to_email=user.email,
             user_name=user.name,
-            amount=data.amount,
+            amount=float(withdraw_dec),
             reference=ref_code,
             destination=dest_desc,
             status="Pending Admin Review",
@@ -447,16 +547,19 @@ def withdraw_to_bank(data: WithdrawRequest, db: Session = Depends(get_db)):
 
     return {
         "success": True,
-        "message": f"Withdrawal request of ₹{data.amount:.2f} submitted and is pending admin review. Your balance has been reserved.",
+        "message": f"Withdrawal request of ₹{withdraw_dec:.2f} submitted and is pending admin review. Your balance has been reserved.",
         "wallet": wallet_to_dict(wallet),
         "request_id": wr.id,
         "request_status": wr.status,
+        "reference": wr.reference,
     }
+
+
 @router.get("/withdraw/history")
 def get_withdrawal_history(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Returns the authenticated user's withdrawal request history.
-    User identity is derived from JWT — no user_id parameter accepted.
+    User identity is derived from the session - no user_id parameter accepted.
     """
     requests = db.query(WithdrawalRequest).filter(
         WithdrawalRequest.user_id == current_user.id
@@ -481,136 +584,147 @@ def get_withdrawal_history(current_user: User = Depends(get_current_user), db: S
     }
 
 
+# ───────────────────────────── ride payment ─────────────────────────────────
+
+def _pay_response(txn: Transaction, wallet: Wallet, driver_name: str, message: str, idempotent: bool = False):
+    body = {
+        "success": True,
+        "message": message,
+        "wallet": wallet_to_dict(wallet),
+        "transaction": {
+            "id": txn.id,
+            "reference": txn.reference,
+            "status": txn.status,
+            "amount": float(txn.amount),
+            "driver_id": txn.driver_id,
+            "driver_name": driver_name,
+            "created_at": txn.created_at.isoformat() if txn.created_at else None,
+        },
+    }
+    if idempotent:
+        body["idempotent"] = True
+    return body
+
 
 @router.post("/pay")
-def pay_fare(data: PayRequest, db: Session = Depends(get_db)):
+def pay_fare(
+    data: PayRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
-    Normal Tap & Go Ride Payment Flow.
-    Passenger Wallet -> Internal Tap & Go Ledger -> Driver Wallet.
-    RAZORPAY IS NOT USED FOR NORMAL RIDES.
-    Transaction committed first, then email notifications dispatched safely.
+    Passenger wallet -> driver wallet (internal ledger; Razorpay is not involved).
+
+    - The payer is the authenticated passenger; `passenger_id` is never trusted.
+    - `driver_id` is mandatory and must be another, active driver. There is no
+      fallback to any other driver.
+    - Both wallets are checked and changed in ONE transaction with atomic
+      conditional updates: nothing is debited unless the recipient can be
+      credited, and a failed request changes nothing.
+    - `idempotency_key` is mandatory and scoped to the payer; a replay returns
+      the original transaction, a conflicting reuse is refused.
     """
-    if data.idempotency_key:
-        existing = db.query(Transaction).filter(Transaction.idempotency_key == data.idempotency_key).first()
-        if existing:
-            wallet = get_or_create_wallet(data.passenger_id, db)
-            return {
-                "success": True,
-                "message": f"Payment of ₹{data.fare:.2f} completed.",
-                "wallet": wallet_to_dict(wallet),
-            }
+    passenger = current_user
+    own_user_id(data.passenger_id, passenger)
+    if passenger.account_type != "passenger" or passenger.status != "active":
+        raise HTTPException(status_code=403, detail="Only active passenger accounts can pay.")
 
-    if data.fare <= 0:
-        raise HTTPException(status_code=400, detail="Fare amount must be greater than zero.")
+    fare_dec = to_money(data.fare)
+    if fare_dec > MAX_PAYMENT_AMOUNT:
+        raise HTTPException(status_code=400, detail=f"Payments are limited to ₹{MAX_PAYMENT_AMOUNT:.2f} each.")
 
-    passenger = db.get(User, data.passenger_id)
-    if not passenger:
-        raise HTTPException(status_code=404, detail="Passenger user not found.")
+    key = (data.idempotency_key or "").strip()
+    if len(key) < 8 or len(key) > 100:
+        raise HTTPException(status_code=400, detail="A valid idempotency key is required.")
+    scoped_key = f"pay:{passenger.id}:{key}"
 
-    # Exclusively lock passenger wallet row to prevent concurrent double-spending
-    p_wallet = get_or_create_wallet(passenger.id, db, for_update=True)
-    if p_wallet.is_frozen:
-        # Failure notification
-        try:
-            if passenger.email:
-                send_ride_passenger_email(
-                    to_email=passenger.email,
-                    passenger_name=passenger.name,
-                    fare=data.fare,
-                    driver_name=data.driver_name or "Driver",
-                    reference=f"FAIL-{uuid.uuid4().hex[:8].upper()}",
-                    status="Failed (Account Frozen)",
-                )
-        except Exception:
-            pass
-        raise HTTPException(status_code=400, detail="Your passenger wallet is frozen. Payment failed.")
-
-    fare_dec = Decimal(str(round(data.fare, 2)))
-    if p_wallet.balance < fare_dec:
-        # Failure notification
-        try:
-            if passenger.email:
-                send_ride_passenger_email(
-                    to_email=passenger.email,
-                    passenger_name=passenger.name,
-                    fare=data.fare,
-                    driver_name=data.driver_name or "Driver",
-                    reference=f"FAIL-{uuid.uuid4().hex[:8].upper()}",
-                    status="Failed (Insufficient Balance)",
-                )
-        except Exception:
-            pass
-        raise HTTPException(
-            status_code=400,
-            detail=f"Insufficient wallet balance (₹{float(p_wallet.balance):.2f}). Please add funds first."
+    def replay():
+        existing = db.query(Transaction).filter(Transaction.idempotency_key == scoped_key).first()
+        if not existing:
+            return None
+        if existing.driver_id != data.driver_id or existing.amount != fare_dec:
+            raise HTTPException(status_code=409, detail="This idempotency key was used for a different payment.")
+        drv = db.get(User, existing.driver_id)
+        return _pay_response(
+            existing, get_or_create_wallet(passenger.id, db), drv.name if drv else "Driver",
+            f"Payment of ₹{fare_dec:.2f} completed.", idempotent=True,
         )
 
-    driver_id = data.driver_id
-    driver_name = data.driver_name
-    driver_user = None
-    if not driver_id:
-        active_driver = db.query(User).filter(User.account_type == "driver", User.status == "active").first()
-        if active_driver:
-            driver_id = active_driver.id
-            driver_user = active_driver
-            if not driver_name:
-                driver_name = active_driver.name
-    elif not driver_name:
-        driver_user = db.get(User, driver_id)
-        if driver_user:
-            driver_name = driver_user.name
-    else:
-        driver_user = db.get(User, driver_id)
+    done = replay()
+    if done:
+        return done
 
-    if not driver_name:
-        driver_name = f"Driver #{driver_id}" if driver_id else "Driver"
+    driver = db.get(User, data.driver_id)
+    if not driver or driver.account_type != "driver" or driver.status != "active" or driver.id == passenger.id:
+        raise HTTPException(status_code=400, detail="The recipient is not an eligible driver.")
 
-    p_wallet.balance -= fare_dec
+    # Wallet rows must exist before the money transaction starts (creating one commits).
+    p_wallet = get_or_create_wallet(passenger.id, db)
+    d_wallet = get_or_create_wallet(driver.id, db)
+    if p_wallet.is_frozen:
+        raise HTTPException(status_code=400, detail="Your passenger wallet is frozen. Payment failed.")
+    if d_wallet.is_frozen:
+        raise HTTPException(status_code=400, detail="The driver cannot receive payments right now.")
 
-    d_wallet = None
-    if driver_id:
-        # Exclusively lock driver wallet row during credit
-        d_wallet = get_or_create_wallet(driver_id, db, for_update=True)
-        if not d_wallet.is_frozen:
-            d_wallet.balance += fare_dec
+    steps = {
+        passenger.id: lambda: _debit(db, passenger.id, fare_dec),
+        driver.id: lambda: _credit(db, driver.id, fare_dec),
+    }
+    for uid in _lock_order(passenger.id, driver.id):
+        if not steps[uid]():
+            db.rollback()
+            if uid == passenger.id:
+                db.refresh(p_wallet)
+                if p_wallet.is_frozen:
+                    raise HTTPException(status_code=400, detail="Your passenger wallet is frozen. Payment failed.")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Insufficient wallet balance (₹{float(p_wallet.balance):.2f}). Please add funds first."
+                )
+            raise HTTPException(status_code=400, detail="The driver cannot receive payments right now.")
 
+    db.refresh(p_wallet)
     ref_code = f"TXN{uuid.uuid4().hex[:10].upper()}"
-    desc = f"₹{data.fare:.2f} paid to {driver_name}"
-
     txn = Transaction(
         reference=ref_code,
         passenger_id=passenger.id,
-        driver_id=driver_id,
+        driver_id=driver.id,
         wallet_id=p_wallet.id,
         amount=fare_dec,
-        payment_method=data.payment_method or "QR",
+        payment_method=(data.payment_method or "QR")[:20],
         status="completed",
         otp_verified=True,
         fraud_status="clear",
         transaction_type="ride_payment",
-        description=desc,
+        description=f"₹{fare_dec:.2f} paid to {driver.name}",
         balance_after=p_wallet.balance,
-        idempotency_key=data.idempotency_key,
+        idempotency_key=scoped_key,
     )
     db.add(txn)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Another request with the same key committed first: nothing of ours persists.
+        db.rollback()
+        done = replay()
+        if done:
+            return done
+        raise HTTPException(status_code=409, detail="Could not record the payment. Please try again.")
     db.refresh(p_wallet)
-    if d_wallet:
-        db.refresh(d_wallet)
     db.refresh(txn)
 
-    # Post-commit notifications (financial transaction already completed safely)
+    # Post-commit notifications (never affect the financial record)
     try:
         if passenger.email:
             send_ride_passenger_email(
                 to_email=passenger.email,
                 passenger_name=passenger.name,
-                fare=data.fare,
-                driver_name=driver_name,
+                fare=float(fare_dec),
+                driver_name=driver.name,
                 reference=ref_code,
                 status="Successful",
-                vehicle_type=driver_user.vehicle_type if driver_user else (data.vehicle_type or None),
-                vehicle_registration=driver_user.vehicle_registration if driver_user else (data.vehicle_number or None),
+                vehicle_type=driver.vehicle_type or data.vehicle_type,
+                vehicle_registration=driver.vehicle_registration or data.vehicle_number,
                 payment_method=f"Tap & Go Wallet ({data.payment_method or 'QR'})",
                 balance_after=float(p_wallet.balance),
                 created_at=txn.created_at,
@@ -619,19 +733,15 @@ def pay_fare(data: PayRequest, db: Session = Depends(get_db)):
         logger.warning(f"[RideEmail] Passenger receipt failed: {e}")
 
     try:
-        if driver_user and driver_user.email:
+        if driver.email:
             send_ride_driver_email(
-                to_email=driver_user.email,
-                driver_name=driver_name,
-                fare=data.fare,
+                to_email=driver.email,
+                driver_name=driver.name,
+                fare=float(fare_dec),
                 passenger_name=passenger.name,
                 reference=ref_code,
             )
     except Exception as e:
         logger.warning(f"[RideEmail] Driver credit receipt failed: {e}")
 
-    return {
-        "success": True,
-        "message": f"Payment of ₹{data.fare:.2f} completed.",
-        "wallet": wallet_to_dict(p_wallet),
-    }
+    return _pay_response(txn, p_wallet, driver.name, f"Payment of ₹{fare_dec:.2f} completed.")

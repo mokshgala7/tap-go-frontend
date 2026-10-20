@@ -30,6 +30,14 @@ class UserRegisterForm(BaseModel):
     vehicle_model: Optional[str] = None
     driving_licence_number: Optional[str] = None
 
+    @field_validator("password")
+    def validate_password_length(cls, v: str) -> str:
+        # Minimum shared by the website and the mobile app (which also ask for letters and
+        # digits); the server enforces only the part that cannot be bypassed by a client.
+        if not (8 <= len(v) <= 128):
+            raise ValueError("Password must be between 8 and 128 characters.")
+        return v
+
     @field_validator("email")
 
     def validate_email_format(cls, v: str) -> str:

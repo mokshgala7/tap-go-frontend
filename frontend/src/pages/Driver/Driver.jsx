@@ -9,6 +9,7 @@ import DriverAccount from './DriverAccount.jsx'
 import { inr } from './format.js'
 import WithdrawModal from '../../components/Payment/WithdrawModal.jsx'
 import BankModal from '../../components/Payment/BankModal.jsx'
+import POSTerminal from '../../components/POS/POSTerminal.jsx'
 import '../Passenger/Passenger.css'
 import './Driver.css'
 
@@ -39,6 +40,7 @@ function Driver() {
   const [dark, setDark] = useDarkMode()
   const [notifications, setNotifications] = useState(true)
   const [modal, setModal] = useState(null)
+  const [showPOS, setShowPOS] = useState(false)
 
   useEffect(() => {
     if (!user) {
@@ -118,6 +120,15 @@ function Driver() {
             {label}
           </button>
         ))}
+        <button
+          className={showPOS ? 'active' : ''}
+          onClick={() => setShowPOS(true)}
+          id="driver-pos-terminal-btn"
+          title="Open POS Terminal"
+        >
+          <Icon>point_of_sale</Icon>
+          POS
+        </button>
       </nav>
 
       {modal === 'withdraw' && (
@@ -135,6 +146,16 @@ function Driver() {
         <BankModal
           onClose={() => setModal(null)}
           flash={flash}
+        />
+      )}
+
+      {showPOS && (
+        <POSTerminal
+          driver={user}
+          onClose={() => {
+            setShowPOS(false)
+            flash('POS Terminal closed.')
+          }}
         />
       )}
     </div>

@@ -25,8 +25,8 @@ const Icon = ({ children, className = '' }) => (
 
 const QUICK_AMOUNTS = [100, 200, 500, 1000]
 
-// Demo trip a scanned QR (or the manual fallback) resolves to until a real
-// POS machine + backend exist.
+// DEMO_TRIP: only used for the "Simulate Scan" camera-unavailable fallback
+// button. The real QR path never uses this constant.
 const DEMO_TRIP = {
   driver: 'Ramesh Kumar',
   vehicleType: 'Auto',
@@ -484,6 +484,14 @@ function Passenger() {
   const rafRef = useRef(null)
   const [cameraError, setCameraError] = useState('')
 
+  // QR payment confirmation state
+  const [qrScanResult, setQrScanResult]     = useState(null)   // parsed token string
+  const [qrPaymentInfo, setQrPaymentInfo]   = useState(null)   // {driver_name, amount, expires_at, ...}
+  const [qrConfirmStep, setQrConfirmStep]   = useState('idle') // idle | loading | confirm | paying | success | error
+  const [qrConfirmError, setQrConfirmError] = useState('')
+  const [qrConfirmResult, setQrConfirmResult] = useState(null) // {reference, amount}
+  const qrScanLockRef = useRef(false)   // prevents duplicate scans of the same frame
+
   const stopScanner = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
     stream.current?.getTracks().forEach((track) => track.stop())
@@ -513,17 +521,123 @@ function Passenger() {
       ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
       const code = jsQR(imageData.data, imageData.width, imageData.height)
-      if (code) {
-        completeQrPayment()
-        return
+      if (code && code.data && !qrScanLockRef.current) {
+        qrScanLockRef.current = true
+        handleQrCodeScanned(code.data)
+        return   // stop rAF loop; it will restart if scan is dismissed
       }
     }
     rafRef.current = requestAnimationFrame(tickScan)
   }
 
+  /**
+   * Called with the raw QR string.
+   * Validates it belongs to Tap&Go, extracts the token, and fetches details.
+   */
+  const handleQrCodeScanned = async (raw) => {
+    stopScanner()
+
+    // Validate format: tapgo://pay?token=<TOKEN> or http(s)://.../#/pay?token=<TOKEN>
+    let token = null
+    try {
+      if (raw.startsWith('tapgo://pay?')) {
+        token = new URLSearchParams(raw.replace('tapgo://pay?', '')).get('token')
+      } else {
+        const u = new URL(raw)
+        const hash = u.hash // e.g. #/pay?token=...
+        const search = hash.includes('?') ? hash.slice(hash.indexOf('?')) : ''
+        token = new URLSearchParams(search).get('token')
+      }
+    } catch { /* not a URL */ }
+
+    if (!token) {
+      // Not a Tap&Go QR — ignore and restart scanner
+      flash('Not a Tap&Go QR code. Please scan the driver’s terminal.')
+      qrScanLockRef.current = false
+      rafRef.current = requestAnimationFrame(tickScan)
+      return
+    }
+
+    setQrScanResult(token)
+    setQrConfirmStep('loading')
+    setQrConfirmError('')
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/qr/${encodeURIComponent(token)}`,
+        { headers: { Authorization: `Bearer ${getToken()}` } }
+      )
+      const data = await res.json()
+
+      if (!res.ok || !data.success) {
+        setQrConfirmStep('error')
+        setQrConfirmError(data.detail || 'Could not load payment details. QR may be expired.')
+        return
+      }
+      setQrPaymentInfo(data.payment)
+      setQrConfirmStep('confirm')
+    } catch {
+      setQrConfirmStep('error')
+      setQrConfirmError('Network error. Please try again.')
+    }
+  }
+
+  /**
+   * Passenger explicitly confirms payment.
+   */
+  const handleConfirmQrPayment = async () => {
+    if (!qrScanResult || qrConfirmStep === 'paying') return
+    setQrConfirmStep('paying')
+    setQrConfirmError('')
+
+    // Idempotency key: token + passenger id to survive retries
+    const idempotencyKey = `qr-${qrScanResult.slice(0, 20)}-${user?.id || 0}`
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/qr/${encodeURIComponent(qrScanResult)}/confirm`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ idempotency_key: idempotencyKey }),
+        }
+      )
+      const data = await res.json()
+
+      if (res.ok && data.success) {
+        setQrConfirmResult({
+          reference: data.transaction?.reference || '—',
+          amount: data.transaction?.amount ?? qrPaymentInfo?.amount,
+        })
+        setQrConfirmStep('success')
+        await refreshWallet?.()
+      } else {
+        setQrConfirmStep('error')
+        setQrConfirmError(data.detail || 'Payment failed. Please try again.')
+      }
+    } catch {
+      setQrConfirmStep('error')
+      setQrConfirmError('Network error. Please try again.')
+    }
+  }
+
+  const dismissQrConfirm = () => {
+    setQrScanResult(null)
+    setQrPaymentInfo(null)
+    setQrConfirmStep('idle')
+    setQrConfirmError('')
+    setQrConfirmResult(null)
+    qrScanLockRef.current = false
+    if (tab === 'scan') {
+      // Restart scanner
+      openScanner()
+    }
+  }
+
   const openScanner = async () => {
     setTab('scan')
     setCameraError('')
+    qrScanLockRef.current = false
     try {
       stream.current = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
@@ -544,15 +658,11 @@ function Passenger() {
     setTab('home')
   }
 
+  /** Legacy fallback: camera unavailable */
   const completeQrPayment = async () => {
     stopScanner()
-    const res = await payFare({ ...DEMO_TRIP, method: 'QR' })
+    flash('Camera unavailable. In a real session, scan the QR with your phone camera.')
     setTab('home')
-    if (res.success) {
-      flash(`Paid ₹${res.fare} via QR.`)
-    } else {
-      flash(res.message || 'Payment failed.')
-    }
   }
 
   const handleTapToPay = () => {
@@ -1757,9 +1867,108 @@ function Passenger() {
         <div className="frame" />
       </div>
       {cameraError && (
-        <button className="primary" onClick={completeQrPayment}>
-          Simulate Scan (Camera Unavailable)
-        </button>
+        <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: '8px 0 4px' }}>
+          Camera unavailable &mdash; use your phone to scan the QR displayed on the driver’s terminal.
+        </div>
+      )}
+
+      {/* QR confirmation modal — shown after a successful scan */}
+      {qrConfirmStep !== 'idle' && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 300,
+          background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        }}>
+          <div style={{
+            width: '100%', maxWidth: 380,
+            background: '#0b1420', borderRadius: 20,
+            border: '1.5px solid rgba(253,211,77,0.3)',
+            boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+            overflow: 'hidden',
+          }}>
+            {/* Modal header */}
+            <div style={{ background: 'rgba(253,211,77,0.08)', borderBottom: '1px solid rgba(253,211,77,0.15)', padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 900, color: '#fff', fontSize: 15 }}>Tap<span style={{ color: '#fdd34d' }}>&amp;</span>Go Pay</span>
+              {qrConfirmStep !== 'paying' && (
+                <button onClick={dismissQrConfirm} style={{ background: 'none', border: 'none', color: '#64748b', fontSize: 18, cursor: 'pointer' }}>✕</button>
+              )}
+            </div>
+
+            <div style={{ padding: '20px 20px 24px', textAlign: 'center' }}>
+
+              {/* Loading */}
+              {qrConfirmStep === 'loading' && (
+                <div style={{ color: '#64748b', fontSize: 14, padding: '20px 0' }}>
+                  <div style={{ display: 'inline-block', width: 24, height: 24, border: '3px solid rgba(253,211,77,0.3)', borderTopColor: '#fdd34d', borderRadius: '50%', animation: 'spin 0.7s linear infinite', marginBottom: 10 }} />
+                  <div>Loading payment details…</div>
+                </div>
+              )}
+
+              {/* Confirm */}
+              {qrConfirmStep === 'confirm' && qrPaymentInfo && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#64748b', marginBottom: 6 }}>Confirm Payment</div>
+                  <div style={{ fontSize: 42, fontWeight: 900, color: '#fdd34d', letterSpacing: '-0.02em', marginBottom: 4 }}>
+                    ₹{Number(qrPaymentInfo.amount).toFixed(2)}
+                  </div>
+                  <div style={{ fontSize: 14, color: '#94a3b8', marginBottom: 4 }}>to <strong style={{ color: '#e2e8f0' }}>{qrPaymentInfo.driver_name}</strong></div>
+                  {qrPaymentInfo.remaining_seconds > 0 && (
+                    <div style={{ fontSize: 12, color: '#475569', marginBottom: 16 }}>QR valid for {qrPaymentInfo.remaining_seconds}s</div>
+                  )}
+                  <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                    <button
+                      onClick={dismissQrConfirm}
+                      style={{ flex: 1, padding: '13px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, color: '#94a3b8', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}
+                    >Cancel</button>
+                    <button
+                      id="qr-confirm-pay-btn"
+                      onClick={handleConfirmQrPayment}
+                      style={{ flex: 2, padding: '13px', background: 'linear-gradient(135deg,#fdd34d,#f59e0b)', border: 0, borderRadius: 12, color: '#0a0a0a', fontWeight: 900, cursor: 'pointer', fontSize: 15 }}
+                    >
+                      Pay ₹{Number(qrPaymentInfo.amount).toFixed(2)}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Paying */}
+              {qrConfirmStep === 'paying' && (
+                <div style={{ color: '#64748b', fontSize: 14, padding: '20px 0' }}>
+                  <div style={{ display: 'inline-block', width: 24, height: 24, border: '3px solid rgba(253,211,77,0.3)', borderTopColor: '#fdd34d', borderRadius: '50%', animation: 'spin 0.7s linear infinite', marginBottom: 10 }} />
+                  <div>Processing payment…</div>
+                </div>
+              )}
+
+              {/* Success */}
+              {qrConfirmStep === 'success' && qrConfirmResult && (
+                <>
+                  <div style={{ fontSize: 52, marginBottom: 8 }}>✅</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#4ade80', marginBottom: 4 }}>Payment Successful!</div>
+                  <div style={{ fontSize: 34, fontWeight: 900, color: '#fdd34d', marginBottom: 4 }}>₹{Number(qrConfirmResult.amount).toFixed(2)}</div>
+                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#475569', background: 'rgba(255,255,255,0.05)', padding: '4px 12px', borderRadius: 6, marginBottom: 18 }}>{qrConfirmResult.reference}</div>
+                  <button
+                    onClick={() => { dismissQrConfirm(); setTab('home') }}
+                    style={{ width: '100%', padding: '13px', background: 'linear-gradient(135deg,#fdd34d,#f59e0b)', border: 0, borderRadius: 12, color: '#0a0a0a', fontWeight: 900, cursor: 'pointer', fontSize: 15 }}
+                  >Done</button>
+                </>
+              )}
+
+              {/* Error */}
+              {qrConfirmStep === 'error' && (
+                <>
+                  <div style={{ fontSize: 42, marginBottom: 8 }}>⚠️</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#f87171', marginBottom: 8 }}>Payment Failed</div>
+                  <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 18 }}>{qrConfirmError}</div>
+                  <button
+                    onClick={dismissQrConfirm}
+                    style={{ width: '100%', padding: '13px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, color: '#e2e8f0', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}
+                  >Try Again</button>
+                </>
+              )}
+
+            </div>
+          </div>
+        </div>
       )}
     </>
   )

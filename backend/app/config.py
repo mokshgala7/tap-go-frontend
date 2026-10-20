@@ -9,9 +9,29 @@ possible_env_paths = [
     os.path.join(os.getcwd(), 'backend', '.env'),
 ]
 
-for p in possible_env_paths:
-    if os.path.exists(p):
-        load_dotenv(dotenv_path=p, override=True)
+# Automated tests must never read real credentials or reach a real database or
+# provider. tests/conftest.py sets TAPGO_TESTING=1 before anything is imported.
+if os.getenv("TAPGO_TESTING") != "1":
+    for p in possible_env_paths:
+        if os.path.exists(p):
+            load_dotenv(dotenv_path=p, override=True)
+
+# Sender used when neither SES_FROM_EMAIL nor AWS_SES_FROM_EMAIL is set. It belongs to the
+# domain that has a verified SES identity (thetapandgo.in, DKIM aligned), so a missing
+# variable can never fall back to a personal mailbox. There is no mailbox behind it:
+# replies are routed through SES_REPLY_TO_EMAIL.
+DEFAULT_SES_FROM = "Tap & Go <noreply@thetapandgo.in>"
+
+
+def _ses_from_setting() -> str:
+    """SES_FROM_EMAIL, else the AWS_SES_FROM_EMAIL alias, else the default. Blank or
+    whitespace-only values count as unset (they must not produce an empty sender)."""
+    for name in ("SES_FROM_EMAIL", "AWS_SES_FROM_EMAIL"):
+        value = (os.getenv(name) or "").strip()
+        if value:
+            return value
+    return DEFAULT_SES_FROM
+
 
 class Settings:
     @property
@@ -81,14 +101,14 @@ class Settings:
 
     @property
     def SES_FROM_EMAIL(self) -> str:
-        raw = (os.getenv("SES_FROM_EMAIL") or os.getenv("AWS_SES_FROM_EMAIL") or "tapandgosupport@gmail.com").strip()
+        raw = _ses_from_setting()
         if "<" in raw:
             return raw
         return f"Tap & Go <{raw}>"
 
     @property
     def SES_SENDER_EMAIL(self) -> str:
-        raw = (os.getenv("SES_FROM_EMAIL") or os.getenv("AWS_SES_FROM_EMAIL") or "tapandgosupport@gmail.com").strip()
+        raw = _ses_from_setting()
         if "<" in raw and ">" in raw:
             return raw.split("<")[1].split(">")[0].strip()
         return raw
@@ -176,6 +196,19 @@ class Settings:
         return f"{driver}://{auth}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
 
+
+    @property
+    def ALLOW_MOCK_PAYMENTS(self) -> bool:
+        """Development-only: allow fake Razorpay orders when no keys are set.
+        Ignored (always False) in a production environment."""
+        if self.IS_PRODUCTION:
+            return False
+        return os.getenv("ALLOW_MOCK_PAYMENTS", "false").strip().lower() in ("1", "true", "yes")
+
+    @property
+    def RAZORPAY_LIVE_ENABLED(self) -> bool:
+        """Live-mode keys (rzp_live_*) are refused unless this is explicitly true."""
+        return os.getenv("RAZORPAY_LIVE_ENABLED", "false").strip().lower() in ("1", "true", "yes")
 
     @property
     def RAZORPAY_KEY_ID(self) -> str:

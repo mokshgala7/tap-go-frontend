@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import unittest
 from unittest.mock import MagicMock, patch
+import json
 import pytest
 from botocore.exceptions import ClientError, BotoCoreError
 
@@ -397,7 +398,14 @@ def test_driver_forgot_password_otp_flow():
             fp_phone_req = ForgotPasswordRequest(account=f"+91 {driver_phone}")
             fp_phone_res = asyncio.run(forgot_password_otp(fp_phone_req, db=db))
             assert fp_phone_res.get("success") is True
-            assert fp_phone_res.get("email") == clean_driver_email
+            # Security review: a phone lookup must NOT hand out the registered e-mail address
+            # (it used to be returned here); the code still goes to that address.
+            assert "email" not in fp_phone_res and clean_driver_email not in str(fp_phone_res)
+            assert db.query(EmailOTP).filter(
+                EmailOTP.email == clean_driver_email,
+                EmailOTP.reason == "forgot_password",
+                EmailOTP.used == False,
+            ).first() is not None
 
 
 # ============================================================================
@@ -444,7 +452,8 @@ def test_financial_resiliency_on_ses_failure():
                 fare=200.00,
                 driver_name=driver.name,
                 payment_method="QR",
-            ), db=db)
+                idempotency_key=f"resil-a-{ts}-0001",
+            ), current_user=passenger, db=db)
             assert pay_res.get("success") is True
             db.refresh(p_wallet)
             db.refresh(d_wallet)
@@ -459,7 +468,8 @@ def test_financial_resiliency_on_ses_failure():
                 fare=300.00,
                 driver_name=driver.name,
                 payment_method="QR",
-            ), db=db)
+                idempotency_key=f"resil-b-{ts}-0002",
+            ), current_user=passenger, db=db)
             assert pay_res2.get("success") is True
             db.refresh(p_wallet)
             db.refresh(d_wallet)
@@ -479,6 +489,7 @@ def test_financial_resiliency_on_ses_failure():
             attempts=0,
             is_verified=False,
             expires_at=datetime.utcnow() + timedelta(minutes=5),
+            otp_metadata=json.dumps({"amount": "150.00", "user_id": passenger.id}),
         )
         db.add(w_otp)
         db.commit()
@@ -488,7 +499,7 @@ def test_financial_resiliency_on_ses_failure():
                 user_id=passenger.id,
                 amount=150.00,
                 otp="776655",
-            ), db=db)
+            ), current_user=passenger, db=db)
             assert w_res.get("success") is True
             db.refresh(p_wallet)
             assert p_wallet.balance == Decimal("350.00"), f"Expected 350.00, got {p_wallet.balance}"
@@ -587,7 +598,7 @@ def test_canonical_reasons_and_purpose_sync():
             wallet = get_or_create_wallet(user.id, db)
             wallet.balance = Decimal("500.00")
             db.commit()
-            res3 = request_withdrawal_otp(WithdrawOTPRequest(user_id=user.id, amount=100.0), db=db)
+            res3 = request_withdrawal_otp(WithdrawOTPRequest(user_id=user.id, amount=100.0), current_user=user, db=db)
             assert res3.get("success") is True
             row3 = db.query(EmailOTP).filter(EmailOTP.email == email, EmailOTP.reason == "withdraw_balance").first()
             assert row3.reason == "withdraw_balance"
@@ -636,6 +647,7 @@ def test_otp_persistence_no_deletion_on_consumption():
             is_verified=False,
             used=False,
             expires_at=datetime.utcnow() + timedelta(minutes=5),
+            otp_metadata=json.dumps({"amount": "100.00", "user_id": user.id}),
         )
         db.add(w_otp)
         db.commit()
@@ -645,7 +657,7 @@ def test_otp_persistence_no_deletion_on_consumption():
 
         # Execute withdrawal
         with patch("app.utils.email_service._send_ses_email", return_value=(True, None)):
-            res = withdraw_to_bank(WithdrawRequest(user_id=user.id, amount=100.0, otp="654321"), db=db)
+            res = withdraw_to_bank(WithdrawRequest(user_id=user.id, amount=100.0, otp="654321"), current_user=user, db=db)
             assert res.get("success") is True
 
         # Row MUST still exist in database with used=True and is_verified=True
@@ -931,7 +943,7 @@ def test_ses_failure_keeps_otp_persisted():
                 fp_row.created_at = datetime.utcnow() - timedelta(seconds=65)
                 db.commit()
 
-            res_w = request_withdrawal_otp(WithdrawOTPRequest(user_id=user.id, amount=50.0), db=db)
+            res_w = request_withdrawal_otp(WithdrawOTPRequest(user_id=user.id, amount=50.0), current_user=user, db=db)
             assert res_w.get("email_sent") is False
             w_row = db.query(EmailOTP).filter(EmailOTP.email == email, EmailOTP.reason == "withdraw_balance").first()
             assert w_row is not None, "CRITICAL: Withdrawal OTP was deleted on SES failure!"

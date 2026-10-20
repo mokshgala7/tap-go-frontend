@@ -44,18 +44,17 @@ def legacy_alias_for(canonical: str) -> Optional[str]:
 
 from app.schemas import UserRegisterForm, UserLoginRequest, SendOTPRequest, EMAIL_REGEX, PHONE_REGEX, UPI_REGEX
 from pydantic import BaseModel
-from app.utils.security import hash_password, verify_password, get_elapsed_seconds, is_otp_expired
+from app.utils.security import hash_password, verify_password, get_elapsed_seconds, is_otp_expired, generate_otp
 import hashlib
+import hmac
 import secrets
 from app.utils.email_service import (
     send_registration_otp,
     send_password_reset_otp,
     send_welcome_email,
     send_security_alert_email,
-    get_last_email_error,
 )
 from app.config import settings
-import random
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
@@ -83,6 +82,67 @@ def get_current_user(authorization: Optional[str] = Header(None), db: Session = 
         raise HTTPException(status_code=401, detail="User not found.")
     
     return user
+
+
+OTP_MAX_ATTEMPTS = 5
+# Codes that may be requested for one address and purpose per rolling hour. The per-code limit
+# (5 guesses) and the 60 s resend cooldown alone still allow ~7,000 guesses a day against one
+# account; this bounds it to ~25 and also bounds the e-mails an address can be made to receive.
+OTP_MAX_REQUESTS_PER_HOUR = 5
+OTP_HOURLY_CAP_MESSAGE = "Too many verification codes were requested for this address. Please try again in about an hour."
+
+
+def _hourly_code_cap_reached(db: Session, *criteria) -> bool:
+    since = datetime.utcnow() - timedelta(hours=1)
+    count = db.query(func.count(EmailOTP.id)).filter(*criteria, EmailOTP.created_at >= since).scalar() or 0
+    return count >= OTP_MAX_REQUESTS_PER_HOUR
+
+
+def _verify_otp_code(db: Session, db_otp: EmailOTP, submitted: str):
+    """Checks a submitted code against an active OTP row; safe under parallel requests.
+
+    A guess is *reserved* with one conditional UPDATE (attempts = attempts + 1 only while the
+    row is unused and below the limit) BEFORE the code is compared, so a burst of parallel
+    guesses can never exceed OTP_MAX_ATTEMPTS comparisons. A correct code gives its attempt
+    back. Returns ("ok" | "wrong" | "locked" | "gone", wrong_attempts_so_far).
+    """
+    otp_id = db_otp.id
+    reserved = db.query(EmailOTP).filter(
+        EmailOTP.id == otp_id,
+        EmailOTP.used == False,
+        EmailOTP.attempts < OTP_MAX_ATTEMPTS,
+    ).update({EmailOTP.attempts: EmailOTP.attempts + 1}, synchronize_session=False)
+    db.commit()
+    attempts = db.query(EmailOTP.attempts).filter(EmailOTP.id == otp_id).scalar() or 0
+
+    if not reserved:
+        if attempts >= OTP_MAX_ATTEMPTS:
+            db.query(EmailOTP).filter(EmailOTP.id == otp_id).update({EmailOTP.used: True}, synchronize_session=False)
+            db.commit()
+            return "locked", attempts
+        return "gone", attempts  # consumed / invalidated by another request in the meantime
+
+    if hmac.compare_digest((db_otp.otp or "").encode(), (submitted or "").strip().encode()):
+        db.query(EmailOTP).filter(EmailOTP.id == otp_id).update(
+            {EmailOTP.attempts: EmailOTP.attempts - 1}, synchronize_session=False
+        )
+        db.commit()
+        return "ok", attempts - 1
+
+    if attempts >= OTP_MAX_ATTEMPTS:
+        db.query(EmailOTP).filter(EmailOTP.id == otp_id).update({EmailOTP.used: True}, synchronize_session=False)
+        db.commit()
+    return "wrong", attempts
+
+
+def _consume_otp(db: Session, db_otp: EmailOTP) -> bool:
+    """Single use: flips used False -> True in one statement. Returns True only for the one
+    request that wins it; the caller commits (together with whatever the code unlocks)."""
+    won = db.query(EmailOTP).filter(
+        EmailOTP.id == db_otp.id,
+        EmailOTP.used == False,
+    ).update({EmailOTP.used: True, EmailOTP.is_verified: True}, synchronize_session=False)
+    return won == 1
 
 
 @router.post("/send-otp")
@@ -120,6 +180,16 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
                 detail=f"Please wait {remaining_seconds} seconds before requesting another code."
             )
 
+    if _hourly_code_cap_reached(
+        db,
+        func.lower(EmailOTP.email) == clean_email,
+        or_(
+            EmailOTP.reason == REASON_CREATE_ACCOUNT,
+            EmailOTP.purpose.in_([REASON_CREATE_ACCOUNT, "registration"]),
+        ),
+    ):
+        raise HTTPException(status_code=429, detail=OTP_HOURLY_CAP_MESSAGE)
+
     # Invalidate (used=True) all prior active registration OTPs for this email
     db.query(EmailOTP).filter(
         func.lower(EmailOTP.email) == clean_email,
@@ -131,8 +201,9 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     ).update({"used": True}, synchronize_session=False)
 
     # Generate random 6-digit OTP with 5-minute validity
-    otp = f"{random.randint(100000, 999999)}"
-    expires_at = datetime.utcnow() + timedelta(minutes=5)
+    otp = generate_otp()
+    now = datetime.utcnow()
+    expires_at = now + timedelta(minutes=5)
 
     new_otp = EmailOTP(
         email=clean_email,
@@ -143,6 +214,7 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
         is_verified=False,
         used=False,
         expires_at=expires_at,
+        created_at=now,  # explicit UTC: the cooldown and hourly cap must not depend on the database's time zone
     )
     db.add(new_otp)
     db.commit()
@@ -150,12 +222,12 @@ async def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     # Deliver via real Amazon SES
     success = send_registration_otp(clean_email, otp, request.account_type)
     if not success:
-        # OTP record remains persisted in database per system resilience rules
-        last_err = get_last_email_error()
-        diag = f": {last_err}" if last_err else ""
+        # OTP record remains persisted in database per system resilience rules. The provider's
+        # error text (identity, region, quota...) stays in the server log / email_logs; it is
+        # not sent to an anonymous caller.
         raise HTTPException(
             status_code=500,
-            detail=f"We couldn't send the verification email{diag}. Please check your email address and try again."
+            detail="We couldn't send the verification email. Please check your email address and try again."
         )
 
     return {
@@ -193,6 +265,11 @@ async def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
             clean_email = user_match.email.strip().lower()
 
     target_reason = canonicalize_reason(request.reason or request.purpose or REASON_CREATE_ACCOUNT)
+    if target_reason not in (REASON_CREATE_ACCOUNT, REASON_FORGOT_PASSWORD):
+        # This public endpoint serves registration and password recovery only. Money codes
+        # (withdrawal, top-up) are checked by their own authenticated endpoints; letting an
+        # anonymous caller guess them here would let anyone burn another user's attempts.
+        raise HTTPException(status_code=400, detail="This code cannot be verified here.")
     legacy_purpose = legacy_alias_for(target_reason)
 
     purpose_conditions = [EmailOTP.reason == target_reason, EmailOTP.purpose == target_reason]
@@ -212,7 +289,7 @@ async def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
         )
 
     # Max 5 attempts check
-    if db_otp.attempts >= 5:
+    if db_otp.attempts >= OTP_MAX_ATTEMPTS:
         db_otp.used = True
         db.commit()
         raise HTTPException(
@@ -229,25 +306,29 @@ async def verify_otp(request: VerifyOTPRequest, db: Session = Depends(get_db)):
             detail="This code has expired. Please request a new code."
         )
 
-    # Code mismatch check
-    if db_otp.otp != request.otp.strip():
-        db_otp.attempts += 1
-        if db_otp.attempts >= 5:
-            db_otp.used = True
-        db.commit()
-        if db_otp.attempts >= 5:
-            raise HTTPException(
-                status_code=400,
-                detail="Too many incorrect attempts. Please request a new code."
-            )
-        remaining = max(0, 5 - db_otp.attempts)
+    # Code check (attempt reserved atomically, constant-time comparison)
+    outcome, attempts = _verify_otp_code(db, db_otp, request.otp)
+    if outcome == "locked" or (outcome == "wrong" and attempts >= OTP_MAX_ATTEMPTS):
+        raise HTTPException(
+            status_code=400,
+            detail="Too many incorrect attempts. Please request a new code."
+        )
+    if outcome == "gone":
+        raise HTTPException(
+            status_code=400,
+            detail="This code is no longer valid. Please request a new code."
+        )
+    if outcome == "wrong":
+        remaining = max(0, OTP_MAX_ATTEMPTS - attempts)
         raise HTTPException(
             status_code=400,
             detail=f"Invalid verification code. Please try again. ({remaining} attempts remaining)"
         )
 
     # Success
-    db_otp.is_verified = True
+    db.query(EmailOTP).filter(EmailOTP.id == db_otp.id, EmailOTP.used == False).update(
+        {EmailOTP.is_verified: True}, synchronize_session=False
+    )
     db.commit()
 
     return {"success": True, "message": "Email verified successfully!"}
@@ -275,15 +356,32 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
     clean_digits = "".join(ch for ch in clean_account if ch.isdigit())
     phone_10 = clean_digits[-10:] if len(clean_digits) >= 10 else clean_digits
 
-    user = db.query(User).filter(
-        (func.trim(func.lower(User.email)) == clean_account_lower) |
-        (func.trim(User.phone) == clean_account) |
-        (func.trim(User.phone) == phone_10)
-    ).first()
+    if "@" in clean_account_lower:
+        # An e-mail is matched as an e-mail only. (Matching the digits found inside it against
+        # phone numbers could select a different person's account.)
+        user = db.query(User).filter(func.trim(func.lower(User.email)) == clean_account_lower).first()
+    else:
+        user = db.query(User).filter(
+            (func.trim(User.phone) == clean_account) |
+            (func.trim(User.phone) == phone_10)
+        ).first()
+
+    # The answer must not tell a stranger whether an account exists, and must never hand out a
+    # registered e-mail address: known and unknown accounts get the same body. The only address
+    # returned is the one the caller typed (clients use it for the next step); a phone number is
+    # accepted by verify-otp / reset-password directly, so nothing needs to be resolved here.
+    typed_email = clean_account_lower if "@" in clean_account_lower else None
+    parts = (typed_email or "").split("@")
+    uniform_response = {
+        "success": True,
+        "message": "If the account exists, a verification code has been sent to its registered email.",
+    }
+    if typed_email and len(parts) == 2 and parts[0] and parts[1]:
+        uniform_response["email"] = typed_email
+        uniform_response["masked_email"] = f"{parts[0][:1]}****@{parts[1]}"
 
     if not user or not user.email or not user.email.strip():
-        # Security: don't reveal if email/phone exists
-        return {"success": True, "message": "If the account exists, a verification code will be sent."}
+        return dict(uniform_response)
 
     clean_email = user.email.strip().lower()
 
@@ -305,6 +403,16 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
                 detail=f"Please wait {remaining_seconds} seconds before requesting another code."
             )
 
+    if _hourly_code_cap_reached(
+        db,
+        func.trim(func.lower(EmailOTP.email)) == clean_email,
+        or_(
+            EmailOTP.reason == REASON_FORGOT_PASSWORD,
+            EmailOTP.purpose == REASON_FORGOT_PASSWORD,
+        ),
+    ):
+        raise HTTPException(status_code=429, detail=OTP_HOURLY_CAP_MESSAGE)
+
     # Invalidate previous password-reset OTPs (used=True)
     db.query(EmailOTP).filter(
         func.trim(func.lower(EmailOTP.email)) == clean_email,
@@ -316,8 +424,9 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
     ).update({"used": True}, synchronize_session=False)
 
     # Generate 6-digit random OTP
-    otp = f"{random.randint(100000, 999999)}"
-    expires_at = datetime.utcnow() + timedelta(minutes=5)
+    otp = generate_otp()
+    now = datetime.utcnow()
+    expires_at = now + timedelta(minutes=5)
 
     new_otp = EmailOTP(
         email=clean_email,
@@ -328,30 +437,20 @@ async def forgot_password_otp(request: ForgotPasswordRequest, db: Session = Depe
         is_verified=False,
         used=False,
         expires_at=expires_at,
+        created_at=now,  # explicit UTC (see send-otp)
     )
     db.add(new_otp)
     db.commit()
 
     email_sent = send_password_reset_otp(clean_email, otp)
     if not email_sent:
-        # Record remains persisted in database
-        last_err = get_last_email_error()
-        diag = f": {last_err}" if last_err else ""
+        # Record remains persisted in database; provider detail stays in the server log.
         raise HTTPException(
             status_code=500,
-            detail=f"We couldn't send the password reset email{diag}. Please try again."
+            detail="We couldn't send the password reset email. Please try again."
         )
 
-    # Mask email for UI display: m****@gmail.com
-    parts = clean_email.split("@")
-    masked_email = f"{parts[0][:1]}****@{parts[1]}" if len(parts) == 2 else clean_email
-
-    return {
-        "success": True,
-        "message": "Verification code sent to your email. Please check your inbox.",
-        "email": clean_email,
-        "masked_email": masked_email,
-    }
+    return dict(uniform_response)
 
 
 class ResetPasswordRequest(BaseModel):
@@ -360,15 +459,30 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 
+MIN_PASSWORD_LENGTH = 8
+MAX_PASSWORD_LENGTH = 128  # bcrypt only reads the first 72 bytes; refuse absurd inputs
+
+
 @router.post("/reset-password")
-async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+async def reset_password(
+    request: ResetPasswordRequest,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
     """
     Reset user password after OTP verification.
     - Requires active forgot_password OTP
     - Hashes password using bcrypt
     - Consumes OTP immediately (used=True, never physically deleted)
+    - Ends the user's other sessions (the caller's own session survives when it is sent along,
+      e.g. the in-app "change password" flow)
     - Sends security alert notification
     """
+    if not (MIN_PASSWORD_LENGTH <= len(request.new_password) <= MAX_PASSWORD_LENGTH):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must be between {MIN_PASSWORD_LENGTH} and {MAX_PASSWORD_LENGTH} characters."
+        )
     clean_email = request.email.strip().lower()
     clean_digits = "".join(ch for ch in clean_email if ch.isdigit())
     phone_10 = clean_digits[-10:] if len(clean_digits) >= 10 else clean_digits
@@ -397,7 +511,7 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
             detail="No password reset request found. Please request a new code."
         )
 
-    if db_otp.attempts >= 5:
+    if db_otp.attempts >= OTP_MAX_ATTEMPTS:
         db_otp.used = True
         db.commit()
         raise HTTPException(
@@ -413,36 +527,50 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
             detail="This code has expired. Please request a new code."
         )
 
-    if db_otp.otp != request.otp.strip():
-        db_otp.attempts += 1
-        if db_otp.attempts >= 5:
-            db_otp.used = True
-        db.commit()
-        if db_otp.attempts >= 5:
-            raise HTTPException(
-                status_code=400,
-                detail="Too many incorrect attempts. Please request a new code."
-            )
-        remaining = max(0, 5 - db_otp.attempts)
+    outcome, attempts = _verify_otp_code(db, db_otp, request.otp)
+    if outcome == "locked" or (outcome == "wrong" and attempts >= OTP_MAX_ATTEMPTS):
+        raise HTTPException(
+            status_code=400,
+            detail="Too many incorrect attempts. Please request a new code."
+        )
+    if outcome == "gone":
+        raise HTTPException(
+            status_code=400,
+            detail="This code is no longer valid. Please request a new code."
+        )
+    if outcome == "wrong":
+        remaining = max(0, OTP_MAX_ATTEMPTS - attempts)
         raise HTTPException(
             status_code=400,
             detail=f"Invalid verification code. ({remaining} attempts remaining)"
         )
 
+    # The code is bound to one e-mail address, and only that address's account may change.
     user = db.query(User).filter(
-        (func.trim(func.lower(User.email)) == clean_email) |
-        (func.trim(User.phone) == clean_email) |
-        (func.trim(User.phone) == phone_10)
+        func.trim(func.lower(User.email)) == (db_otp.email or "").strip().lower()
     ).first()
     if not user:
         raise HTTPException(status_code=404, detail="User account not found.")
 
-    # Update password using bcrypt
+    # Consume the OTP (single use: only one request can flip used False -> True) and
+    # change the password in the same transaction, so a failure leaves both untouched.
+    if not _consume_otp(db, db_otp):
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="This code is no longer valid. Please request a new code."
+        )
     user.password_hash = hash_password(request.new_password)
 
-    # Consume OTP (used=True, single-use, persisted)
-    db_otp.is_verified = True
-    db_otp.used = True
+    # A password reset must end sessions that may belong to someone else. When the request
+    # carries the user's own current session (in-app change), that one is kept.
+    keep_hash = None
+    if isinstance(authorization, str) and authorization.startswith("Bearer "):
+        keep_hash = hashlib.sha256(authorization.split(" ", 1)[1].strip().encode()).hexdigest()
+    revoke = db.query(UserSession).filter(UserSession.user_id == user.id, UserSession.revoked_at.is_(None))
+    if keep_hash:
+        revoke = revoke.filter(UserSession.token_hash != keep_hash)
+    revoke.update({UserSession.revoked_at: datetime.utcnow()}, synchronize_session=False)
     db.commit()
 
     # Dispatch security notification email safely
@@ -538,7 +666,7 @@ async def register(
             status_code=400,
             detail="Email OTP not found. Please click 'Send OTP' and verify your email first."
         )
-    if db_otp.attempts >= 5:
+    if db_otp.attempts >= OTP_MAX_ATTEMPTS:
         db_otp.used = True
         db.commit()
         raise HTTPException(status_code=400, detail="Too many incorrect attempts. Please request a new code.")
@@ -546,20 +674,16 @@ async def register(
         db_otp.used = True
         db.commit()
         raise HTTPException(status_code=400, detail="Email OTP has expired. Please request a new OTP.")
-    if db_otp.otp != validated_data.email_otp.strip():
-        db_otp.attempts += 1
-        if db_otp.attempts >= 5:
-            db_otp.used = True
-        db.commit()
+    outcome, attempts = _verify_otp_code(db, db_otp, validated_data.email_otp)
+    if outcome == "locked":
+        raise HTTPException(status_code=400, detail="Too many incorrect attempts. Please request a new code.")
+    if outcome == "gone":
+        raise HTTPException(status_code=400, detail="This code is no longer valid. Please request a new code.")
+    if outcome == "wrong":
         raise HTTPException(status_code=400, detail="Invalid Email OTP. Please check and try again.")
 
-    # Consume the OTP immediately: mark used=True (persisted, never deleted)
-    db_otp.is_verified = True
-    db_otp.used = True
-    db.commit()
-
-
-    # 3. Check for duplicate email or phone
+    # 3. Check for duplicate email or phone. This happens BEFORE the code is consumed, so a
+    # rejected form (phone already registered, ...) does not burn the user's verified code.
     if db.query(User).filter(func.lower(User.email) == clean_reg_email).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -571,10 +695,18 @@ async def register(
             detail="This phone number is already registered."
         )
 
-    # 4. Handle file uploads
-    # We keep track of uploaded paths for cleanup if DB commit fails
+    # 4. Consume the OTP (single use: persisted, never deleted). The conditional UPDATE is part
+    # of the transaction that creates the account, so two parallel submissions of the same code
+    # cannot both succeed, and any failure below (bad document, storage error, DB error) rolls
+    # the consumption back and leaves the code usable.
+    if not _consume_otp(db, db_otp):
+        db.rollback()
+        raise HTTPException(status_code=400, detail="This code is no longer valid. Please request a new code.")
+
+    # 5. Handle file uploads
+    # We keep track of uploaded paths for cleanup if the request fails
     uploaded_paths = []
-    
+
     def _upload(file, folder, extensions=None):
         if file and hasattr(file, "filename") and file.filename:
             path = upload_document(file, folder, extensions)
@@ -583,17 +715,23 @@ async def register(
             return path
         return None
 
-    photo_path = _upload(photo, "profile", ALLOWED_IMAGE_EXTENSIONS)
-    id_doc_path = _upload(id_doc, "id_documents")
-    signature_path = _upload(signature, "signatures", ALLOWED_IMAGE_EXTENSIONS)
-    rc_path = _upload(rc, "rc")
-    licence_path = _upload(licence, "licence")
-    insurance_path = _upload(insurance, "insurance")
+    try:
+        photo_path = _upload(photo, "profile", ALLOWED_IMAGE_EXTENSIONS)
+        id_doc_path = _upload(id_doc, "id_documents")
+        signature_path = _upload(signature, "signatures", ALLOWED_IMAGE_EXTENSIONS)
+        rc_path = _upload(rc, "rc")
+        licence_path = _upload(licence, "licence")
+        insurance_path = _upload(insurance, "insurance")
+    except Exception:
+        db.rollback()  # un-consumes the OTP
+        for path in uploaded_paths:
+            delete_document(path)
+        raise
 
-    # 5. Hash password
+    # 6. Hash password
     hashed_pwd = hash_password(validated_data.password)
 
-    # 6. Create and save user
+    # 7. Create and save user
     try:
         new_user = User(
             account_type=validated_data.account_type,
@@ -632,7 +770,7 @@ async def register(
             detail="Registration failed. Please try again."
         )
 
-    # 7. Send welcome email (non-blocking — failure won't break registration)
+    # 8. Send welcome email (non-blocking — failure won't break registration)
     try:
         send_welcome_email(new_user.email, new_user.name, new_user.account_type)
     except Exception as e:
@@ -836,7 +974,11 @@ async def update_profile(data: ProfileUpdateRequest, current_user: User = Depend
     if data.name is not None:
         user.name = data.name.strip()
     if data.email is not None:
-        user.email = data.email.strip()
+        # The e-mail address is the account's identity and the destination of every
+        # OTP. It cannot be changed here (no verification, no uniqueness check);
+        # sending the current address unchanged is still accepted.
+        if data.email.strip().lower() != (user.email or "").strip().lower():
+            raise HTTPException(status_code=400, detail="The email address cannot be changed here. Contact Tap&Go support.")
     if data.address is not None:
         user.address = data.address.strip()
     if data.city is not None:

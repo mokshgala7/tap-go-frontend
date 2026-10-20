@@ -1,6 +1,11 @@
+import secrets
 import bcrypt
 from datetime import datetime
 from typing import Optional
+
+def generate_otp() -> str:
+    """Returns a 6-digit one-time code from a cryptographically secure generator."""
+    return f"{secrets.randbelow(900000) + 100000}"
 
 def hash_password(password: str) -> str:
     """Returns a bcrypt hash of the provided plaintext password."""
@@ -30,14 +35,14 @@ def get_elapsed_seconds(dt: Optional[datetime]) -> float:
     return min(candidates) if candidates else max(0.0, e_utc)
 
 def is_otp_expired(expires_at: Optional[datetime]) -> bool:
-    """Checks whether OTP has expired, handling naive UTC/local differences."""
+    """Checks whether an OTP has expired.
+
+    Every OTP `expires_at` is written as naive UTC (`datetime.utcnow() + ...`), so it is
+    compared with UTC only. (The previous version also compared against local time and took
+    the smaller difference, which made a code that expired hours ago look valid on a server
+    whose local clock is behind UTC.)
+    """
     if not expires_at:
         return True
-    now_utc = datetime.utcnow()
-    now_local = datetime.now()
-    diff_utc = (expires_at - now_utc).total_seconds()
-    diff_local = (expires_at - now_local).total_seconds()
-    candidates = [d for d in (diff_utc, diff_local) if d >= -60]
-    remaining = min(candidates) if candidates else -1
-    return remaining <= 0
+    return (expires_at - datetime.utcnow()).total_seconds() <= 0
 

@@ -1,0 +1,19 @@
+# Keep secrets, local environments and test/scratch files out of Docker build contexts.
+# (The Dockerfile does `COPY . .`; without this file a local `docker build` would copy
+# backend/.env, with its credentials, into the image.)
+# Patterns use **/ so they also match inside sub-folders (Docker anchors plain patterns at the
+# context root). Data folders the app uses at run time (reviewer_seed/, uploads/, migrations/,
+# scripts/) are deliberately NOT excluded.
+**/.env
+**/.env.*
+**/*.env
+venv/
+.venv/
+**/__pycache__
+**/*.py[cod]
+.pytest_cache/
+tests/
+**/*.log
+.git
+.gitignore
+**/.DS_Store

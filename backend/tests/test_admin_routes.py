@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.models import Base, Admin, SupportTicket, NFCCardOrder, User
 from app.utils.security import hash_password
+from helpers import admin_headers
 from sqlalchemy.pool import StaticPool
 
 engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
@@ -92,13 +93,13 @@ def test_admin_support_all_endpoint_exists_and_returns_200(setup_admin_db):
     admin_id = str(data["admin"].id)
 
     # 1. Test /api/admin/support/admin/all
-    res = client.get("/api/admin/support/admin/all", headers={"x-admin-id": admin_id})
+    res = client.get("/api/admin/support/admin/all", headers=admin_headers(TestingSessionLocal, int(admin_id)))
     assert res.status_code == 200
     res_json = res.json()
     assert "items" in res_json or "tickets" in res_json
 
     # 2. Test /api/admin/support/all
-    res2 = client.get("/api/admin/support/all", headers={"x-admin-id": admin_id})
+    res2 = client.get("/api/admin/support/all", headers=admin_headers(TestingSessionLocal, int(admin_id)))
     assert res2.status_code == 200
 
 def test_admin_card_order_all_endpoint_exists_and_returns_200(setup_admin_db):
@@ -106,7 +107,7 @@ def test_admin_card_order_all_endpoint_exists_and_returns_200(setup_admin_db):
     admin_id = str(data["admin"].id)
 
     # 1. Test /api/admin/card-order/admin/all
-    res = client.get("/api/admin/card-order/admin/all", headers={"x-admin-id": admin_id})
+    res = client.get("/api/admin/card-order/admin/all", headers=admin_headers(TestingSessionLocal, int(admin_id)))
     assert res.status_code == 200
     res_json = res.json()
     assert res_json.get("success") is True
@@ -114,5 +115,5 @@ def test_admin_card_order_all_endpoint_exists_and_returns_200(setup_admin_db):
     assert len(res_json["orders"]) >= 1
 
     # 2. Test /api/admin/card-order/all
-    res2 = client.get("/api/admin/card-order/all", headers={"x-admin-id": admin_id})
+    res2 = client.get("/api/admin/card-order/all", headers=admin_headers(TestingSessionLocal, int(admin_id)))
     assert res2.status_code == 200

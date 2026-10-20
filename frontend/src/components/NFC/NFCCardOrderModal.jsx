@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react'
 import { Link } from '../../routes/navigation.jsx'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
+
+// Session token for authenticated API calls (stored by AuthContext at login).
+const authHeaders = (extra = {}) => {
+  let token = ''
+  try { token = sessionStorage.getItem('tapgo_token') || '' } catch { /* storage unavailable */ }
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra
+}
 const IS_DEMO = import.meta.env.VITE_DEMO_MODE !== 'false'
 
 export function NFCCardOrderModal({ user, onClose, onOrderSuccess }) {
@@ -169,7 +176,7 @@ export function NFCCardOrderModal({ user, onClose, onOrderSuccess }) {
     try {
       const res = await fetch(`${API_BASE}/api/card-order/create`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           user_id: user.id,
           recipient_name: form.recipient_name.trim(),

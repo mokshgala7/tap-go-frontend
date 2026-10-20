@@ -10,6 +10,7 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
 import boto3
+from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError, BotoCoreError
 
 from app.config import settings
@@ -71,7 +72,10 @@ def log_email_delivery(
 def _get_ses_client():
     """Initializes and returns an Amazon SES client using HTTPS."""
     client_kwargs = {
-        "region_name": settings.AWS_REGION or "ap-south-1"
+        "region_name": settings.AWS_REGION or "ap-south-1",
+        # Sending runs inside request handlers: a hung SES call must fail fast (boto3's default is
+        # 60 s per attempt with several retries) instead of stalling the API.
+        "config": BotoConfig(connect_timeout=5, read_timeout=10, retries={"max_attempts": 2, "mode": "standard"}),
     }
     if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
         client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
@@ -107,7 +111,7 @@ def _send_ses_email(
     if not settings.AWS_SECRET_ACCESS_KEY:
         return False, "AWS_SECRET_ACCESS_KEY is missing in configuration"
 
-    sender = settings.SES_FROM_EMAIL or "Tap & Go <tapandgosupport@gmail.com>"
+    sender = settings.SES_FROM_EMAIL  # never empty: config.py supplies the thetapandgo.in default
     plain_text = text_content.strip() if text_content else _strip_html(html_content)
 
     try:
@@ -1480,6 +1484,54 @@ def send_security_alert_email(
         subject=f"Tap & Go Security Alert: {title}",
         html_content=html,
         email_type="security_alert",
+    )
+
+
+def send_edit_request_decision_email(
+    to_email: str,
+    user_name: str,
+    request_type: str,
+    approved: bool,
+) -> bool:
+    """Tells a user the outcome of their bank/phone/documents change request."""
+    labels = {"bank": "bank / payout details", "phone": "phone number", "documents": "documents"}
+    what = labels.get(request_type, request_type)
+    first_name = (user_name or "User").split()[0]
+    if approved:
+        headline = f"Your request to update your {what} was approved"
+        detail = (
+            f"You can now update your {what} once from the Tap &amp; Go app or website. "
+            "After you save, the details lock again."
+        )
+        subject = f"Tap & Go: {what} change request approved"
+    else:
+        headline = f"Your request to update your {what} was not approved"
+        detail = (
+            f"Your {what} stay as they are. If you think this is a mistake, contact "
+            '<a href="mailto:tapandgosupport@gmail.com">tapandgosupport@gmail.com</a>.'
+        )
+        subject = f"Tap & Go: {what} change request not approved"
+
+    body = f"""
+    <h2 style="margin:0 0 10px;font-size:22px;font-weight:900;color:#1C1C1E;">{headline}</h2>
+    <p style="margin:0 0 16px;color:#4B5563;font-size:14px;line-height:1.6;">Hi {first_name},</p>
+    <div style="background-color:#F9FAFB;border:1px solid #E5E7EB;border-radius:14px;padding:18px;margin-bottom:18px;">
+        <div style="font-size:13px;color:#4B5563;line-height:1.6;">{detail}</div>
+    </div>
+    """
+    html = _render_email_shell(
+        badge="REQUEST UPDATE",
+        badge_bg="#14532D" if approved else "#7F1D1D",
+        badge_color="#4ADE80" if approved else "#F87171",
+        title="Request Update",
+        body_html=body,
+        accent_bar_gradient="linear-gradient(90deg,#22C55E,#16A34A)" if approved else "linear-gradient(90deg,#EF4444,#DC2626)",
+    )
+    return send_email(
+        to_email=to_email,
+        subject=subject,
+        html_content=html,
+        email_type="edit_request_decision",
     )
 
 

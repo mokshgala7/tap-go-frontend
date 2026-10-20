@@ -35,9 +35,18 @@ def get_engine():
 
     db_url = settings.DATABASE_URL
 
+    # Safety net: a test run may only ever use SQLite (never a real database).
+    if os.getenv("TAPGO_TESTING") == "1" and not db_url.startswith("sqlite"):
+        raise RuntimeError("TAPGO_TESTING=1 requires a sqlite DATABASE_URL; refusing to connect.")
+
     # Allow explicit SQLite only if explicitly designated in DATABASE_URL
     if db_url.startswith("sqlite"):
         print("[Database] Explicitly using SQLite database file from configuration.")
+        if ":memory:" in db_url:
+            # One shared connection: with the default per-thread pool an in-memory
+            # database silently vanishes when worker threads are evicted.
+            from sqlalchemy.pool import StaticPool
+            return create_engine(db_url, connect_args={"check_same_thread": False}, poolclass=StaticPool, echo=False)
         return create_engine(db_url, connect_args={"check_same_thread": False}, echo=False)
 
     # PostgreSQL (Supabase) Connection

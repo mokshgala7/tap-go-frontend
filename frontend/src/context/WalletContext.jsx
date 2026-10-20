@@ -3,6 +3,13 @@ import { useAuth } from './AuthContext.jsx'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
 
+// Session token for authenticated API calls (stored by AuthContext at login).
+const authHeaders = (extra = {}) => {
+  let token = ''
+  try { token = sessionStorage.getItem('tapgo_token') || '' } catch { /* storage unavailable */ }
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra
+}
+
 const WalletContext = createContext(null)
 
 export function WalletProvider({ children }) {
@@ -27,8 +34,8 @@ export function WalletProvider({ children }) {
     setError('')
     try {
       const [wRes, tRes] = await Promise.all([
-        fetch(`${API_BASE}/api/wallet/${user.id}`),
-        fetch(`${API_BASE}/api/wallet/${user.id}/transactions`),
+        fetch(`${API_BASE}/api/wallet/${user.id}`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/api/wallet/${user.id}/transactions`, { headers: authHeaders() }),
       ])
       const wData = await wRes.json()
       const tData = await tRes.json()
@@ -69,7 +76,7 @@ export function WalletProvider({ children }) {
     try {
       const res = await fetch(`${API_BASE}/api/wallet/topup`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ user_id: user.id, amount, payment_method: import.meta.env.VITE_PAYMENT_METHOD || 'payment_gateway' }),
       })
       const data = await res.json()
@@ -89,7 +96,7 @@ export function WalletProvider({ children }) {
     try {
       const res = await fetch(`${API_BASE}/api/wallet/withdraw`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ user_id: user.id, amount }),
       })
       const data = await res.json()
@@ -106,15 +113,18 @@ export function WalletProvider({ children }) {
 
   const payFare = async ({ driver, driver_id, vehicleType, vehicleNumber, fare, method }) => {
     if (!user?.id) return { success: false, message: 'User not logged in' }
+    // The server only pays a verified driver; it no longer picks one for you.
+    if (!driver_id) return { success: false, message: 'Paying by QR needs a verified driver, which is not available yet.' }
     try {
       const res = await fetch(`${API_BASE}/api/wallet/pay`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           passenger_id: user.id,
-          driver_id: driver_id || null,
+          driver_id,
           fare,
           payment_method: method || 'QR',
+          idempotency_key: (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`),
         }),
       })
       const data = await res.json()

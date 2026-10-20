@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import NFCCardOrder, User, Admin
+from app.routes.admin import current_admin
+from app.routes.auth import get_current_user
 from app.utils.email_service import send_nfc_card_order_email, send_nfc_status_update_email
 import logging
 
@@ -23,7 +25,9 @@ class CalculateDeliveryRequest(BaseModel):
     pincode: str
 
 class CardOrderCreateRequest(BaseModel):
-    user_id: int
+    # Accepted for older clients only; the order always belongs to the
+    # authenticated user and a different id is refused.
+    user_id: Optional[int] = None
     recipient_name: str
     phone: str
     address_line1: str
@@ -124,7 +128,13 @@ def calculate_delivery(data: CalculateDeliveryRequest):
 
 
 @router.post("/create")
-def create_card_order(data: CardOrderCreateRequest, db: Session = Depends(get_db)):
+def create_card_order(
+    data: CardOrderCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if data.user_id is not None and data.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to order for another user.")
     # 1. Input Validations
     if not data.recipient_name or not data.recipient_name.strip():
         raise HTTPException(status_code=400, detail="Recipient full name is required.")
@@ -149,9 +159,7 @@ def create_card_order(data: CardOrderCreateRequest, db: Session = Depends(get_db
     if not clean_pin or len(clean_pin) != 6 or not clean_pin.isdigit():
         raise HTTPException(status_code=400, detail="Please enter a valid 6-digit Indian PIN code.")
 
-    user = db.get(User, data.user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User account not found.")
+    user = current_user
 
     # 2. Server-side Independent Price & Delivery Calculation
     delivery_info = calculate_delivery_charge_info(data.city, data.state, clean_pin)
@@ -247,7 +255,9 @@ def create_card_order(data: CardOrderCreateRequest, db: Session = Depends(get_db
 
 
 @router.get("/user/{user_id}")
-def get_user_card_orders(user_id: int, db: Session = Depends(get_db)):
+def get_user_card_orders(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to view these orders.")
     orders = db.query(NFCCardOrder).filter(NFCCardOrder.user_id == user_id).order_by(NFCCardOrder.created_at.desc()).all()
     return {
         "success": True,
@@ -257,7 +267,7 @@ def get_user_card_orders(user_id: int, db: Session = Depends(get_db)):
 
 @router.get("/admin/all")
 def get_all_card_orders(
-    x_admin_id: Optional[str] = Header(None),
+    admin: Admin = Depends(current_admin),
     db: Session = Depends(get_db)
 ):
     orders = db.query(NFCCardOrder).order_by(NFCCardOrder.created_at.desc()).all()
@@ -271,7 +281,7 @@ def get_all_card_orders(
 def update_card_order_status(
     order_id: int,
     data: StatusUpdateRequest,
-    x_admin_id: Optional[str] = Header(None),
+    admin: Admin = Depends(current_admin),
     db: Session = Depends(get_db)
 ):
     order = db.get(NFCCardOrder, order_id)
@@ -315,18 +325,18 @@ admin_router = APIRouter(prefix="/api/admin/card-order", tags=["nfc_card_orders_
 @admin_router.get("/admin/all")
 @admin_router.get("/all")
 def get_all_card_orders_aliased(
-    x_admin_id: Optional[str] = Header(None),
+    admin: Admin = Depends(current_admin),
     db: Session = Depends(get_db)
 ):
-    return get_all_card_orders(x_admin_id, db)
+    return get_all_card_orders(admin, db)
 
 @admin_router.patch("/admin/{order_id}/status")
 @admin_router.patch("/{order_id}/status")
 def update_card_order_status_aliased(
     order_id: int,
     data: StatusUpdateRequest,
-    x_admin_id: Optional[str] = Header(None),
+    admin: Admin = Depends(current_admin),
     db: Session = Depends(get_db)
 ):
-    return update_card_order_status(order_id, data, x_admin_id, db)
+    return update_card_order_status(order_id, data, admin, db)
 

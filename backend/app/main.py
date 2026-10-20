@@ -9,7 +9,7 @@ from sqlalchemy import inspect, text
 
 from app.config import settings
 from app.database import engine, Base
-from app.routes import admin, auth, wallet, payment, card_order, support, nfc_security
+from app.routes import admin, auth, wallet, payment, card_order, support, nfc_security, qr as qr_routes
 
 logger = logging.getLogger("tapgo")
 
@@ -28,6 +28,49 @@ def _exec_safe(eng, stmt: str, desc: str = "") -> bool:
     except Exception as ex:
         logger.warning(f"[Migration] {desc or stmt[:50]}: {ex}")
         return False
+
+
+def ensure_unique_provider_transaction_index(eng) -> str:
+    """Make transactions.provider_transaction_id unique on databases created before
+    this was enforced (fresh databases get it from models.py).
+
+    Safe by construction: it never deletes or edits rows. If duplicate non-null
+    values already exist it logs them and SKIPS creating the index (the code
+    path in payment.py is still protected by the payment_orders claim), so a
+    human can review the duplicates first. See backend/migrations/.
+    Returns one of: created, exists, skipped_duplicates, no_table, failed.
+    """
+    try:
+        insp = inspect(eng)
+        if "transactions" not in insp.get_table_names():
+            return "no_table"
+        for idx in insp.get_indexes("transactions"):
+            if idx.get("unique") and idx.get("column_names") == ["provider_transaction_id"]:
+                return "exists"
+        for uc in insp.get_unique_constraints("transactions"):
+            if uc.get("column_names") == ["provider_transaction_id"]:
+                return "exists"
+        with eng.connect() as conn:
+            dups = conn.execute(text(
+                "SELECT provider_transaction_id, COUNT(*) AS n FROM transactions "
+                "WHERE provider_transaction_id IS NOT NULL "
+                "GROUP BY provider_transaction_id HAVING COUNT(*) > 1"
+            )).fetchall()
+        if dups:
+            logger.error(
+                "[Migration] %d duplicated provider_transaction_id value(s) found; the unique index was NOT "
+                "created. Review them (backend/migrations/2026_10_stage1_security.sql) and re-run.", len(dups)
+            )
+            return "skipped_duplicates"
+        ok = _exec_safe(
+            eng,
+            "CREATE UNIQUE INDEX ux_transactions_provider_transaction_id ON transactions (provider_transaction_id)",
+            "unique transactions.provider_transaction_id",
+        )
+        return "created" if ok else "failed"
+    except Exception as e:
+        logger.error(f"[Migration] ensure_unique_provider_transaction_index failed: {e}")
+        return "failed"
 
 
 def run_database_migrations(eng):
@@ -283,6 +326,9 @@ def run_database_migrations(eng):
             Base.metadata.create_all(bind=eng)
         except Exception as create_ex:
             logger.warning(f"[Warning] Base.metadata.create_all: {create_ex}")
+
+        # 5b. UNIQUE provider_transaction_id (guarded; never deletes data)
+        ensure_unique_provider_transaction_index(eng)
 
         # 6. ENSURE DEFAULT ADMIN EXISTS
         try:
@@ -572,6 +618,7 @@ app.include_router(card_order.admin_router)
 app.include_router(support.router)
 app.include_router(support.admin_router)
 app.include_router(nfc_security.router)
+app.include_router(qr_routes.router)
 
 @app.get("/")
 def root():

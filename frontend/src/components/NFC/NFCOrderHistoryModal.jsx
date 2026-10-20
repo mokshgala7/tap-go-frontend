@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.thetapandgo.in'
 
+// Session token for authenticated API calls (stored by AuthContext at login).
+const authHeaders = (extra = {}) => {
+  let token = ''
+  try { token = sessionStorage.getItem('tapgo_token') || '' } catch { /* storage unavailable */ }
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra
+}
+
 export function NFCOrderHistoryModal({ user, onClose, onOrderAgain }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
@@ -10,7 +17,7 @@ export function NFCOrderHistoryModal({ user, onClose, onOrderAgain }) {
   useEffect(() => {
     if (!user?.id) return
     setLoading(true)
-    fetch(`${API_BASE}/api/card-order/user/${user.id}`)
+    fetch(`${API_BASE}/api/card-order/user/${user.id}`, { headers: authHeaders() })
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {

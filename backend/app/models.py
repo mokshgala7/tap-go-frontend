@@ -97,6 +97,38 @@ class Admin(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class AdminSession(Base):
+    """Server-side administrator session. Only the SHA-256 of the bearer token
+    is stored. Replaces the former trust in a client-supplied X-Admin-Id header."""
+    __tablename__ = "admin_sessions"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    admin_id = Column(Integer, ForeignKey("admins.id"), nullable=False, index=True)
+    token_hash = Column(String(255), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, server_default=func.now())
+    expires_at = Column(DateTime, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+
+
+class PaymentOrder(Base):
+    """Server-side record of every Razorpay order created for a wallet top-up.
+
+    The authoritative amount, currency and owner of a top-up are taken from this
+    row, never from the client. `status` moves created -> paid exactly once."""
+    __tablename__ = "payment_orders"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    order_id = Column(String(64), nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    amount_paise = Column(Integer, nullable=False)
+    currency = Column(String(8), nullable=False, default="INR")
+    status = Column(String(20), nullable=False, default="created", index=True)  # created, paid
+    is_mock = Column(Boolean, nullable=False, default=False)
+    provider_payment_id = Column(String(128), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    paid_at = Column(DateTime, nullable=True)
+
+
 class Wallet(Base):
     __tablename__ = "wallets"
 
@@ -151,7 +183,7 @@ class Transaction(Base):
 
     # Razorpay / Provider Audit Fields
     provider = Column(String(30), nullable=True)
-    provider_transaction_id = Column(String(128), nullable=True)
+    provider_transaction_id = Column(String(128), nullable=True, unique=True, index=True)
     utr = Column(String(128), nullable=True)
     payer_name = Column(String(120), nullable=True)
     payment_request_id = Column(Integer, ForeignKey("payment_requests.id"), nullable=True)

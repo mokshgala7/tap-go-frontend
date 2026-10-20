@@ -1,0 +1,96 @@
+// Phone-only palette helper.
+//
+// The mobile layout allows only white, yellow and black, but the website text contains
+// colour emoji. On phone widths this swaps them in place: an element that holds a single
+// emoji becomes the matching Material icon (monochrome, takes the text colour); an emoji
+// inside a sentence becomes a plain ✓ / ✕ / ! or is dropped. Text is edited in place
+// (no nodes are added or removed) so React's own updates keep working, and the observer
+// re-applies the swap whenever React rewrites a string. Nothing runs on desktop widths and
+// the original text is restored if the window is widened.
+const PHONE = '(max-width: 767px)'
+const EMOJI = /(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}️)(?:‍\p{Extended_Pictographic}️?)*/gu
+
+const ICONS = {
+  '💳': 'credit_card', '🎫': 'confirmation_number', '🛡': 'shield', '🏦': 'account_balance',
+  '💸': 'payments', '📍': 'location_on', '📞': 'call', '📄': 'description', '📎': 'attach_file',
+  '🎯': 'target', '⚡': 'bolt', '🎓': 'school', '💡': 'lightbulb', '🔄': 'sync', '🔒': 'lock',
+  '🔓': 'lock_open', '🚖': 'local_taxi', '✅': 'check_circle', '❌': 'cancel', '⚠': 'warning',
+}
+const INLINE = { '✅': '✓', '❌': '✕', '⚠': '!' }
+const base = (emoji) => emoji.replace(/️/g, '')
+
+const converted = new Map() // text node -> original text
+
+// An icon sits on white, yellow or black: black ink on the first two, white ink on black.
+function tone(el) {
+  for (let e = el; e; e = e.parentElement) {
+    const m = getComputedStyle(e).backgroundColor.match(/[\d.]+/g)
+    if (m && (m.length < 4 || Number(m[3]) > 0.5)) {
+      return (0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]) / 255 < 0.4 ? 'dark' : 'light'
+    }
+  }
+  return 'light'
+}
+
+function convert(node) {
+  const text = node.nodeValue
+  if (!text || !EMOJI.test(text)) { EMOJI.lastIndex = 0; return }
+  EMOJI.lastIndex = 0
+  const parent = node.parentElement
+  if (!parent || ['SCRIPT', 'STYLE', 'TEXTAREA'].includes(parent.tagName)) return
+  const only = text.trim().match(EMOJI)
+  EMOJI.lastIndex = 0
+  const icon = only && only.length === 1 && only[0] === text.trim() ? ICONS[base(only[0])] : null
+  if (icon && parent.childNodes.length === 1) {
+    converted.set(node, text)
+    node.nodeValue = icon
+    parent.dataset.tgIcon = tone(parent)
+    return
+  }
+  converted.set(node, text)
+  node.nodeValue = text.replace(EMOJI, (m) => INLINE[base(m)] ?? '')
+}
+
+function sweep(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const nodes = []
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n)
+  nodes.forEach(convert)
+}
+
+function restore() {
+  converted.forEach((original, node) => {
+    node.nodeValue = original
+    node.parentElement?.removeAttribute('data-tg-icon')
+  })
+  converted.clear()
+}
+
+export function startMobileEmoji() {
+  if (typeof window === 'undefined' || !window.matchMedia || !window.Intl) return
+  try { new RegExp('\\p{Emoji_Presentation}', 'u') } catch { return }
+  const query = window.matchMedia(PHONE)
+  let observer = null
+  const run = (records) => {
+    if (!records) return sweep(document.body)
+    observer.disconnect()
+    records.forEach((r) => {
+      if (r.type === 'characterData') convert(r.target)
+      else r.addedNodes.forEach((n) => (n.nodeType === 3 ? convert(n) : n.nodeType === 1 && sweep(n)))
+    })
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+  }
+  const sync = () => {
+    if (query.matches && !observer) {
+      observer = new MutationObserver(run)
+      sweep(document.body)
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+    } else if (!query.matches && observer) {
+      observer.disconnect()
+      observer = null
+      restore()
+    }
+  }
+  query.addEventListener?.('change', sync)
+  sync()
+}
