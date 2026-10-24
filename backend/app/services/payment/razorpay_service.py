@@ -14,7 +14,7 @@ except ImportError:
 
 
 class PaymentsNotConfigured(RuntimeError):
-    """Raised when Razorpay credentials are missing (or live mode is not enabled)."""
+    """Raised when Razorpay credentials are missing (or live mode has been switched off)."""
 
 
 class RazorpayService:
@@ -69,7 +69,7 @@ class RazorpayService:
 
         if key_id.startswith("rzp_live_") and not settings.RAZORPAY_LIVE_ENABLED:
             raise PaymentsNotConfigured(
-                "Live payments are disabled. Use Razorpay test-mode keys."
+                "Online payments are not available right now. Please try again later."
             )
 
         client = self.get_client()

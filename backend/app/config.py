@@ -207,8 +207,9 @@ class Settings:
 
     @property
     def RAZORPAY_LIVE_ENABLED(self) -> bool:
-        """Live-mode keys (rzp_live_*) are refused unless this is explicitly true."""
-        return os.getenv("RAZORPAY_LIVE_ENABLED", "false").strip().lower() in ("1", "true", "yes")
+        """Live-mode keys (rzp_live_*) are allowed by default. Set RAZORPAY_LIVE_ENABLED=false
+        to switch live payments off without removing the keys."""
+        return os.getenv("RAZORPAY_LIVE_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
 
     @property
     def RAZORPAY_KEY_ID(self) -> str:

@@ -11,7 +11,7 @@ import re
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -138,8 +138,19 @@ class TestCreateOrder:
                 with pytest.raises(PaymentsNotConfigured):
                     razorpay_service.create_order(100.0)
 
-    def test_live_keys_are_refused_unless_explicitly_enabled(self, env):
-        with patch.dict(os.environ, {"RAZORPAY_KEY_ID": "rzp_live_xxxxxxxx"}):
+    def test_live_keys_are_allowed_by_default(self, env):
+        client = MagicMock()
+        client.order.create.return_value = {"id": "order_LIVE1", "amount": 10000, "currency": "INR", "receipt": "r1"}
+        with patch.dict(os.environ, {"RAZORPAY_KEY_ID": "rzp_live_xxxxxxxx", "RAZORPAY_KEY_SECRET": "s"}), \
+                patch.object(razorpay_service, "get_client", return_value=client):
+            os.environ.pop("RAZORPAY_LIVE_ENABLED", None)
+            order = razorpay_service.create_order(100.0)
+        assert order["order_id"] == "order_LIVE1" and client.order.create.called
+
+    @pytest.mark.parametrize("value", ["false", "0", "no", "off", " False "])
+    def test_live_keys_can_be_switched_off(self, env, value):
+        with patch.dict(os.environ, {"RAZORPAY_KEY_ID": "rzp_live_xxxxxxxx", "RAZORPAY_KEY_SECRET": "s",
+                                     "RAZORPAY_LIVE_ENABLED": value}):
             with pytest.raises(PaymentsNotConfigured):
                 razorpay_service.create_order(100.0)
 
