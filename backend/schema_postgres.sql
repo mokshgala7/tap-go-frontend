@@ -306,6 +306,7 @@ CREATE TABLE IF NOT EXISTS nfc_cards (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
     card_reference VARCHAR(64) NOT NULL UNIQUE,
+    card_uid VARCHAR(32) NULL,
     card_type VARCHAR(50) NOT NULL DEFAULT 'standard_nfc',
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     blocked_reason TEXT NULL,
@@ -320,6 +321,7 @@ CREATE TABLE IF NOT EXISTS nfc_cards (
 CREATE INDEX IF NOT EXISTS idx_nfc_cards_user_id ON nfc_cards(user_id);
 CREATE INDEX IF NOT EXISTS idx_nfc_cards_status ON nfc_cards(status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_nfc_cards_ref ON nfc_cards(card_reference);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_nfc_cards_card_uid ON nfc_cards(card_uid);
 
 -- 18. WITHDRAWAL REQUESTS
 CREATE TABLE IF NOT EXISTS withdrawal_requests (

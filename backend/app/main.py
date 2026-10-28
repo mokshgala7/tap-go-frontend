@@ -9,7 +9,7 @@ from sqlalchemy import inspect, text
 
 from app.config import settings
 from app.database import engine, Base
-from app.routes import admin, auth, wallet, payment, card_order, support, nfc_security, qr as qr_routes
+from app.routes import admin, auth, wallet, payment, card_order, support, nfc_security, nfc_pay, qr as qr_routes
 
 logger = logging.getLogger("tapgo")
 
@@ -475,6 +475,24 @@ def run_database_migrations(eng):
                 _exec_safe(eng, "CREATE INDEX IF NOT EXISTS ix_nfc_cards_status ON nfc_cards(status)", "ix nfc_cards status")
             logger.info("[Migration] Created table nfc_cards")
 
+        # 8b. NFC CARD CHIP UID (create_all never adds columns to an existing table).
+        # Production is Postgres; the SQLite branch only keeps the test database in step.
+        if "nfc_cards" in set(inspect(eng).get_table_names()):
+            if dialect == "postgresql":
+                _exec_safe(eng, "ALTER TABLE nfc_cards ADD COLUMN IF NOT EXISTS card_uid VARCHAR(32) NULL", "nfc_cards.card_uid")
+            elif "card_uid" not in {col["name"] for col in inspect(eng).get_columns("nfc_cards")}:
+                _exec_safe(eng, "ALTER TABLE nfc_cards ADD COLUMN card_uid VARCHAR(32) NULL", "nfc_cards.card_uid")
+            # NULLs are allowed many times in a unique index on all three dialects.
+            has_unique_uid = any(
+                idx.get("unique") and idx.get("column_names") == ["card_uid"]
+                for idx in inspect(eng).get_indexes("nfc_cards")
+            ) or any(
+                uc.get("column_names") == ["card_uid"]
+                for uc in inspect(eng).get_unique_constraints("nfc_cards")
+            )
+            if not has_unique_uid:
+                _exec_safe(eng, "CREATE UNIQUE INDEX IF NOT EXISTS idx_nfc_cards_card_uid ON nfc_cards(card_uid)", "idx nfc_cards.card_uid")
+
         # 9. WITHDRAWAL REQUESTS TABLE
         table_names = set(inspect(eng).get_table_names())
         if "withdrawal_requests" not in table_names:
@@ -618,6 +636,7 @@ app.include_router(card_order.admin_router)
 app.include_router(support.router)
 app.include_router(support.admin_router)
 app.include_router(nfc_security.router)
+app.include_router(nfc_pay.router)
 app.include_router(qr_routes.router)
 
 @app.get("/")
