@@ -7,13 +7,15 @@ const PENDING_KEY = 'tapgo_pending_qr'
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/
 
 /**
- * Pull a payment token out of whatever a QR/link contains: the https link (<site>/p/<token>),
- * a bare /p/<token> path, the older tapgo://pay?token=<token> and <site>/#/pay?token=<token>
- * forms, or the token itself. Returns null when it is not a Tap&Go payment link.
+ * Pull a payment token out of whatever a QR/link contains: the https link (<site>/p/<token>, with
+ * or without www), a bare /p/<token> path, the driver web POS's <site>/#/pay?token=<token>, the
+ * older tapgo://pay?token=<token>, or the token itself. Returns null when it is not a Tap&Go payment link.
  */
 export function extractQrToken(raw) {
   if (typeof raw !== 'string') return null
-  const text = raw.trim()
+  // Embedded encoders sometimes pad the payload with NULs/CR/LF; drop control characters.
+  // eslint-disable-next-line no-control-regex
+  const text = raw.replace(/[\u0000-\u001f\u007f]/g, '').trim()
   if (!text) return null
   if (TOKEN_RE.test(text)) return text
 

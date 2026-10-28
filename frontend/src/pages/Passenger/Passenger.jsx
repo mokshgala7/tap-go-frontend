@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import jsQR from 'jsqr'
 import { useNavigate } from '../../routes/navigation.jsx'
 import { useAuth, resolveFileUrl, hasValidBankDetails, getDocumentDisplayName, isValidUpi } from '../../context/AuthContext.jsx'
 import { useWallet } from '../../context/WalletContext.jsx'
 import { useDarkMode } from '../../hooks/useDarkMode.js'
 import { RANGE_OPTIONS, formatRelativeTime, vehicleLabel } from './format.js'
 import RazorpayAddMoneyModal from '../../components/Payment/RazorpayAddMoneyModal.jsx'
+import QrScanner from '../../components/Payment/QrScanner.jsx'
 import WithdrawModal from '../../components/Payment/WithdrawModal.jsx'
 import NFCCardOrderModal from '../../components/NFC/NFCCardOrderModal.jsx'
 import NFCOrderHistoryModal from '../../components/NFC/NFCOrderHistoryModal.jsx'
@@ -389,7 +389,10 @@ function Passenger() {
   const { balance, isFrozen, transactions, addMoney, withdraw, payFare, refreshWallet } = useWallet()
 
   const [tab, setTabState] = useState(() => {
-    return sessionStorage.getItem('passenger_tab') || 'home'
+    const stored = sessionStorage.getItem('passenger_tab') || 'home'
+    // Never reopen straight into the camera (refresh, or coming back from a payment): starting
+    // the scanner should always be the passenger's own tap.
+    return stored === 'scan' ? 'home' : stored
   })
 
   const setTab = (newTab) => {
@@ -482,25 +485,12 @@ function Passenger() {
     }
   }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const video = useRef(null)
-  const canvasRef = useRef(null)
-  const stream = useRef(null)
-  const rafRef = useRef(null)
-  const [cameraError, setCameraError] = useState('')
-
-  const qrScanLockRef = useRef(false)   // prevents duplicate scans of the same frame
-
-  const stopScanner = () => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current)
-    stream.current?.getTracks().forEach((track) => track.stop())
-    stream.current = null
-  }
+  const lastUnknownQrRef = useRef({ text: '', at: 0 })
+  const [scanNotice, setScanNotice] = useState('')
 
   useEffect(() => {
     if (!user) navigate('/login')
   }, [user, navigate])
-
-  useEffect(() => () => stopScanner(), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const flash = (message) => {
     setNotice(message)
@@ -509,75 +499,35 @@ function Passenger() {
 
   const goHome = () => navigate('/')
 
-  const tickScan = () => {
-    const v = video.current
-    const canvas = canvasRef.current
-    if (v && canvas && v.readyState === v.HAVE_ENOUGH_DATA) {
-      canvas.width = v.videoWidth
-      canvas.height = v.videoHeight
-      const ctx = canvas.getContext('2d')
-      ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-      const code = jsQR(imageData.data, imageData.width, imageData.height)
-      if (code && code.data && !qrScanLockRef.current) {
-        qrScanLockRef.current = true
-        handleQrCodeScanned(code.data)
-        return   // stop rAF loop; it will restart if scan is dismissed
-      }
-    }
-    rafRef.current = requestAnimationFrame(tickScan)
-  }
-
   /**
-   * Called with the raw QR string. A Tap&Go payment link opens the same payment page a phone
-   * camera would (it fetches the details, shows the balance and handles every end state).
+   * Called by the scanner with every decoded QR string. A Tap&Go payment link opens the same
+   * payment page a phone camera would; anything else shows a message and scanning continues.
+   * Returns true when the code was handled (the scanner then stops the camera).
    */
   const handleQrCodeScanned = (raw) => {
-    stopScanner()
     const token = extractQrToken(raw)
-
-    if (!token) {
-      // Not a Tap&Go QR — ignore and restart scanner
-      flash('Not a Tap&Go QR code. Please scan the driver’s terminal.')
-      qrScanLockRef.current = false
-      rafRef.current = requestAnimationFrame(tickScan)
-      return
+    if (token) {
+      setPendingQrToken(token)
+      navigate('/pay')
+      return true
     }
-
-    setPendingQrToken(token)
-    navigate('/pay')
-  }
-
-  const openScanner = async () => {
-    setTab('scan')
-    setCameraError('')
-    qrScanLockRef.current = false
-    try {
-      stream.current = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
-        audio: false,
-      })
-      if (video.current) {
-        video.current.srcObject = stream.current
-        await video.current.play()
-      }
-      rafRef.current = requestAnimationFrame(tickScan)
-    } catch {
-      setCameraError('Camera permission is needed to scan a QR code.')
+    // The same foreign code stays in view across many frames: tell the passenger once, not 7×/s.
+    const now = Date.now()
+    const last = lastUnknownQrRef.current
+    if (last.text !== raw || now - last.at > 4000) {
+      lastUnknownQrRef.current = { text: raw, at: now }
+      const shown = String(raw).replace(/\s+/g, ' ').trim()
+      setScanNotice(`Not a Tap & Go payment QR (“${shown.length > 40 ? `${shown.slice(0, 40)}…` : shown || 'empty'}”). Scan the code on the driver’s terminal.`)
+      window.setTimeout(() => setScanNotice(''), 4000)
     }
+    return false
   }
 
-  const backFromScanner = () => {
-    stopScanner()
-    setTab('home')
-  }
+  // The scanner component owns the camera: it starts when the scan tab renders and stops when it
+  // unmounts, whichever way the passenger leaves (back button, bottom nav, payment page).
+  const openScanner = () => setTab('scan')
 
-  /** Legacy fallback: camera unavailable */
-  const completeQrPayment = async () => {
-    stopScanner()
-    flash('Camera unavailable. In a real session, scan the QR with your phone camera.')
-    setTab('home')
-  }
+  const backFromScanner = () => setTab('home')
 
   const handleTapToPay = () => {
     flash('Tap your card on the driver\u2019s machine to pay.')
@@ -1783,20 +1733,8 @@ function Passenger() {
       </button>
       <h1>Scan QR code</h1>
       <p className="muted">Point your camera at the driver&apos;s Tap&amp;Go QR code.</p>
-      <div className="camera">
-        {cameraError ? (
-          <div className="hint">{cameraError}</div>
-        ) : (
-          <video ref={video} autoPlay playsInline muted />
-        )}
-        <canvas ref={canvasRef} style={{ display: 'none' }} />
-        <div className="frame" />
-      </div>
-      {cameraError && (
-        <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: '8px 0 4px' }}>
-          Camera unavailable &mdash; use your phone to scan the QR displayed on the driver’s terminal.
-        </div>
-      )}
+      <QrScanner onDecode={handleQrCodeScanned} />
+      {scanNotice && <p className="scan-notice" role="alert">{scanNotice}</p>}
     </>
   )
 
