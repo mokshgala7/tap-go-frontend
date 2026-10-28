@@ -14,4 +14,5 @@ export const tripStatusLabel = {
   completed: 'Completed',
   pending: 'Pending',
   cancelled: 'Cancelled',
+  failed: 'Failed',
 }

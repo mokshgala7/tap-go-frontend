@@ -159,11 +159,44 @@ def get_user_transactions(user_id: int, current_user: User = Depends(get_current
 
     formatted_txns = []
     running_balance = Decimal("0.00")
+    last_balance = None     # wallet balance shown on the most recent row that moved money
 
     for t in txns:
         amount_dec = Decimal(str(t.amount))
         is_credit = False
         change = amount_dec
+
+        if t.status == "failed":
+            # A failed tap moved no money: shown with its amount and reason, but never in the running balance.
+            who = user_map.get(t.driver_id, "the driver") if t.passenger_id == user_id else user_map.get(t.passenger_id)
+            reason = (t.description or "Payment failed").replace("NFC payment failed: ", "", 1)
+            shown_balance = last_balance if last_balance is not None else float(running_balance)
+            formatted_txns.append({
+                "id": t.reference or f"TXN-{t.id}",
+                "reference": t.reference,
+                "type": "Failed Ride Payment",
+                "description": (
+                    f"\u20b9{float(abs(amount_dec)):.2f} payment to {who} failed: {reason}"
+                    if t.passenger_id == user_id else
+                    f"\u20b9{float(abs(amount_dec)):.2f} payment {f'from {who} ' if who else ''}failed: {reason}"
+                ),
+                "amount": float(abs(amount_dec)),
+                "fare": float(abs(amount_dec)),
+                "is_credit": False,
+                "payment_method": t.payment_method.upper() if t.payment_method else "NFC",
+                "status": "Failed",
+                "failure_code": t.failure_code,
+                "failure_reason": reason,
+                "balance_after": shown_balance,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "timestamp": int(t.created_at.timestamp() * 1000) if t.created_at else 0,
+                "passenger_id": t.passenger_id,
+                "driver_id": t.driver_id,
+                "driver": user_map.get(t.driver_id, "Driver"),
+                "passenger": user_map.get(t.passenger_id, "Passenger"),
+                "transaction_type": t.transaction_type,
+            })
+            continue
 
         if t.transaction_type == "withdrawal_reversal":
             # Refund of a rejected withdrawal: money returned to the wallet.
@@ -218,6 +251,7 @@ def get_user_transactions(user_id: int, current_user: User = Depends(get_current
             running_balance -= change
 
         final_balance_after = float(t.balance_after) if t.balance_after is not None else float(running_balance)
+        last_balance = final_balance_after
 
         formatted_txns.append({
             "id": t.reference or f"TXN-{t.id}",

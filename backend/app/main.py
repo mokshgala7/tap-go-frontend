@@ -314,6 +314,7 @@ def run_database_migrations(eng):
                 ("payment_source", "VARCHAR(50) NULL"),
                 ("email_received_at", "DATETIME NULL" if dialect != "postgresql" else "TIMESTAMP WITHOUT TIME ZONE NULL"),
                 ("raw_email_id", "VARCHAR(255) NULL"),
+                ("failure_code", "VARCHAR(40) NULL"),
             ]
             for col_name, col_def in txn_migrations:
                 if dialect == "postgresql":

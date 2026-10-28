@@ -604,6 +604,7 @@ function Passenger() {
 
   const renderTxnRow = (t) => {
     const isCredit = t.raw ? t.raw.is_credit : (t.is_credit !== undefined ? t.is_credit : t.fare < 0)
+    const isFailed = (t.raw ? t.raw.status : t.status) === 'Failed'   // moved no money: shown, never deducted
     const typeText = t.raw ? t.raw.type : (t.type || (isCredit ? 'Deposit' : 'Trip Payment'))
     const descText = t.raw ? t.raw.description : (t.description || (isCredit ? `₹${Math.abs(t.amount || t.fare).toFixed(2)} credited to wallet` : `₹${Math.abs(t.amount || t.fare).toFixed(2)} paid to ${t.driver || 'Driver'}`))
     const balAfter = t.raw ? t.raw.balance_after : (t.balance_after !== undefined ? t.balance_after : null)
@@ -617,11 +618,11 @@ function Passenger() {
           <div>
             <b style={{ fontSize: 15, color: 'var(--text)' }}>{typeText}</b>
             <span style={{ fontSize: 11, fontWeight: 700, marginLeft: 8, padding: '2px 8px', borderRadius: 99, background: isCredit ? '#e2f3e8' : '#fce8e5', color: isCredit ? '#177a47' : '#a52b23' }}>
-              {isCredit ? 'CREDIT' : 'DEBIT'}
+              {isFailed ? 'FAILED' : isCredit ? 'CREDIT' : 'DEBIT'}
             </span>
           </div>
-          <strong className={isCredit ? 'credit' : ''} style={{ fontSize: 16, color: isCredit ? '#177a47' : 'var(--text)' }}>
-            {isCredit ? '+' : '-'}₹{Math.abs(t.amount || t.fare).toFixed(2)}
+          <strong className={isCredit ? 'credit' : ''} style={{ fontSize: 16, color: isCredit ? '#177a47' : 'var(--text)', ...(isFailed ? { color: 'var(--muted)', textDecoration: 'line-through' } : {}) }}>
+            {isFailed ? '' : isCredit ? '+' : '-'}₹{Math.abs(t.amount || t.fare).toFixed(2)}
           </strong>
         </div>
 
