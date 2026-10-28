@@ -102,7 +102,7 @@ function Dashboard({ adminId }) {
   useEffect(() => { adminRequest('/dashboard', adminId).then(setStats).catch((err) => setError(err.message)) }, [adminId])
   const cards = stats && [
     ['Total Drivers', stats.total_drivers, 'Driver accounts'], ['Active Drivers', stats.active_drivers, `${stats.pending_drivers} pending approval`], ['Suspended Drivers', stats.suspended_drivers, 'Restricted accounts'],
-    ['Total Passengers', stats.total_passengers, `${stats.active_passengers} active`], ['Transactions', stats.total_transactions, `${stats.today_transactions} today`], ['Wallet Balance', money(stats.wallet_balance), 'Across live wallets'],
+    ['Total Passengers', stats.total_passengers, `${stats.active_passengers} active`], ['Transactions', stats.total_transactions, `${stats.today_transactions} today · ${stats.failed_today || 0} failed today`], ['Wallet Balance', money(stats.wallet_balance), 'Across live wallets'],
     ['Revenue', money(stats.revenue), 'Completed transactions'], ['Fraud Alerts', stats.fraud_alerts, 'Awaiting review'], ['Edit Requests', stats.pending_edit_requests, 'Awaiting action'],
   ]
   return <section className="admin-section"><div className="section-heading"><div><span className="eyebrow">Operations at a glance</span><h2>Dashboard Overview</h2><p>Live counts from the Tap&Go backend database.</p></div></div><LoadState error={error}>{!stats ? <Empty text="Loading live operations…" /> : <div className="metric-grid">{cards.map(([label, value, hint]) => <article className="metric-card" key={label}><div className="metric-icon">◈</div><p>{label}</p><strong>{typeof value === 'number' ? number(value) : value}</strong><small>{hint}</small></article>)}</div>}</LoadState></section>

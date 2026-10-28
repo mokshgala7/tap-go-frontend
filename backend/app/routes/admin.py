@@ -284,9 +284,15 @@ def logout(
 @router.get("/dashboard")
 def dashboard(admin: Admin = Depends(current_admin), db: Session = Depends(get_db)):
     count = lambda *criteria: db.query(func.count(User.id)).filter(*criteria).scalar() or 0
-    transaction_count = db.query(func.count(Transaction.id)).scalar() or 0
+    # Failed taps moved no money: they are counted separately, never in the transaction totals.
+    transaction_count = db.query(func.count(Transaction.id)).filter(Transaction.status != "failed").scalar() or 0
     today_transactions = db.query(func.count(Transaction.id)).filter(
-        func.date(Transaction.created_at) == datetime.utcnow().date()
+        Transaction.status != "failed",
+        func.date(Transaction.created_at) == datetime.utcnow().date(),
+    ).scalar() or 0
+    failed_today = db.query(func.count(Transaction.id)).filter(
+        Transaction.status == "failed",
+        func.date(Transaction.created_at) == datetime.utcnow().date(),
     ).scalar() or 0
     wallet_balance = db.query(func.coalesce(func.sum(Wallet.balance), 0)).scalar() or 0
     revenue = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
@@ -301,6 +307,7 @@ def dashboard(admin: Admin = Depends(current_admin), db: Session = Depends(get_d
         "active_passengers": count(User.account_type == "passenger", User.status == "active"),
         "total_transactions": transaction_count,
         "today_transactions": today_transactions,
+        "failed_today": failed_today,
         "wallet_balance": float(wallet_balance),
         "revenue": float(revenue),
         "fraud_alerts": db.query(func.count(FraudAlert.id)).filter(FraudAlert.status == "open").scalar() or 0,
@@ -389,6 +396,8 @@ def transaction_rows(rows, db: Session):
         "id": row.id, "reference": row.reference, "passenger": people.get(row.passenger_id),
         "driver": people.get(row.driver_id), "amount": float(row.amount), "payment_method": row.payment_method,
         "status": row.status, "otp_verified": row.otp_verified, "fraud_status": row.fraud_status,
+        "failure_code": row.failure_code,
+        "failure_reason": (row.description or "").replace("NFC payment failed: ", "", 1) if row.status == "failed" else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     } for row in rows]
 
@@ -414,9 +423,9 @@ def transactions(
 def export_transactions(admin: Admin = Depends(current_admin), db: Session = Depends(get_db)):
     output = StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Transaction ID", "Passenger", "Driver", "Amount", "Method", "Status", "Date"])
+    writer.writerow(["Transaction ID", "Passenger", "Driver", "Amount", "Method", "Status", "Date", "Failure Reason"])
     for row in transaction_rows(db.query(Transaction).order_by(Transaction.created_at.desc()).all(), db):
-        writer.writerow([row["reference"], row["passenger"] or "", row["driver"] or "", row["amount"], row["payment_method"], row["status"], row["created_at"]])
+        writer.writerow([row["reference"], row["passenger"] or "", row["driver"] or "", row["amount"], row["payment_method"], row["status"], row["created_at"], row["failure_reason"] or ""])
     return Response(output.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=tapgo-transactions.csv"})
 
 

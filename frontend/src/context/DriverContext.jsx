@@ -66,7 +66,7 @@ export function DriverProvider({ children }) {
               passenger: t.passenger || (t.passenger_id ? `Passenger #${t.passenger_id}` : 'Passenger Ride'),
               route: t.payment_method ? `Paid via ${t.payment_method}` : 'Ride Payment',
               fare: t.amount,
-              status: t.status === 'Completed' || t.status === 'completed' ? 'completed' : t.status,
+              status: t.status === 'Completed' || t.status === 'completed' ? 'completed' : String(t.status).toLowerCase() === 'failed' ? 'failed' : t.status,
               timestamp: t.timestamp || Date.now(),
             })
           }

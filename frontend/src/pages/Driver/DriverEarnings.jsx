@@ -237,7 +237,7 @@ function DriverEarnings({ flash }) {
                   {new Date(trip.timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </td>
                 <td style={{ padding: '10px 8px' }}>{tripStatusLabel[trip.status]}</td>
-                <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 700 }}>{inr(trip.fare)}</td>
+                <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 700, ...(trip.status === 'failed' ? { color: 'var(--muted)', textDecoration: 'line-through' } : {}) }}>{inr(trip.fare)}</td>
               </tr>
             ))}
           </tbody>

@@ -135,11 +135,14 @@ def test_lost_card(scene, status):
     assert_failed(pay(scene), "CARD_LOST")
 
 
-def test_unblocked_card_pays_again(scene):
+def test_unblocked_card_pays_again_with_a_new_key(scene):
     set_card_status(scene, "blocked")
     assert_failed(pay(scene, key="same-key-1234"), "CARD_BLOCKED")
     set_card_status(scene, "active")
-    assert pay(scene, key="same-key-1234").json()["success"] is True
+    # The failed tap owns its key, so the same key replays the failure; a new tap uses a new key.
+    again = pay(scene, key="same-key-1234").json()
+    assert again["success"] is False and again["code"] == "CARD_BLOCKED" and again["idempotent"] is True
+    assert pay(scene, key="another-key-5678").json()["success"] is True
 
 
 # ── passenger / wallet ───────────────────────────────────────────────────────
@@ -155,13 +158,14 @@ def test_suspended_passenger(scene):
     assert_failed(pay(scene), "PASSENGER_INACTIVE")
 
 
-def test_insufficient_balance_changes_nothing(scene):
+def test_insufficient_balance_moves_no_money_and_is_recorded_as_failed(scene):
     assert_failed(pay(scene, amount=500.01), "INSUFFICIENT_BALANCE")
     assert scene["env"].balance(scene["pax_id"]) == 500
     assert scene["env"].balance(scene["driver_id"]) == 0
     db = scene["env"].db()
     try:
-        assert db.query(Transaction).count() == 0
+        t = db.query(Transaction).one()
+        assert (t.status, t.failure_code) == ("failed", "INSUFFICIENT_BALANCE")
     finally:
         db.close()
 
@@ -481,3 +485,85 @@ def test_migration_does_not_add_a_second_unique_index_when_one_exists(tmp_path):
     unique_on_uid = [i["name"] for i in inspect(eng).get_indexes("nfc_cards")
                      if i.get("unique") and i["column_names"] == ["card_uid"]]
     assert unique_on_uid == ["idx_nfc_cards_card_uid"]
+
+
+# ── emails are sent after the response ───────────────────────────────────────
+
+def test_response_does_not_wait_for_slow_emails(tmp_path):
+    """Drive the ASGI app directly (the test suite blocks sockets): each email takes 1.5 s, but the last
+    response byte must be sent at once, and the emails must still go out afterwards."""
+    import asyncio
+    import json
+    import time
+    from app.main import app
+
+    env = Env(path=str(tmp_path / "nfc_timing.db"))
+    drv = env.add_user("dt@nfctest.local", account_type="driver", balance=0)
+    pax = env.add_user("pt@nfctest.local", account_type="passenger", balance=500)
+    db = env.db()
+    try:
+        db.add(NFCCard(user_id=pax, card_reference="NFC-TIME0001", card_uid=UID))
+        db.commit()
+    finally:
+        db.close()
+
+    delivered = []
+
+    def slow_mail(**kwargs):
+        time.sleep(1.5)
+        delivered.append(kwargs["to_email"])
+        return True
+
+    body = json.dumps({"card_uid": UID, "amount": 12.5, "idempotency_key": "timing-key-0001"}).encode()
+    auth = env.user_headers(drv)["Authorization"].encode()
+    scope = {
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "POST", "scheme": "http",
+        "path": "/api/nfc/pay", "raw_path": b"/api/nfc/pay", "query_string": b"", "root_path": "",
+        "headers": [(b"host", b"testserver"), (b"authorization", auth), (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode())],
+        "client": ("127.0.0.1", 1234), "server": ("testserver", 80),
+    }
+    sent = {"status": None, "body": b"", "done_at": None}
+
+    async def run():
+        started = time.monotonic()
+        messages = iter([{"type": "http.request", "body": body, "more_body": False}])
+
+        async def receive():
+            try:
+                return next(messages)
+            except StopIteration:
+                await asyncio.sleep(3600)
+
+        async def send(message):
+            if message["type"] == "http.response.start":
+                sent["status"] = message["status"]
+            elif message["type"] == "http.response.body":
+                sent["body"] += message.get("body", b"")
+                if not message.get("more_body"):
+                    sent["done_at"] = time.monotonic() - started
+
+        await app(scope, receive, send)
+        return time.monotonic() - started
+
+    with patch("app.routes.nfc_pay.send_ride_passenger_email", side_effect=slow_mail), \
+         patch("app.routes.nfc_pay.send_ride_driver_email", side_effect=slow_mail):
+        total = asyncio.run(run())
+
+    assert sent["status"] == 200 and json.loads(sent["body"])["success"] is True
+    assert sent["done_at"] < 1.0, f"response completed after {sent['done_at']:.2f}s: it waited for the emails"
+    assert total >= 3.0, "the emails should still run (after the response)"
+    assert sorted(delivered) == ["dt@nfctest.local", "pt@nfctest.local"]
+    assert env.balance(pax) == 487.5
+
+
+def test_undelivered_or_crashing_emails_are_logged_and_change_nothing(scene, caplog):
+    import logging
+    with patch("app.routes.nfc_pay.send_ride_passenger_email", return_value=False), \
+         patch("app.routes.nfc_pay.send_ride_driver_email", side_effect=RuntimeError("ses down")), \
+         caplog.at_level(logging.WARNING, logger="app.routes.nfc_pay"):
+        r = pay(scene, amount=20, key="mail-fail-0001")
+    assert r.status_code == 200 and r.json()["success"] is True
+    text = caplog.text
+    assert "was not delivered" in text and "Driver credit receipt failed" in text
+    assert scene["env"].balance(scene["pax_id"]) == 480 and scene["env"].balance(scene["driver_id"]) == 20

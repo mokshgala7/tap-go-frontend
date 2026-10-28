@@ -313,11 +313,11 @@ function DriverDashboard({ flash, openModal, goToEarnings }) {
               <div>
                 <b style={{ fontSize: 15, color: 'var(--text)' }}>{t.type}</b>
                 <span style={{ fontSize: 11, fontWeight: 700, marginLeft: 8, padding: '2px 8px', borderRadius: 99, background: t.is_credit ? '#e2f3e8' : '#fce8e5', color: t.is_credit ? '#177a47' : '#a52b23' }}>
-                  {t.is_credit ? 'CREDIT' : 'DEBIT'}
+                  {t.status === 'Failed' ? 'FAILED' : t.is_credit ? 'CREDIT' : 'DEBIT'}
                 </span>
               </div>
-              <strong className={t.is_credit ? 'credit' : ''} style={{ fontSize: 16, color: t.is_credit ? '#177a47' : 'var(--text)' }}>
-                {t.is_credit ? '+' : '-'}₹{t.amount.toFixed(2)}
+              <strong className={t.is_credit ? 'credit' : ''} style={{ fontSize: 16, color: t.is_credit ? '#177a47' : 'var(--text)', ...(t.status === 'Failed' ? { color: 'var(--muted)', textDecoration: 'line-through' } : {}) }}>
+                {t.status === 'Failed' ? '' : t.is_credit ? '+' : '-'}₹{t.amount.toFixed(2)}
               </strong>
             </div>
 

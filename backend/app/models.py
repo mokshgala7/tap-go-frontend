@@ -191,6 +191,9 @@ class Transaction(Base):
     email_received_at = Column(DateTime, nullable=True)
     raw_email_id = Column(String(255), nullable=True)
 
+    # Why a failed tap/payment did not complete (e.g. INSUFFICIENT_BALANCE). NULL for every other row.
+    failure_code = Column(String(40), nullable=True)
+
     created_at = Column(DateTime, server_default=func.now(), index=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
