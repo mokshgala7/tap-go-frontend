@@ -7,6 +7,11 @@ POST /api/qr/create-request      Driver creates a payment request (120-second ex
 GET  /api/qr/{token}             Passenger fetches payment details after scanning
 POST /api/qr/{token}/confirm     Passenger confirms and executes the wallet transfer
 GET  /api/qr/{token}/status      Driver terminal polls for payment completion
+POST /api/qr/{token}/cancel      Driver cancels a pending request (idempotent)
+
+The three driver/terminal endpoints (create-request, status, cancel) use only the
+Authorization bearer header and JSON bodies - no cookies, no CORS dependence - so a
+microcontroller POS can call them with plain HTTPS.
 
 Design decisions
 ────────────────
@@ -14,7 +19,10 @@ Design decisions
   migration).  The `upi_uri` column stores the full scannable URL; `provider`
   is set to "QR_WALLET" to distinguish from Razorpay rows.
 - Status values follow the existing convention (capital first letter):
-    Pending → Completed | Expired | Cancelled | Failed
+    Pending → Processing → Completed | Failed      (Processing is internal, exists
+    only while confirm runs); Pending → Expired | Cancelled.
+  Expiry is derived from `expires_at` on every read, so a request is reported
+  Expired the moment 120 s pass, whether or not anything polls it.
 - The confirm endpoint claims the row with a conditional UPDATE before touching
   any wallet, preventing double-spend under concurrent requests.
 - The actual debit/credit uses the exact same helpers (_debit, _credit,
@@ -30,10 +38,12 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.models import PaymentRequest, Transaction, User, Wallet
 from app.routes.auth import get_current_user
@@ -53,7 +63,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/qr", tags=["QR Payment"])
 
 QR_EXPIRY_SECONDS = 120
-QR_TOKEN_BYTES = 32          # 256-bit → URL-safe base64 ≈ 43 chars, unpredictable
+# 128-bit → 22 URL-safe chars. Unguessable for a 120 s, authenticated-only window, and short
+# enough that the payment URL draws as a small (version 3) QR on the POS display.
+QR_TOKEN_BYTES = 16
+QR_PATH_PREFIX = "/p"        # website route that opens the payment page: <web>/p/<token>
 
 
 # ──────────────────────────── helpers ─────────────────────────────────────────
@@ -62,20 +75,72 @@ def _generate_token() -> str:
     return secrets.token_urlsafe(QR_TOKEN_BYTES)
 
 
-def _pr_to_public_dict(pr: PaymentRequest, driver: User) -> dict:
+def _iso_utc(dt: Optional[datetime]) -> Optional[str]:
+    """Naive-UTC datetimes are stored; emit them with an explicit Z so clients parse them as UTC."""
+    return dt.isoformat() + "Z" if dt else None
+
+
+def _payment_url(token: str) -> str:
+    return f"{settings.PUBLIC_WEB_URL}{QR_PATH_PREFIX}/{token}"
+
+
+def _seconds_remaining(pr: PaymentRequest, now: datetime) -> int:
+    return max(0, int((pr.expires_at - now).total_seconds())) if pr.expires_at else 0
+
+
+def _expire_if_due(db: Session, pr: PaymentRequest, now: datetime) -> None:
+    """Persist Pending → Expired once the deadline has passed (conditional, race-safe)."""
+    if pr.status == "Pending" and pr.expires_at and pr.expires_at < now:
+        db.query(PaymentRequest).filter(
+            PaymentRequest.id == pr.id,
+            PaymentRequest.status == "Pending",
+        ).update({"status": "Expired"}, synchronize_session=False)
+        db.commit()
+        db.refresh(pr)
+
+
+def _public_status(pr: PaymentRequest, now: datetime) -> str:
+    """Status shown to clients: exactly Pending|Processing|Completed|Failed|Expired|Cancelled."""
+    if pr.status == "Pending" and pr.expires_at and pr.expires_at < now:
+        return "Expired"
+    if (pr.status or "").lower() == "processing":
+        return "Processing"
+    return pr.status
+
+
+def _unavailable(pr: PaymentRequest, now: datetime) -> JSONResponse:
+    """410 for a request that can no longer be paid. `detail` stays a plain string (existing
+    clients show it); `status` lets the payment page pick the right end-state screen."""
+    status = _public_status(pr, now)
+    if status == "Expired":
+        msg = "This QR code has expired. Please ask the driver to show a new code."
+    elif status == "Completed":
+        msg = "This payment has already been made."
+    elif status == "Cancelled":
+        msg = "The driver cancelled this payment request."
+    else:
+        msg = f"This payment request is no longer available (status: {status})."
+    return JSONResponse(status_code=410, content={"success": False, "detail": msg, "status": status})
+
+
+def _pr_to_public_dict(pr: PaymentRequest, driver: User, now: datetime, passenger_balance: Optional[float] = None) -> dict:
     """Safe subset of a PaymentRequest row suitable for the passenger-facing GET."""
-    now = datetime.utcnow()
-    expires_at = pr.expires_at
-    remaining_seconds = max(0, int((expires_at - now).total_seconds())) if expires_at else 0
-    return {
+    remaining = _seconds_remaining(pr, now)
+    out = {
         "token": pr.utr,                     # we store the token in utr (see note below)
         "driver_name": driver.name,
+        "vehicle_registration": driver.vehicle_registration or None,
+        "vehicle_type": driver.vehicle_type or None,
         "amount": float(pr.amount),
-        "status": pr.status,
-        "expires_at": expires_at.isoformat() if expires_at else None,
-        "remaining_seconds": remaining_seconds,
+        "status": _public_status(pr, now),
+        "expires_at": _iso_utc(pr.expires_at),
+        "remaining_seconds": remaining,
+        "seconds_remaining": remaining,
         "payment_method": "QR_WALLET",
     }
+    if passenger_balance is not None:
+        out["wallet_balance"] = passenger_balance
+    return out
 
 
 def _get_driver_for_request(pr: PaymentRequest, db: Session) -> User:
@@ -105,7 +170,7 @@ def create_qr_request(
     - Validates amount server-side (≥0.01, ≤MAX, ≤2dp).
     - Generates a cryptographically secure, unpredictable 256-bit token.
     - Stores the request in payment_requests; expires in 120 seconds.
-    - Returns the token and full payment URL for QR generation on the terminal.
+    - Returns the token and the short website URL (<web>/p/<token>) the terminal draws as a QR.
     """
     driver = current_user
     if driver.account_type != "driver":
@@ -131,7 +196,7 @@ def create_qr_request(
         wallet_id=d_wallet.id,
         amount=amount_dec,
         # upi_uri carries the scannable payment URL; token stored in utr for indexing.
-        upi_uri=f"tapgo://pay?token={token}",
+        upi_uri=_payment_url(token),
         utr=token,                      # indexed column → fast token lookups
         status="Pending",
         provider="QR_WALLET",
@@ -153,9 +218,9 @@ def create_qr_request(
         "driver_name": driver.name,
         "driver_id": driver.id,
         "status": pr.status,
-        "expires_at": expires_at.isoformat(),
+        "expires_at": _iso_utc(expires_at),
         "expires_in_seconds": QR_EXPIRY_SECONDS,
-        "payment_url": f"tapgo://pay?token={token}",
+        "payment_url": _payment_url(token),
         "request_id": pr.id,
     }
 
@@ -172,8 +237,9 @@ def get_qr_details(
     Authenticated passenger fetches payment details after scanning a QR.
 
     - Rejects invalid / unknown tokens (same error either way to avoid oracle attacks).
-    - Rejects expired or non-Pending requests.
-    - Does NOT process a payment — it only returns display information.
+    - Rejects expired or non-Pending requests (410 with a `status` field naming why).
+    - Does NOT process a payment — it only returns display information (driver name,
+      vehicle, fare, time left, and the passenger's own wallet balance).
     - Does not expose sensitive driver information.
     """
     if current_user.account_type != "passenger":
@@ -192,21 +258,16 @@ def get_qr_details(
     now = datetime.utcnow()
 
     # Auto-mark expired Pending rows so status is always accurate.
-    if pr.status == "Pending" and pr.expires_at and pr.expires_at < now:
-        db.query(PaymentRequest).filter(
-            PaymentRequest.id == pr.id,
-            PaymentRequest.status == "Pending",
-        ).update({"status": "Expired"}, synchronize_session=False)
-        db.commit()
-        raise HTTPException(status_code=410, detail="This QR code has expired. Please ask the driver to show a new code.")
+    _expire_if_due(db, pr, now)
 
     if pr.status != "Pending":
-        raise HTTPException(status_code=410, detail=f"This payment request is no longer available (status: {pr.status}).")
+        return _unavailable(pr, now)
 
     driver = _get_driver_for_request(pr, db)
+    p_wallet = get_or_create_wallet(current_user.id, db)
     return {
         "success": True,
-        "payment": _pr_to_public_dict(pr, driver),
+        "payment": _pr_to_public_dict(pr, driver, now, passenger_balance=float(p_wallet.balance)),
     }
 
 
@@ -278,17 +339,9 @@ def confirm_qr_payment(
         raise HTTPException(status_code=404, detail="Payment request not found.")
 
     now = datetime.utcnow()
-    if pr.expires_at and pr.expires_at < now:
-        # Mark expired atomically if still Pending.
-        db.query(PaymentRequest).filter(
-            PaymentRequest.id == pr.id,
-            PaymentRequest.status == "Pending",
-        ).update({"status": "Expired"}, synchronize_session=False)
-        db.commit()
-        raise HTTPException(status_code=410, detail="This QR code has expired. Please ask the driver to show a new code.")
-
+    _expire_if_due(db, pr, now)
     if pr.status != "Pending":
-        raise HTTPException(status_code=410, detail=f"This payment request is no longer available (status: {pr.status}).")
+        return _unavailable(pr, now)
 
     # ── 3. Claim the request (Pending → processing) atomically ───────────────
     claimed = db.query(PaymentRequest).filter(
@@ -343,8 +396,21 @@ def confirm_qr_payment(
     }
     for uid in _lock_order(passenger.id, driver.id):
         if not steps[uid]():
+            # Rolls back the Pending → processing claim and any partial debit.
             db.rollback()
-            # Re-open the request so the terminal can show a useful message.
+            if uid == passenger.id:
+                db.refresh(p_wallet)
+                if not p_wallet.is_frozen:
+                    # Short of funds: the request is Pending again, so the passenger can top up and
+                    # retry before it expires. Nothing was charged.
+                    return JSONResponse(status_code=400, content={
+                        "success": False,
+                        "code": "insufficient_balance",
+                        "detail": f"Insufficient wallet balance (₹{float(p_wallet.balance):.2f}). Please add funds first.",
+                        "balance": float(p_wallet.balance),
+                        "required": float(fare_dec),
+                    })
+            # Frozen wallet or driver unable to receive: this request can never succeed.
             try:
                 with db.begin_nested():
                     db.query(PaymentRequest).filter(PaymentRequest.id == pr.id).update(
@@ -354,13 +420,7 @@ def confirm_qr_payment(
                 pass
             db.commit()
             if uid == passenger.id:
-                db.refresh(p_wallet)
-                if p_wallet.is_frozen:
-                    raise HTTPException(status_code=400, detail="Your wallet is frozen. Payment failed.")
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Insufficient wallet balance (₹{float(p_wallet.balance):.2f}). Please add funds first.",
-                )
+                raise HTTPException(status_code=400, detail="Your wallet is frozen. Payment failed.")
             raise HTTPException(status_code=400, detail="The driver cannot receive payments right now.")
 
     db.refresh(p_wallet)
@@ -480,7 +540,8 @@ def get_qr_status(
 
     - Only the driver who CREATED the request can poll its status.
     - Does not expose passenger account information.
-    - Auto-marks Pending rows as Expired if past their expiry time.
+    - Reports Expired as soon as the expiry time has passed, even if nothing polled it before.
+    - `status` is exactly one of Pending, Processing, Completed, Failed, Expired, Cancelled.
     """
     driver = current_user
     if driver.account_type != "driver":
@@ -497,24 +558,18 @@ def get_qr_status(
 
     now = datetime.utcnow()
 
-    # Auto-expire stale Pending rows.
-    if pr.status == "Pending" and pr.expires_at and pr.expires_at < now:
-        db.query(PaymentRequest).filter(
-            PaymentRequest.id == pr.id,
-            PaymentRequest.status == "Pending",
-        ).update({"status": "Expired"}, synchronize_session=False)
-        db.commit()
-        db.refresh(pr)
+    # Persist the expiry, but report from the clock either way (see _public_status).
+    _expire_if_due(db, pr, now)
 
-    expires_at = pr.expires_at
-    remaining = max(0, int((expires_at - now).total_seconds())) if expires_at else 0
+    remaining = _seconds_remaining(pr, now)
 
     resp = {
         "success": True,
-        "status": pr.status,
+        "status": _public_status(pr, now),
         "amount": float(pr.amount),
-        "expires_at": expires_at.isoformat() if expires_at else None,
+        "expires_at": _iso_utc(pr.expires_at),
         "remaining_seconds": remaining,
+        "seconds_remaining": remaining,
     }
 
     # Include the transaction reference on success (but NOT passenger identity).
@@ -540,29 +595,35 @@ def cancel_qr_request(
     """
     Driver cancels a pending QR payment request safely.
     Only the creating driver can cancel their own request.
-    Cancelled requests cannot be paid.
+    Cancelled requests cannot be paid. Idempotent: always 200 for the owner's request, with
+    the resulting `status` (Cancelled, or Expired/Completed/... if it was already settled).
     """
     driver = current_user
     if driver.account_type != "driver":
         raise HTTPException(status_code=403, detail="Only driver accounts can cancel QR payment requests.")
 
-    cancelled = db.query(PaymentRequest).filter(
+    pr = db.query(PaymentRequest).filter(
         PaymentRequest.utr == token,
         PaymentRequest.provider == "QR_WALLET",
         PaymentRequest.user_id == driver.id,
+    ).first()
+    if not pr:
+        raise HTTPException(status_code=404, detail="Payment request not found.")
+
+    now = datetime.utcnow()
+    # A request already past its deadline is Expired, not Cancelled, and cancelling it still succeeds.
+    _expire_if_due(db, pr, now)
+
+    cancelled = db.query(PaymentRequest).filter(
+        PaymentRequest.id == pr.id,
         PaymentRequest.status == "Pending",
     ).update({"status": "Cancelled"}, synchronize_session=False)
     db.commit()
+    db.refresh(pr)
 
-    if cancelled == 0:
-        # Might already be Completed / Expired / Cancelled — check what it is.
-        pr = db.query(PaymentRequest).filter(
-            PaymentRequest.utr == token,
-            PaymentRequest.provider == "QR_WALLET",
-            PaymentRequest.user_id == driver.id,
-        ).first()
-        if not pr:
-            raise HTTPException(status_code=404, detail="Payment request not found.")
-        return {"success": True, "status": pr.status, "message": f"Request is already {pr.status}."}
-
-    return {"success": True, "status": "Cancelled", "message": "Payment request cancelled."}
+    status = _public_status(pr, now)
+    if cancelled:
+        return {"success": True, "status": "Cancelled", "message": "Payment request cancelled."}
+    # Idempotent: repeating a cancel (or cancelling an expired/finished request) is not an error.
+    # `status` tells the terminal what actually happened - e.g. Completed if the passenger paid first.
+    return {"success": True, "status": status, "message": f"Request is already {status}."}

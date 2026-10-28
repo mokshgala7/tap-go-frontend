@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { extractQrToken, setPendingQrToken } from '../utils/qrLink.js'
 
 // Views that require authentication
 const PROTECTED_VIEWS = new Set(['passenger', 'driver'])
@@ -21,6 +22,7 @@ const PUBLIC_VIEWS = new Set([
   'lost-card',
   'faq',
   'admin',
+  'qr-pay', // handles its own sign-in so the payment link survives a login
 ])
 
 const ROUTE_TO_VIEW = {
@@ -43,6 +45,7 @@ const ROUTE_TO_VIEW = {
   '/passenger': 'passenger',
   '/driver': 'driver',
   '/admin': 'admin',
+  '/pay': 'qr-pay',
 }
 
 // Checks if a target view is permitted based on current sessionStorage auth state
@@ -81,6 +84,14 @@ export function isViewAllowed(targetView) {
 
 function resolveInitialView() {
   if (typeof window === 'undefined') return 'home'
+
+  // Priority 0: opened from a driver's QR payment link (<site>/p/<token>). Keep the token for
+  // the payment page, which survives a login detour and a refresh.
+  const qrToken = extractQrToken(window.location.href)
+  if (qrToken) {
+    setPendingQrToken(qrToken)
+    return 'qr-pay'
+  }
 
   // Priority 1: Check sessionStorage persisted view (supports page refresh F5 / Cmd+R)
   try {

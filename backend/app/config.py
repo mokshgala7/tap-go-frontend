@@ -86,6 +86,11 @@ class Settings:
     def ALLOWED_ORIGINS(self) -> list[str]:
         return os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 
+    @property
+    def PUBLIC_WEB_URL(self) -> str:
+        """Website origin that QR payment links point at (no trailing slash)."""
+        return os.getenv("PUBLIC_WEB_URL", "https://www.thetapandgo.in").strip().rstrip("/")
+
     # --- Amazon SES Configuration (HTTPS API via boto3) ---
     @property
     def AWS_ACCESS_KEY_ID(self) -> str:

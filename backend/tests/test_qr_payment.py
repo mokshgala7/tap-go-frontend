@@ -111,7 +111,7 @@ def test_tokens_are_unique_and_long(scene):
         r = create_request(scene, amount=10.0)
         assert r.status_code == 200
         t = r.json()["token"]
-        assert len(t) >= 40, "Token too short to be cryptographically safe"
+        assert len(t) >= 22, "Token too short to be cryptographically safe (128-bit minimum)"
         tokens.add(t)
     assert len(tokens) == 5, "Duplicate tokens generated"
 
@@ -123,7 +123,8 @@ def test_expiry_stored_correctly(scene):
     r = create_request(scene, amount=20.0)
     after = datetime.utcnow()
     assert r.status_code == 200
-    expires_at = datetime.fromisoformat(r.json()["expires_at"])
+    assert r.json()["expires_at"].endswith("Z"), "expires_at must be explicit UTC"
+    expires_at = datetime.fromisoformat(r.json()["expires_at"].rstrip("Z"))
     assert before + timedelta(seconds=118) <= expires_at <= after + timedelta(seconds=122)
 
 
@@ -482,3 +483,126 @@ def test_status_shows_completed_after_payment(scene):
     data = rs.json()
     assert data["status"] == "Completed"
     assert "transaction_reference" in data
+
+
+# ── 21. POS contract: URL format, status vocabulary, expiry, cancel ───────────
+
+def _expire(scene, token, seconds_ago=1):
+    db = scene["env"].db()
+    try:
+        db.query(PaymentRequest).filter(PaymentRequest.utr == token).update(
+            {"expires_at": datetime.utcnow() - timedelta(seconds=seconds_ago)},
+            synchronize_session=False,
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def _status(scene, token):
+    return scene["env"].client.get(f"/api/qr/{token}/status", headers=scene["driver_headers"])
+
+
+def test_create_response_has_short_https_payment_url(scene):
+    body = create_request(scene, amount=1.5).json()
+    assert body["payment_url"] == f"https://www.thetapandgo.in/p/{body['token']}"
+    assert len(body["payment_url"]) <= 60
+    assert body["expires_in_seconds"] == 120
+    assert body["amount"] == 1.5
+
+
+def test_status_vocabulary_and_expiry_without_any_other_call(scene):
+    token = create_request(scene, amount=1.5).json()["token"]
+    r = _status(scene, token)
+    assert r.json()["status"] == "Pending"
+    assert 115 <= r.json()["seconds_remaining"] <= 120
+
+    _expire(scene, token)          # nobody has touched the row since creation
+    r = _status(scene, token)
+    assert r.json()["status"] == "Expired"
+    assert r.json()["seconds_remaining"] == 0
+
+
+def test_status_reports_processing_with_capital_p(scene):
+    token = create_request(scene, amount=1.5).json()["token"]
+    db = scene["env"].db()
+    try:
+        db.query(PaymentRequest).filter(PaymentRequest.utr == token).update(
+            {"status": "processing"}, synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+    assert _status(scene, token).json()["status"] == "Processing"
+
+
+def test_cancel_is_idempotent_and_works_on_expired(scene):
+    env = scene["env"]
+    token = create_request(scene, amount=1.5).json()["token"]
+    first = env.client.post(f"/api/qr/{token}/cancel", headers=scene["driver_headers"])
+    again = env.client.post(f"/api/qr/{token}/cancel", headers=scene["driver_headers"])
+    assert first.status_code == again.status_code == 200
+    assert first.json()["status"] == again.json()["status"] == "Cancelled"
+
+    token2 = create_request(scene, amount=1.5).json()["token"]
+    _expire(scene, token2)
+    r = env.client.post(f"/api/qr/{token2}/cancel", headers=scene["driver_headers"])
+    assert r.status_code == 200
+    assert r.json()["status"] == "Expired"      # not recorded as Cancelled
+    assert _status(scene, token2).json()["status"] == "Expired"
+
+
+def test_get_details_includes_vehicle_and_passenger_balance(scene):
+    env = scene["env"]
+    token = create_request(scene, amount=12.5).json()["token"]
+    r = env.client.get(f"/api/qr/{token}", headers=scene["pax_headers"])
+    assert r.status_code == 200, r.text
+    p = r.json()["payment"]
+    assert p["driver_name"] == "Test Driver"
+    assert p["amount"] == 12.5
+    assert p["wallet_balance"] == 500
+    assert p["status"] == "Pending"
+    assert "vehicle_registration" in p and "vehicle_type" in p
+    assert 0 < p["seconds_remaining"] <= 120
+
+
+def test_unavailable_responses_name_the_status(scene):
+    env = scene["env"]
+    t_exp = create_request(scene, amount=5).json()["token"]
+    _expire(scene, t_exp)
+    r = env.client.get(f"/api/qr/{t_exp}", headers=scene["pax_headers"])
+    assert (r.status_code, r.json()["status"]) == (410, "Expired")
+
+    t_can = create_request(scene, amount=5).json()["token"]
+    env.client.post(f"/api/qr/{t_can}/cancel", headers=scene["driver_headers"])
+    r = confirm_request(scene, t_can)
+    assert (r.status_code, r.json()["status"]) == (410, "Cancelled")
+
+    t_paid = create_request(scene, amount=5).json()["token"]
+    assert confirm_request(scene, t_paid).status_code == 200
+    r = env.client.get(f"/api/qr/{t_paid}", headers=scene["pax_headers"])
+    assert (r.status_code, r.json()["status"]) == (410, "Completed")
+
+
+def test_insufficient_balance_keeps_request_payable_after_top_up(scene):
+    env = scene["env"]
+    broke_id = env.add_user("short@qrtest.local", account_type="passenger", balance=5)
+    headers = env.user_headers(broke_id)
+    token = create_request(scene, amount=100.0).json()["token"]
+
+    r = env.client.post(f"/api/qr/{token}/confirm", json={"idempotency_key": "short-key-0001"}, headers=headers)
+    assert r.status_code == 400
+    assert r.json()["code"] == "insufficient_balance"
+    assert r.json()["balance"] == 5 and r.json()["required"] == 100
+    assert _status(scene, token).json()["status"] == "Pending"
+
+    db = env.db()
+    try:
+        db.query(Wallet).filter(Wallet.user_id == broke_id).update({"balance": Decimal("150")})
+        db.commit()
+    finally:
+        db.close()
+    r = env.client.post(f"/api/qr/{token}/confirm", json={"idempotency_key": "short-key-0001"}, headers=headers)
+    assert r.status_code == 200, r.text
+    assert _status(scene, token).json()["status"] == "Completed"
+    assert env.balance(broke_id) == 50
+    assert env.balance(scene["driver_id"]) == 100

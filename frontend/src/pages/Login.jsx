@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from '../routes/navigation.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import { getPendingQrToken } from '../utils/qrLink.js'
 import Footer from '../components/Common/Footer.jsx'
 import Navbar from '../components/Common/Navbar.jsx'
 import illustration from '../assets/images/login-illustration.png'
@@ -96,6 +97,9 @@ function Login() {
         navigate('/admin')
       } else if (targetRole === 'driver') {
         navigate('/driver')
+      } else if (getPendingQrToken()) {
+        // They came from a driver's QR code: go straight back to that payment.
+        navigate('/pay')
       } else {
         navigate('/passenger')
       }

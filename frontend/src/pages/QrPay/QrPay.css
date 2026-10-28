@@ -1,0 +1,145 @@
+/* Mobile-first payment page opened from a driver's QR code. Uses the shared --tg-* tokens. */
+.qrpay-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--tg-canvas);
+  color: var(--tg-ink);
+  font-family: var(--tg-font-ui);
+}
+
+.qrpay-card {
+  width: 100%;
+  max-width: 440px;
+  padding: 28px 22px 24px;
+  border-radius: var(--tg-radius-card);
+  background: var(--tg-surface);
+  box-shadow: var(--tg-shadow-float);
+  text-align: center;
+}
+
+.qrpay-brand {
+  display: inline-block;
+  margin-bottom: 18px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--tg-yellow);
+  font-family: var(--tg-font-display);
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.qrpay-label {
+  margin: 0;
+  color: var(--tg-ink-soft);
+  font-size: 15px;
+}
+
+.qrpay-driver {
+  margin: 2px 0 6px;
+  font-family: var(--tg-font-display);
+  font-size: 28px;
+  line-height: 1.15;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.qrpay-title {
+  margin: 8px 0 6px;
+  font-family: var(--tg-font-display);
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 800;
+}
+
+.qrpay-amount {
+  margin: 4px 0 18px;
+  font-family: var(--tg-font-display);
+  font-size: 52px;
+  line-height: 1.05;
+  font-weight: 800;
+}
+
+.qrpay-note {
+  margin: 8px 0 20px;
+  color: var(--tg-ink-soft);
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+.qrpay-icon {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  margin: 4px auto 8px;
+  border-radius: 50%;
+  font-size: 36px;
+  font-weight: 800;
+}
+.qrpay-ok { background: var(--tg-green-soft); color: var(--tg-green); }
+.qrpay-bad { background: var(--tg-red-soft); color: var(--tg-red); }
+
+.qrpay-rows {
+  margin: 0 0 18px;
+  padding: 4px 16px;
+  border-radius: 16px;
+  background: var(--tg-fill);
+  text-align: left;
+}
+.qrpay-rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--tg-hairline);
+  font-size: 17px;
+}
+.qrpay-rows > div:last-child { border-bottom: 0; }
+.qrpay-rows dt { color: var(--tg-ink-soft); }
+.qrpay-rows dd { margin: 0; font-weight: 700; text-align: right; overflow-wrap: anywhere; }
+.qrpay-timer { font-variant-numeric: tabular-nums; }
+.qrpay-low { color: var(--tg-red); }
+
+.qrpay-warn {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--tg-amber-soft);
+  color: var(--tg-amber);
+  font-size: 16px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.qrpay-btn {
+  display: block;
+  width: 100%;
+  min-height: 60px;
+  padding: 14px 18px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--tg-yellow-gradient);
+  box-shadow: var(--tg-shadow-glow);
+  color: var(--tg-ink);
+  font-family: var(--tg-font-display);
+  font-size: 22px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.qrpay-btn:disabled { opacity: 0.6; cursor: progress; box-shadow: none; }
+
+.qrpay-link {
+  margin-top: 12px;
+  padding: 10px;
+  border: 0;
+  background: none;
+  color: var(--tg-ink-soft);
+  font-size: 16px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.qrpay-link:disabled { opacity: 0.5; cursor: default; }

@@ -4,6 +4,7 @@ import ForgotPassword from '../pages/ForgotPassword/ForgotPassword.jsx'
 import Home from '../pages/Home/Home.jsx'
 import Login from '../pages/Login.jsx'
 import Passenger from '../pages/Passenger/Passenger.jsx'
+import QrPay from '../pages/QrPay/QrPay.jsx'
 import Register from '../pages/Register/Register.jsx'
 import RegistrationReview from '../pages/RegistrationReview.jsx'
 
@@ -59,6 +60,8 @@ function AppRoutes() {
       return <Driver />
     case 'admin':
       return <Admin />
+    case 'qr-pay':
+      return <QrPay />
     case 'home':
     default:
       return <Home />
