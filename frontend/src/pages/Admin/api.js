@@ -15,7 +15,9 @@ export function adminAuthHeaders() {
 export async function adminRequest(path, adminId, options = {}) {
   const headers = { ...(options.headers || {}), ...(adminId ? adminAuthHeaders() : {}) }
   if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json'
-  const response = await fetch(`${API_BASE}/api/admin${path}`, { ...options, headers })
+  // Paths starting with /api/ are used as given (e.g. /api/nfc/admin/...); others live under /api/admin.
+  const url = path.startsWith('/api/') ? `${API_BASE}${path}` : `${API_BASE}/api/admin${path}`
+  const response = await fetch(url, { ...options, headers })
   const contentType = response.headers.get('content-type') || ''
   const data = contentType.includes('application/json') ? await response.json() : await response.text()
   if (response.status === 401 && adminId) {

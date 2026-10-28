@@ -37,7 +37,7 @@ class AdminErrorBoundary extends Component {
 
 const navigation = [
   ['dashboard', 'Overview', '▦'], ['drivers', 'Driver Management', '♙'], ['passengers', 'Passenger Management', '♟'],
-  ['nfc-orders', 'NFC Card Orders', '💳'], ['documents', 'Driver Documents', '▤'], ['requests', 'Edit Requests', '✓'],
+  ['nfc-orders', 'NFC Card Orders', '💳'], ['nfc-cards', 'NFC Cards', '◈'], ['documents', 'Driver Documents', '▤'], ['requests', 'Edit Requests', '✓'],
   ['transactions', 'Transactions', '⇄'], ['wallets', 'Wallets', '◉'], ['fraud', 'Fraud Centre', '⚑'],
   ['withdrawals', 'Withdrawal Requests', '💸'], ['support', 'Support Tickets', '🎫'],
   ['logs', 'Activity Logs', '◷'], ['settings', 'Settings', '⚙'], ['database', 'Database Viewer', '▤'],
@@ -325,6 +325,159 @@ function NFCOrdersAdmin({ adminId }) {
   )
 }
 
+// Chip UIDs are 4 or 7 bytes; the server accepts any separator style and normalises to uppercase hex.
+const uidLooksValid = (value) => /^([0-9a-f]{8}|[0-9a-f]{14})$/i.test(value.replace(/[\s:-]/g, ''))
+
+function NFCCardsAdmin({ adminId }) {
+  const [cards, setCards] = useState([])
+  const [total, setTotal] = useState(0)
+  const [statusFilter, setStatusFilter] = useState('')
+  const [uidFilter, setUidFilter] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [search, setSearch] = useState('')
+  const [matches, setMatches] = useState(null)
+  const [selected, setSelected] = useState(null)
+  const [uid, setUid] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = () => {
+    const params = new URLSearchParams({ page_size: '100' })
+    if (statusFilter) params.set('card_status', statusFilter)
+    if (uidFilter.trim()) params.set('uid', uidFilter.trim())
+    setLoading(true)
+    adminRequest(`/api/nfc/admin/all?${params}`, adminId)
+      .then((data) => { setCards(data?.items || []); setTotal(data?.total || 0); setError('') })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [adminId, statusFilter, uidFilter])
+
+  const findPassengers = async (event) => {
+    event.preventDefault()
+    setError(''); setNotice(''); setSelected(null)
+    try {
+      const data = await adminRequest(`/users?account_type=passenger&page_size=8&search=${encodeURIComponent(search.trim())}`, adminId)
+      setMatches(data?.items || [])
+    } catch (err) { setError(err.message) }
+  }
+
+  const send = async (path, method, body, done) => {
+    setBusy(true); setError(''); setNotice('')
+    try {
+      await adminRequest(path, adminId, { method, body: JSON.stringify(body) })
+      setNotice(done)
+      load()
+      return true
+    } catch (err) {
+      setError(err.message)
+      return false
+    } finally { setBusy(false) }
+  }
+
+  const issue = async (event) => {
+    event.preventDefault()
+    if (uid.trim() && !uidLooksValid(uid)) { setError('The card UID must be 8 or 14 hex characters, e.g. 04A2B3C4D5E680.'); return }
+    const body = { user_id: selected.id }
+    if (uid.trim()) body.card_uid = uid.trim()
+    if (await send('/api/nfc/admin/issue', 'POST', body, `Card issued to ${selected.name}.`)) {
+      setSelected(null); setMatches(null); setSearch(''); setUid('')
+    }
+  }
+
+  const setCardUid = (card) => {
+    const value = window.prompt(`${card.card_uid ? 'Replace' : 'Set'} the chip UID for ${card.card_reference} (hex, e.g. 04A2B3C4D5E680):`, card.card_uid || '')
+    if (value === null) return
+    if (!uidLooksValid(value)) { setError('The card UID must be 8 or 14 hex characters.'); return }
+    send(`/api/nfc/admin/${card.id}/uid`, 'PUT', { card_uid: value.trim() }, `UID saved for ${card.card_reference}.`)
+  }
+
+  const lifecycle = (card, action) => {
+    if (action === 'mark_lost' && !window.confirm(`Mark ${card.card_reference} as lost? This cannot be undone.`)) return
+    send(`/api/nfc/admin/${card.id}/action`, 'POST', { action, reason: action === 'block' ? 'Blocked by admin' : undefined }, `Card ${card.card_reference}: ${action.replace('_', ' ')} done.`)
+  }
+
+  return (
+    <section className="admin-section">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">Tap &amp; pay cards</span>
+          <h2>NFC Cards</h2>
+          <p>Issue a card to a passenger and bind the chip UID the POS reads. A passenger can hold one active card.</p>
+        </div>
+      </div>
+
+      <form className="table-controls" onSubmit={findPassengers}>
+        <input placeholder="Find a passenger by name, email or phone" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <button className="secondary-button" type="submit">Search passengers</button>
+      </form>
+
+      {matches && (
+        <div className="table-wrap" style={{ marginBottom: 18 }}>
+          <table>
+            <thead><tr><th>Passenger</th><th>Email</th><th>Phone</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+              {matches.length ? matches.map((p) => (
+                <tr key={p.id}>
+                  <td><strong>{p.name}</strong></td><td>{p.email}</td><td>{p.phone}</td><td><Badge value={p.status} /></td>
+                  <td className="actions"><button type="button" onClick={() => { setSelected(p); setUid(''); setError(''); setNotice('') }}>Issue card</button></td>
+                </tr>
+              )) : <tr><td colSpan="5"><Empty text="No passengers match." /></td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {selected && (
+        <form className="table-controls" onSubmit={issue}>
+          <strong>Issue to {selected.name}</strong>
+          <input placeholder="Chip UID (optional now), e.g. 04:A2:B3:C4:D5:E6:80" value={uid} onChange={(e) => setUid(e.target.value)} />
+          <button className="primary-button" type="submit" disabled={busy}>Issue card</button>
+          <button className="secondary-button" type="button" onClick={() => setSelected(null)}>Cancel</button>
+        </form>
+      )}
+
+      {notice && <p style={{ color: '#1f7a45', fontSize: 13, fontWeight: 700 }}>{notice}</p>}
+      {error && <p className="admin-error">{error}</p>}
+
+      <div className="table-controls">
+        <input placeholder="Filter by chip UID" value={uidFilter} onChange={(e) => setUidFilter(e.target.value)} />
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="">All statuses</option><option value="active">Active</option><option value="blocked">Blocked</option>
+          <option value="lost">Lost</option><option value="replaced">Replaced</option>
+        </select>
+        <span className="record-count">{number(total)} cards</span>
+      </div>
+
+      {loading ? <Empty text="Loading NFC cards…" /> : (
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Reference</th><th>Passenger</th><th>Chip UID</th><th>Status</th><th>Issued</th><th>Action</th></tr></thead>
+            <tbody>
+              {cards.length ? cards.map((c) => (
+                <tr key={c.id}>
+                  <td><strong>{c.card_reference}</strong></td>
+                  <td>{c.user_name || `User #${c.user_id}`}<br /><small>{c.user_email}</small></td>
+                  <td>{c.card_uid ? <code>{c.card_uid}</code> : <small>Not set</small>}</td>
+                  <td><Badge value={c.status} /></td>
+                  <td>{date(c.issued_at)}</td>
+                  <td className="actions">
+                    {(c.status === 'active' || c.status === 'blocked') && <button disabled={busy} onClick={() => setCardUid(c)}>{c.card_uid ? 'Replace UID' : 'Set UID'}</button>}
+                    {c.status === 'active' && <button disabled={busy} onClick={() => lifecycle(c, 'block')}>Block</button>}
+                    {c.status === 'blocked' && <button disabled={busy} onClick={() => lifecycle(c, 'unblock')}>Unblock</button>}
+                    {(c.status === 'active' || c.status === 'blocked') && <button disabled={busy} onClick={() => lifecycle(c, 'mark_lost')}>Mark lost</button>}
+                  </td>
+                </tr>
+              )) : <tr><td colSpan="6"><Empty text="No NFC cards issued yet." /></td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function WithdrawalRequestsAdmin({ adminId }) {
   const [result, setResult] = useState({ items: [] })
   const [filter, setFilter] = useState('')
@@ -531,6 +684,7 @@ function AdminShell({ admin, onLogout }) {
     if (page === 'dashboard') return <Dashboard {...props} />
     if (page === 'drivers' || page === 'passengers') return <UserDirectory {...props} type={page === 'drivers' ? 'driver' : 'passenger'} />
     if (page === 'nfc-orders') return <NFCOrdersAdmin {...props} />
+    if (page === 'nfc-cards') return <NFCCardsAdmin {...props} />
     if (page === 'database') return <DatabaseViewer {...props} />
     if (page === 'settings') return <Settings {...props} />
     if (page === 'withdrawals') return <WithdrawalRequestsAdmin {...props} />

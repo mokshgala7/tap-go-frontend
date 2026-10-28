@@ -335,6 +335,8 @@ class NFCCard(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     card_reference = Column(String(64), nullable=False, unique=True, index=True)
+    # Chip UID as read by the POS: uppercase hex, no separators (8 or 14 chars). NULL until assigned.
+    card_uid = Column(String(32), nullable=True, unique=True)
     card_type = Column(String(50), nullable=False, default="standard_nfc")
     status = Column(String(20), nullable=False, default="active", index=True)  # active, blocked, lost, replaced
     blocked_reason = Column(Text, nullable=True)
